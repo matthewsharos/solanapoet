@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.18.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --build tsconfig.json tsconfig.node.json && vite build",
@@ -23,9 +26,10 @@
     "@fontsource/roboto": "^5.2.0",
     "@fontsource/special-elite": "^5.2.0",
     "@googleapis/sheets": "^9.4.0",
-    "@metaplex-foundation/js": "^0.20.1",
-    "@metaplex-foundation/mpl-auction-house": "^2.5.1",
+    "@metaplex-foundation/umi": "^0.9.1",
+    "@metaplex-foundation/umi-bundle-defaults": "^0.9.1",
     "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
+    "@metaplex-foundation/mpl-candy-machine": "^6.1.0",
     "@mui/material": "^6.4.6",
     "@solana/pay": "^0.2.5",
     "@solana/spl-token": "^0.4.12",
