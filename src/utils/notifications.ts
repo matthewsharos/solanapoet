@@ -1,4 +1,5 @@
 import { toast } from 'react-toastify';
+import React from 'react';
 
 export type NotificationType = 'success' | 'error' | 'info' | 'warning';
 
@@ -15,7 +16,7 @@ const DEFAULT_OPTIONS: Required<NotificationOptions> = {
 };
 
 export function showNotification(
-  message: string,
+  message: string | React.ReactNode,
   options: NotificationOptions = {}
 ): void {
   const { type, duration, position } = { ...DEFAULT_OPTIONS, ...options };
@@ -37,22 +38,23 @@ export function showTransactionNotification(
   options: NotificationOptions = {}
 ): void {
   const explorerUrl = `https://explorer.solana.com/tx/${signature}`;
-  const notificationMessage = (
-    <div>
-      {message}
-      <br />
-      <a
-        href={explorerUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ color: '#3498db', textDecoration: 'underline' }}
-      >
-        View on Explorer
-      </a>
-    </div>
-  );
+  const notificationMessage = React.createElement('div', null, [
+    message,
+    React.createElement('br'),
+    React.createElement(
+      'a',
+      {
+        href: explorerUrl,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        style: { color: '#3498db', textDecoration: 'underline' },
+        key: 'explorer-link'
+      },
+      'View on Explorer'
+    )
+  ]);
 
-  showNotification(notificationMessage as any, {
+  showNotification(notificationMessage, {
     type: 'success',
     ...options
   });
