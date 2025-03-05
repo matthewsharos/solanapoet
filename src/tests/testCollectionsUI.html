@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Collections API Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    button { padding: 10px; margin: 5px; cursor: pointer; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 5px; }
+    .collection-item { border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <h1>Collections API Test</h1>
+  
+  <div>
+    <h2>Current Configuration</h2>
+    <pre id="config-display"></pre>
+    <button id="fetch-collections">Fetch Collections</button>
+    <div id="collections-container"></div>
+  </div>
+  
+  <div>
+    <h2>Add New Collection</h2>
+    <form id="add-collection-form">
+      <div>
+        <label>Address: <input type="text" id="collection-address" required></label>
+      </div>
+      <div>
+        <label>Name: <input type="text" id="collection-name" required></label>
+      </div>
+      <div>
+        <label>Image URL: <input type="text" id="collection-image"></label>
+      </div>
+      <div>
+        <label>Description: <textarea id="collection-description"></textarea></label>
+      </div>
+      <button type="submit">Add Collection</button>
+    </form>
+  </div>
+  
+  <script>
+    // Collection API configuration
+    const COLLECTIONS_API_URL = 'https://api.sheetbest.com/sheets/3c05631c-0279-4e0b-b101-e0701e19a8f3/tabs/collections';
+    
+    // Display configuration
+    document.getElementById('config-display').textContent = `COLLECTIONS_API_URL: ${COLLECTIONS_API_URL}`;
+    
+    // Fetch collections
+    async function fetchCollections() {
+      try {
+        const response = await fetch(COLLECTIONS_API_URL);
+        console.log("API Response Status:", response.status, response.statusText);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch collections: ${response.statusText}`);
+        }
+        
+        const collections = await response.json();
+        console.log("Fetched collections:", collections);
+        
+        // Display collections
+        const container = document.getElementById('collections-container');
+        container.innerHTML = '';
+        
+        if (collections.length === 0) {
+          container.innerHTML = '<p>No collections found.</p>';
+          return;
+        }
+        
+        collections.forEach(collection => {
+          const div = document.createElement('div');
+          div.className = 'collection-item';
+          div.innerHTML = `
+            <h3>${collection.name}</h3>
+            <p><strong>Address:</strong> ${collection.address}</p>
+            <p><strong>Added:</strong> ${new Date(parseInt(collection.addedAt)).toLocaleString()}</p>
+            ${collection.image ? `<p><strong>Image:</strong> ${collection.image}</p>` : ''}
+            ${collection.description ? `<p><strong>Description:</strong> ${collection.description}</p>` : ''}
+          `;
+          container.appendChild(div);
+        });
+        
+      } catch (error) {
+        console.error("Error fetching collections:", error);
+        alert("Error fetching collections: " + error.message);
+      }
+    }
+    
+    // Add collection
+    async function addCollection(collection) {
+      try {
+        console.log("Adding collection:", collection);
+        
+        const response = await fetch(COLLECTIONS_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            address: collection.address,
+            name: collection.name,
+            image: collection.image || '',
+            description: collection.description || '',
+            addedAt: collection.addedAt.toString()
+          }),
+        });
+        
+        console.log("API Response Status:", response.status, response.statusText);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("API Error:", errorText);
+          throw new Error(`Failed to add collection: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log("Collection added:", data);
+        
+        // Refresh collections list
+        fetchCollections();
+        
+        return true;
+      } catch (error) {
+        console.error("Error adding collection:", error);
+        alert("Error adding collection: " + error.message);
+        return false;
+      }
+    }
+    
+    // Event listeners
+    document.getElementById('fetch-collections').addEventListener('click', fetchCollections);
+    
+    document.getElementById('add-collection-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const collection = {
+        address: document.getElementById('collection-address').value,
+        name: document.getElementById('collection-name').value,
+        image: document.getElementById('collection-image').value,
+        description: document.getElementById('collection-description').value,
+        addedAt: Date.now()
+      };
+      
+      addCollection(collection);
+    });
+    
+    // Initial fetch
+    fetchCollections();
+  </script>
+</body>
+</html> 

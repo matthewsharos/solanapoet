@@ -1,0 +1,1656 @@
+import { NFT, NFTOwner } from '../types/nft';
+import { 
+  fetchGoogleSheetsListingData, 
+  listNFTForSale as listNFTInGoogleSheets, 
+  unlistNFT as unlistNFTFromGoogleSheets,
+  purchaseNFT as purchaseNFTFromGoogleSheets,
+  setupGoogleSheets
+} from './googleSheets';
+import { Connection, Transaction, clusterApiUrl, PublicKey, LAMPORTS_PER_SOL, SystemProgram, TransactionInstruction, sendAndConfirmTransaction, Commitment } from '@solana/web3.js';
+import { 
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction
+} from '@solana/spl-token';
+import { WalletContextState } from '@solana/wallet-adapter-react';
+import { Keypair } from '@solana/web3.js';
+import { isOriginalSeller } from './escrow';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { getListing } from '../api/storage';
+
+// Define WalletInterface to match the WalletContextState or similar wallet structure
+type WalletInterface = WalletContextState | {
+  publicKey: PublicKey | null;
+  signTransaction?: (transaction: Transaction) => Promise<Transaction>;
+  signAllTransactions?: (transactions: Transaction[]) => Promise<Transaction[]>;
+};
+
+// Helper function to get owner address regardless of format
+const getOwnerAddress = (owner: string | any): string => {
+  if (typeof owner === 'string') {
+    return owner;
+  }
+  return owner?.publicKey || '';
+};
+
+// Add a type that can be either string or NFTOwner
+type NFTWithObjectOwner = Omit<NFT, 'owner'> & {
+  owner: string | NFTOwner;
+};
+
+// Interface for stored listing data
+interface StoredListing {
+  price: number;
+  sellerAddress: string;
+  timestamp: number;
+}
+
+// Helper function to ensure we have a valid connection
+const ensureConnection = (connection?: Connection): Connection => {
+  if (connection) {
+    return connection;
+  }
+  
+  // Always use the Helius mainnet RPC endpoint
+  console.log('Creating connection to Helius mainnet RPC');
+  const heliusMainnetRpcUrl = 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d';
+  return new Connection(heliusMainnetRpcUrl, 'confirmed');
+};
+
+// Helper function to get the API base URL
+// This will try multiple ports if the first one fails
+const getApiBaseUrl = async (): Promise<string> => {
+  // Try ports in this order
+  const ports = [3002, 3001, 3011, 3021, 3031, 3041];
+  
+  console.log('Attempting to find active server port...');
+  
+  for (const port of ports) {
+    try {
+      console.log(`Trying port ${port}...`);
+      const response = await fetch(`http://localhost:${port}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (response.ok) {
+        // Get more detailed information from the health endpoint
+        const healthData = await response.json();
+        console.log(`Server found on port ${port}`, healthData);
+        
+        // Store the port in localStorage for future use
+        try {
+          localStorage.setItem('active_server_port', port.toString());
+        } catch (e) {
+          console.warn('Could not store port in localStorage:', e);
+        }
+        
+        return `http://localhost:${port}`;
+      }
+    } catch (error) {
+      console.log(`Server not available on port ${port}`);
+    }
+  }
+  
+  // Try to get the last known port from localStorage
+  try {
+    const savedPort = localStorage.getItem('active_server_port');
+    if (savedPort) {
+      const port = parseInt(savedPort, 10);
+      console.log(`Using last known port from localStorage: ${port}`);
+      return `http://localhost:${port}`;
+    }
+  } catch (e) {
+    console.warn('Could not access localStorage:', e);
+  }
+  
+  // Default fallback
+  console.warn('Could not detect server port, using default 3002');
+  return 'http://localhost:3002';
+};
+
+// Add helper function to check if an object is a regular NFT
+const isNFT = (obj: any): obj is NFT => {
+  return obj && typeof obj === 'object' && 'mint' in obj && !('owner' in obj && typeof obj.owner === 'object');
+};
+
+// Add this helper function before purchaseNFT
+const notifyServerTransactionFailed = async (nftAddress: string, buyerAddress: string): Promise<void> => {
+  try {
+    const apiBaseUrl = await getApiBaseUrl();
+    console.log(`Notifying server about failed transaction for NFT: ${nftAddress}`);
+    
+    const response = await fetch(`${apiBaseUrl}/api/market/purchase-failed`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        nftAddress,
+        buyerAddress
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to notify server about transaction failure:', response.statusText);
+    } else {
+      console.log('Server notified about transaction failure');
+    }
+  } catch (error) {
+    console.error('Error notifying server about transaction failure:', error);
+  }
+};
+
+// Add helper function to notify the server about successful purchases
+const notifyServer = async (
+  nftAddress: string, 
+  signature: string, 
+  status: string = 'Sold'
+): Promise<boolean> => {
+  try {
+    const apiBaseUrl = await getApiBaseUrl();
+    console.log(`Notifying server about successful purchase of NFT: ${nftAddress} with status: ${status}`);
+    
+    const response = await fetch(`${apiBaseUrl}/api/market/confirm-purchase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        nftAddress,
+        signature,
+        status
+      })
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to notify server about successful purchase:', response.statusText);
+      return false;
+    }
+    
+    console.log('Server successfully notified about purchase');
+    return true;
+  } catch (error) {
+    console.error('Error notifying server about purchase:', error);
+    return false;
+  }
+};
+
+// Add the confirmTransaction helper function
+const confirmTransaction = async (
+  signature: string,
+  connection: Connection
+): Promise<boolean> => {
+  try {
+    console.log(`Confirming transaction: ${signature}`);
+    
+    // First, check if the transaction is already confirmed before doing anything else
+    try {
+      const signatureStatus = await connection.getSignatureStatus(signature, {
+        searchTransactionHistory: true
+      });
+      
+      console.log(`Initial signature status check:`, signatureStatus?.value?.confirmationStatus || 'unknown');
+      
+      if (signatureStatus?.value?.confirmationStatus === 'confirmed' || 
+          signatureStatus?.value?.confirmationStatus === 'finalized') {
+        console.log('Transaction already confirmed on blockchain');
+        return true;
+      }
+    } catch (statusError) {
+      console.warn('Error checking initial signature status:', statusError);
+      // Continue with normal confirmation if status check fails
+    }
+    
+    // Get latest blockhash for confirmation with finalized commitment
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    
+    // Set up retry parameters
+    const maxRetries = 7; // Increased from 5
+    const initialTimeout = 30000; // Increased from 20 seconds to 30 seconds
+    let currentRetry = 0;
+    
+    while (currentRetry < maxRetries) {
+      try {
+        console.log(`Confirmation attempt ${currentRetry + 1}/${maxRetries} for signature: ${signature}`);
+        
+        // Use a longer timeout for each retry
+        const timeout = initialTimeout * (currentRetry + 1);
+        
+        // Check if the transaction is already confirmed before this attempt
+        try {
+          const signatureStatus = await connection.getSignatureStatus(signature, {
+            searchTransactionHistory: true
+          });
+          
+          console.log(`Current signature status:`, signatureStatus?.value?.confirmationStatus || 'unknown');
+          
+          if (signatureStatus?.value?.confirmationStatus === 'confirmed' || 
+              signatureStatus?.value?.confirmationStatus === 'finalized') {
+            console.log('Transaction already confirmed on blockchain');
+            return true;
+          }
+        } catch (statusError) {
+          console.warn('Error checking signature status:', statusError);
+          // Continue with normal confirmation if status check fails
+        }
+        
+        // Confirm the transaction with timeout
+        const confirmation = await Promise.race([
+          connection.confirmTransaction({
+            signature,
+            blockhash,
+            lastValidBlockHeight
+          }, 'confirmed'),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error(`Confirmation timeout after ${timeout}ms`)), timeout)
+          )
+        ]) as any;
+        
+        if (confirmation.value && confirmation.value.err) {
+          console.error('Transaction confirmation error:', confirmation.value.err);
+          
+          // Check if this is a blockhash expired error
+          if (confirmation.value.err.toString().includes('BlockhashNotFound') || 
+              confirmation.value.err.toString().includes('expired')) {
+            
+            console.log('Blockhash expired, checking if transaction was still confirmed...');
+            
+            // Check if the transaction was actually confirmed despite the error
+            const signatureStatus = await connection.getSignatureStatus(signature, {
+              searchTransactionHistory: true
+            });
+            
+            if (signatureStatus?.value?.confirmationStatus === 'confirmed' || 
+                signatureStatus?.value?.confirmationStatus === 'finalized') {
+              console.log('Transaction confirmed despite blockhash expiration!');
+              return true;
+            }
+          }
+          
+          currentRetry++;
+          continue;
+        }
+        
+        console.log('Transaction confirmed successfully');
+        return true;
+      } catch (retryError: any) {
+        console.warn(`Confirmation attempt ${currentRetry + 1} failed:`, retryError);
+        
+        // Check if this is a timeout, blockhash expired, or TransactionExpiredBlockheightExceededError
+        const errorMessage = retryError.toString().toLowerCase();
+        const isExpiredError = 
+          errorMessage.includes('timeout') || 
+          errorMessage.includes('blockhash') || 
+          errorMessage.includes('expired') ||
+          errorMessage.includes('blockheight') ||
+          retryError.name === 'TransactionExpiredBlockheightExceededError';
+        
+        if (isExpiredError) {
+          console.log('Detected expiration error, checking if transaction was still confirmed...');
+          
+          // Check if the transaction was actually confirmed despite the error
+          try {
+            // Use a more thorough search with longer timeout
+            const signatureStatus = await Promise.race([
+              connection.getSignatureStatus(signature, {
+                searchTransactionHistory: true
+              }),
+              new Promise<null>(resolve => setTimeout(() => resolve(null), 10000))
+            ]) as any;
+            
+            if (signatureStatus && 
+                signatureStatus.value && 
+                (signatureStatus.value.confirmationStatus === 'confirmed' || 
+                 signatureStatus.value.confirmationStatus === 'finalized')) {
+              console.log('Transaction confirmed despite expiration error!');
+              return true;
+            }
+            
+            // If we get here and it's a TransactionExpiredBlockheightExceededError,
+            // the transaction might still be valid but not yet processed
+            if (retryError.name === 'TransactionExpiredBlockheightExceededError') {
+              console.log('Transaction expired but might still be processed. Continuing to check...');
+              
+              // Try one more time with a different RPC endpoint if available
+              try {
+                const backupRpcUrl = process.env.SOLANA_BACKUP_RPC_URL || 'https://api.mainnet-beta.solana.com';
+                if (backupRpcUrl && backupRpcUrl !== connection.rpcEndpoint) {
+                  console.log('Trying backup RPC endpoint:', backupRpcUrl);
+                  const backupConnection = new Connection(backupRpcUrl, 'confirmed');
+                  const backupStatus = await backupConnection.getSignatureStatus(signature, {
+                    searchTransactionHistory: true
+                  });
+                  
+                  if (backupStatus && 
+                      backupStatus.value && 
+                      (backupStatus.value.confirmationStatus === 'confirmed' || 
+                       backupStatus.value.confirmationStatus === 'finalized')) {
+                    console.log('Transaction confirmed on backup RPC!');
+                    return true;
+                  }
+                }
+              } catch (backupError) {
+                console.warn('Error checking backup RPC:', backupError);
+              }
+            }
+          } catch (statusError) {
+            console.warn('Error checking signature status after expiration error:', statusError);
+          }
+        }
+        
+        currentRetry++;
+        
+        // If we've exhausted all retries, break out of the loop
+        if (currentRetry >= maxRetries) {
+          console.error('All confirmation attempts failed');
+          break;
+        }
+        
+        // Wait before retrying with increasing backoff
+        await new Promise(resolve => setTimeout(resolve, 3000 * (currentRetry + 1)));
+      }
+    }
+    
+    // If we get here, all retries failed
+    // Notify the server about the transaction status to handle it server-side
+    try {
+      console.log('Notifying server about transaction status for potential server-side handling');
+      await notifyServer(signature.split('/').pop() || signature, signature, 'Pending');
+    } catch (notifyError) {
+      console.error('Failed to notify server about transaction status:', notifyError);
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Transaction confirmation failed:', error);
+    return false;
+  }
+};
+
+// Variable to store the purchase success popup callback
+let purchaseSuccessPopupCallback: ((nftName: string, paymentBreakdown: any, transactionId?: string) => void) | null = null;
+
+/**
+ * Sets a callback function to be called when an NFT purchase is successful
+ * @param callback Function to call with NFT name and payment breakdown information, or null to clear
+ */
+export const setPurchaseSuccessPopupCallback = (
+  callback: ((nftName: string, paymentBreakdown: any, transactionId?: string) => void) | null
+): void => {
+  console.log('Setting purchase success popup callback:', callback ? 'function provided' : 'cleared');
+  purchaseSuccessPopupCallback = callback;
+};
+
+// Utility function to check if a wallet has signing capabilities
+const checkWalletAdapter = (wallet: any): { 
+  hasSigningCapability: boolean; 
+  validatedWallet: any;
+  errMessage: string | null;
+} => {
+  if (!wallet) {
+    return { 
+      hasSigningCapability: false, 
+      validatedWallet: null,
+      errMessage: 'No wallet provided' 
+    };
+  }
+
+  console.log("Checking wallet adapter...");
+  console.log("Wallet type:", typeof wallet);
+  console.log("Wallet constructor:", wallet?.constructor?.name);
+  console.log("Wallet properties:", Object.keys(wallet || {}));
+  
+  // Check for adapter property
+  if (wallet.adapter) {
+    console.log("Adapter properties:", Object.keys(wallet.adapter || {}));
+  }
+  
+  // Check wallet directly
+  const hasDirectSign = typeof wallet.signTransaction === 'function';
+  const hasDirectSignAll = typeof wallet.signAllTransactions === 'function';
+  
+  // Check adapter
+  const hasAdapterSign = wallet.adapter && typeof wallet.adapter.signTransaction === 'function';
+  const hasAdapterSignAll = wallet.adapter && typeof wallet.adapter.signAllTransactions === 'function';
+  
+  // Check wallet property
+  const hasWalletSign = wallet.wallet && typeof wallet.wallet.signTransaction === 'function';
+  const hasWalletSignAll = wallet.wallet && typeof wallet.wallet.signAllTransactions === 'function';
+  
+  const hasSigningCapability = hasDirectSign || hasDirectSignAll || 
+                              hasAdapterSign || hasAdapterSignAll || 
+                              hasWalletSign || hasWalletSignAll;
+  
+  // If the wallet itself has signing capability, return it
+  if (hasDirectSign || hasDirectSignAll) {
+    return { 
+      hasSigningCapability: true, 
+      validatedWallet: wallet,
+      errMessage: null 
+    };
+  }
+  
+  // If the adapter has signing capability, return that
+  if (hasAdapterSign || hasAdapterSignAll) {
+    return { 
+      hasSigningCapability: true, 
+      validatedWallet: wallet.adapter,
+      errMessage: null 
+    };
+  }
+  
+  // If wallet property has signing capability, return that
+  if (hasWalletSign || hasWalletSignAll) {
+    return { 
+      hasSigningCapability: true, 
+      validatedWallet: wallet.wallet,
+      errMessage: null 
+    };
+  }
+  
+  // No signing capability found
+  return { 
+    hasSigningCapability: false, 
+    validatedWallet: wallet,
+    errMessage: 'Wallet does not support transaction signing' 
+  };
+};
+
+// Define the Result interface
+interface Result {
+  success: boolean;
+  message: string;
+  signature?: string;
+  paymentBreakdown?: any;
+}
+
+/**
+ * Lists an NFT for sale using Solana token transfers with a marketplace escrow
+ * @param nft The NFT to list
+ * @param price The price to list the NFT for
+ * @param ownerAddress The address of the owner
+ * @param connection The connection to the Solana network
+ * @returns A boolean indicating success or failure
+ */
+export const listNFTForSale = async (
+  nft: NFT | NFTWithObjectOwner,
+  price: number,
+  ownerAddressOrWallet: string | WalletInterface | null = null,
+  connectionOrCallback: Connection | ((confirmed: boolean) => void) = () => {},
+  walletOrMaxRetries: WalletInterface | number = 3
+): Promise<boolean> => {
+  try {
+    console.log('Listing NFT for sale:', nft);
+    
+    // Normalize parameters based on the types passed
+    let ownerAddress = '';
+    let wallet: WalletInterface | null = null;
+    let connection: Connection | undefined;
+    let setTransactionConfirmed: (confirmed: boolean) => void = () => {};
+    let maxRetries = 3;
+    
+    // Handle different parameter combinations
+    if (typeof ownerAddressOrWallet === 'string') {
+      // Old style: ownerAddress is a string
+      ownerAddress = ownerAddressOrWallet;
+      if (connectionOrCallback instanceof Connection) {
+        connection = connectionOrCallback;
+      }
+      if (typeof walletOrMaxRetries !== 'number') {
+        wallet = walletOrMaxRetries;
+      }
+    } else {
+      // New style: first param is wallet
+      wallet = ownerAddressOrWallet;
+      if (wallet && wallet.publicKey) {
+        ownerAddress = wallet.publicKey.toString();
+      }
+      if (typeof connectionOrCallback === 'function') {
+        setTransactionConfirmed = connectionOrCallback;
+      } else if (connectionOrCallback instanceof Connection) {
+        connection = connectionOrCallback;
+      }
+      if (typeof walletOrMaxRetries === 'number') {
+        maxRetries = walletOrMaxRetries;
+      }
+    }
+    
+    // If owner address still isn't set, try to get it from NFT
+    if (!ownerAddress && typeof nft !== 'string') {
+      // Check if it has owner property
+      if ('owner' in nft && nft.owner) {
+        ownerAddress = typeof nft.owner === 'string' ? nft.owner : '';
+      }
+      // Try ownerAddress property for NFTWithObjectOwner type
+      else if ('ownerAddress' in nft && nft.ownerAddress) {
+        ownerAddress = typeof nft.ownerAddress === 'string' ? nft.ownerAddress : '';
+      }
+    }
+    
+    if (!ownerAddress) {
+      console.error('Owner address not found');
+      if (typeof connectionOrCallback === 'function') {
+        connectionOrCallback(false);
+      }
+      return false;
+    }
+    
+    // Ensure connection is set
+    if (!connection) {
+      connection = ensureConnection();
+    }
+    
+    // Normalize mint address
+    const nftAddress = typeof nft === 'string' ? nft : nft.mint;
+    
+    // Get API base URL - AWAIT this to resolve the Promise
+    const apiBaseUrl = await getApiBaseUrl();
+    const requestUrl = `${apiBaseUrl}/api/market/list`;
+    
+    // Make API request
+    console.log(`Sending listing request to ${requestUrl}`);
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        nftAddress,
+        price,
+        walletAddress: ownerAddress,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error listing NFT: ${errorText}`);
+      if (typeof connectionOrCallback === 'function') {
+        connectionOrCallback(false);
+      }
+      return false;
+    }
+    
+    const responseData = await response.json();
+    
+    // If a transaction was returned, it needs to be signed by the user
+    if (responseData.transaction && wallet) {
+      console.log("Transaction received from server, signing and sending...");
+      
+      // Ensure we have a connection
+      const connection = ensureConnection();
+      
+      try {
+        // Decode the transaction
+        const transactionBuffer = Buffer.from(responseData.transaction, 'base64');
+        const transaction = Transaction.from(transactionBuffer);
+        
+        // Get a fresh blockhash with finalized commitment
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+        console.log(`Using fresh blockhash: ${blockhash}`);
+        
+        // Set the fresh blockhash
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet.publicKey as PublicKey;
+        
+        // Ensure wallet has the required methods
+        if (!wallet.publicKey || !wallet.signTransaction) {
+          console.error('Wallet does not support required methods');
+          if (typeof connectionOrCallback === 'function') {
+            connectionOrCallback(false);
+          }
+          return false;
+        }
+        
+        // Sign the transaction
+        console.log('Signing transaction...');
+        const signedTransaction = await wallet.signTransaction(transaction);
+        
+        // Implement retry logic for sending the transaction
+        let signature = null;
+        let retries = 3;
+        
+        while (retries > 0 && !signature) {
+          try {
+            // Send the transaction with preflight disabled to avoid simulation errors
+            signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+              skipPreflight: true,
+              preflightCommitment: 'processed'
+            });
+            console.log(`Transaction sent with signature: ${signature}`);
+            break;
+          } catch (sendError) {
+            console.warn(`Error sending transaction (${retries} retries left):`, sendError);
+            retries--;
+            if (retries === 0) {
+              throw sendError;
+            }
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        
+        if (!signature) {
+          throw new Error('Failed to send transaction after multiple attempts');
+        }
+        
+        // Wait for confirmation using the fresh blockhash
+        console.log('Waiting for transaction confirmation...');
+        const confirmed = await confirmTransaction(signature, connection);
+        
+        if (confirmed) {
+          console.log('Transaction confirmed successfully!');
+          
+          // Notify the server to update Google Sheets only after on-chain confirmation
+          await notifyServer(nftAddress, signature, 'Listed');
+          
+          // Don't show success popup for listing operations
+          // The showPurchaseSuccessPopup function will filter it out anyway
+          
+          // Call the callback if provided
+          if (typeof connectionOrCallback === 'function') {
+            connectionOrCallback(true);
+          }
+          return true;
+        } else {
+          console.error('Transaction failed to confirm on-chain');
+          // Notify server about transaction failure
+          await notifyServerTransactionFailed(nftAddress, ownerAddress);
+          if (typeof connectionOrCallback === 'function') {
+            connectionOrCallback(false);
+          }
+          return false;
+        }
+      } catch (error) {
+        console.error('Error signing or sending transaction:', error);
+        // Notify server about transaction failure
+        await notifyServerTransactionFailed(nftAddress, ownerAddress);
+        if (typeof connectionOrCallback === 'function') {
+          connectionOrCallback(false);
+        }
+        return false;
+      }
+    } else if (responseData.transaction && !wallet) {
+      console.error('Wallet not provided, cannot sign transaction');
+      if (typeof connectionOrCallback === 'function') {
+        connectionOrCallback(false);
+      }
+      return false;
+    }
+    
+    // If no transaction is returned, listing was handled by the server
+    console.log('Listing was handled by the server');
+    if (typeof connectionOrCallback === 'function') {
+      connectionOrCallback(true);
+    }
+    return true;
+  } catch (error) {
+    console.error("Error listing NFT for sale:", error);
+    // Use the locally scoped setTransactionConfirmed variable
+    if (typeof connectionOrCallback === 'function') {
+      connectionOrCallback(false);
+    }
+    return false;
+  }
+};
+
+/**
+ * Unlists an NFT from sale using Google Sheets
+ * @param nft The NFT to unlist
+ * @param ownerAddress The address of the owner
+ * @param connection The connection (not used in sheet implementation but kept for compatibility)
+ * @returns A boolean indicating success or failure
+ */
+export const unlistNFT = async (
+  nft: NFT | string,
+  ownerAddress: string,
+  connection?: Connection,
+  wallet?: any
+): Promise<boolean> => {
+  try {
+    // Parse NFT address
+    const nftAddress = typeof nft === 'string' ? nft : nft.mint;
+    console.log(`Unlisting NFT ${nftAddress} owned by ${ownerAddress}`);
+    
+    // Extra safety check for the royalty receiver address
+    const ROYALTY_RECEIVER_ADDRESS = 'ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD';
+    if (ownerAddress === ROYALTY_RECEIVER_ADDRESS) {
+      // Make an extra call to verify this address is really the seller in Google Sheets
+      const isActuallySeller = await isOriginalSeller(nftAddress, ownerAddress);
+      if (!isActuallySeller) {
+        console.error(`EXTRA SAFETY CHECK FAILED: Royalty receiver ${ROYALTY_RECEIVER_ADDRESS} attempted to unlist NFT ${nftAddress} but is not in the Google Sheet as seller`);
+        return false;
+      } else {
+        console.log(`Verified royalty receiver ${ROYALTY_RECEIVER_ADDRESS} is the legitimate seller of NFT ${nftAddress} - allowing unlisting`);
+      }
+    }
+    
+    // Get connection
+    connection = connection || ensureConnection();
+    
+    // Basic validation
+    if (!nftAddress || !ownerAddress) {
+      console.error('Missing required parameters for unlisting');
+      return false;
+    }
+    
+    // Check wallet
+    const walletCheck = checkWalletAdapter(wallet);
+    if (!walletCheck.hasSigningCapability) {
+      console.error(walletCheck.errMessage);
+      return false;
+    }
+    const validatedWallet = walletCheck.validatedWallet;
+    
+    // Prevent reuse of previous popup callback
+    let popupShown = false;
+    
+    // Get API base URL
+    const apiBaseUrl = await getApiBaseUrl();
+    const requestUrl = `${apiBaseUrl}/api/market/unlist`;
+    
+    // Prepare request data
+    const requestData = {
+      nftAddress: nftAddress,
+      ownerAddress: ownerAddress
+    };
+    
+    console.log(`Sending unlist request to ${requestUrl}`);
+    
+    // Send request to server
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestData),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Server error: ${response.status} - ${errorText}`);
+      
+      // Special handling for NFTs that are not in escrow
+      if (errorText.includes('NFT is not in escrow')) {
+        console.log('NFT is not in escrow. We\'ll update the Google Sheets status.');
+        
+        // Construct update URL
+        const updateUrl = `${apiBaseUrl}/api/market/update-listing-status`;
+        
+        // Send update request
+        try {
+          const updateResponse = await fetch(updateUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              nftAddress: nftAddress,
+              status: 'Unlisted'
+            }),
+          });
+          
+          if (updateResponse.ok) {
+            console.log('Successfully updated listing status to Unlisted');
+            
+            // Show popup with zero values since no transaction occurred
+            showPurchaseSuccessPopup(
+              typeof nft === 'string' ? 'NFT' : nft.name || 'NFT',
+              {
+                totalPrice: 0,
+                royaltyPercentage: 0,
+                royaltyAmount: 0,
+                sellerAmount: 0,
+                seller: ownerAddress
+              },
+              undefined,
+              'unlisting'
+            );
+            
+            return true;
+          } else {
+            console.error('Failed to update listing status:', await updateResponse.text());
+          }
+        } catch (updateError) {
+          console.error('Error updating listing status:', updateError);
+        }
+      }
+      
+      return false;
+    }
+    
+    // Parse response
+    const responseData = await response.json();
+    console.log('Server response:', responseData);
+    
+    if (responseData.transaction) {
+      try {
+        // Get transaction data from the response
+        const transactionData = responseData.transaction;
+        
+        if (typeof transactionData === 'string') {
+          try {
+            console.log('Using direct transaction from server with minimal modification');
+            
+            // Decode the transaction from the server
+            const decodedTransaction = Transaction.from(Buffer.from(transactionData, 'base64'));
+            
+            // Only modify the fee payer, leaving everything else intact
+            decodedTransaction.feePayer = validatedWallet.publicKey;
+            console.log('Transaction prepared with fee payer:', decodedTransaction.feePayer?.toString());
+            console.log('Transaction has instructions:', decodedTransaction.instructions.length);
+            
+            // Try sending the transaction directly with the wallet
+            try {
+              console.log('Attempting to send transaction directly...');
+              
+              // Make sure wallet is connected
+              if (!wallet.connected || !wallet.publicKey) {
+                console.error('Wallet not connected');
+                throw new Error('Wallet not connected');
+              }
+              
+              // Add a small delay before sending
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Use the most basic options possible
+              const options = {
+                skipPreflight: true,
+                maxRetries: 3
+              };
+              
+              // PHANTOM SPECIFIC APPROACH: Try to access the Phantom provider directly
+              try {
+                console.log('Attempting Phantom-specific approach...');
+                
+                // @ts-ignore - Access the solana object on window
+                const provider = (window as any).solana;
+                
+                if (provider && provider.isPhantom) {
+                  console.log('Phantom provider detected, using direct method...');
+                  
+                  // Convert transaction to base64 string
+                  const serializedTransaction = decodedTransaction.serialize({
+                    requireAllSignatures: false,
+                    verifySignatures: false
+                  }).toString('base64');
+                  
+                  // Try to send directly via Phantom's signAndSendTransaction
+                  const phantomResult = await provider.signAndSendTransaction(
+                    serializedTransaction
+                  );
+                  
+                  if (phantomResult && phantomResult.signature) {
+                    const signature = phantomResult.signature;
+                    console.log('Transaction sent via Phantom provider with signature:', signature);
+                    
+                    // Immediately notify server about the pending transaction
+                    console.log('Notifying server about pending status...');
+                    await notifyServer(nftAddress, signature, 'Pending');
+                    
+                    // IMPROVED FOLLOW-UP CONFIRMATION CHECK
+                    try {
+                      console.log('Setting up improved follow-up confirmation check...');
+                      // Ensure we have a valid connection
+                      const validConnection = connection || ensureConnection();
+                      
+                      // Function to check transaction status and update server
+                      const checkAndUpdateStatus = async (retryCount = 0, maxRetries = 5) => {
+                        try {
+                          console.log(`Checking transaction status (attempt ${retryCount + 1}/${maxRetries})...`);
+                          const status = await validConnection.getSignatureStatus(signature, {
+                            searchTransactionHistory: true
+                          });
+                          
+                          if (status && status.value) {
+                            console.log(`Transaction status: ${status.value.confirmationStatus || 'unknown'}`);
+                            
+                            if (status.value.confirmationStatus === 'confirmed' || 
+                                status.value.confirmationStatus === 'finalized') {
+                              console.log('Transaction confirmed, updating status to Sold');
+                              const notifyResult = await notifyServer(nftAddress, signature, 'Sold');
+                              console.log(`Server notification result: ${notifyResult ? 'success' : 'failed'}`);
+                              return true;
+                            }
+                          }
+                          
+                          // If not confirmed and we have retries left, try again
+                          if (retryCount < maxRetries - 1) {
+                            console.log(`Transaction not confirmed yet, will retry in ${(retryCount + 1) * 5} seconds...`);
+                            setTimeout(() => checkAndUpdateStatus(retryCount + 1, maxRetries), (retryCount + 1) * 5000);
+                          } else {
+                            console.log('Max retries reached, final attempt to check status...');
+                            // Make one final attempt with a longer timeout
+                            setTimeout(async () => {
+                              try {
+                                const finalStatus = await validConnection.getSignatureStatus(signature, {
+                                  searchTransactionHistory: true
+                                });
+                                
+                                if (finalStatus && finalStatus.value && 
+                                    (finalStatus.value.confirmationStatus === 'confirmed' || 
+                                     finalStatus.value.confirmationStatus === 'finalized')) {
+                                  console.log('Transaction confirmed in final check, updating status to Sold');
+                                  await notifyServer(nftAddress, signature, 'Sold');
+                                } else {
+                                  console.log('Transaction still not confirmed in final check');
+                                }
+                              } catch (e) {
+                                console.error('Error in final confirmation check:', e);
+                              }
+                            }, 20000); // 20 second delay for final check
+                          }
+                          
+                          return false;
+                        } catch (e) {
+                          console.error(`Error checking transaction status (attempt ${retryCount + 1}):`, e);
+                          
+                          // If we have retries left, try again
+                          if (retryCount < maxRetries - 1) {
+                            setTimeout(() => checkAndUpdateStatus(retryCount + 1, maxRetries), (retryCount + 1) * 5000);
+                          }
+                          
+                          return false;
+                        }
+                      };
+                      
+                      // Start the status check process
+                      setTimeout(() => checkAndUpdateStatus(), 5000); // Initial 5 second delay
+                    } catch (e) {
+                      console.error('Error setting up follow-up confirmation:', e);
+                    }
+                    
+                    // Show success popup with payment breakdown
+                    if (responseData.data && responseData.data.breakdown) {
+                      showPurchaseSuccessPopup(
+                        isNFT(nft) ? nft.name : 'NFT Purchase',
+                        responseData.data.breakdown,
+                        signature,
+                        'purchase'
+                      );
+                    }
+                    
+                    return signature;
+                  }
+                }
+                
+                // If we get here, the Phantom-specific approach didn't work
+                console.log('Phantom-specific approach failed or not available, falling back to standard method');
+              } catch (phantomError) {
+                console.warn('Error with Phantom-specific approach:', phantomError);
+                console.log('Falling back to standard method');
+              }
+              
+              // Standard approach with wallet adapter
+              const signature = await wallet.sendTransaction(decodedTransaction, connection, options);
+              console.log('Transaction sent successfully with signature:', signature);
+              
+              // Immediately notify server about the pending transaction
+              console.log('Notifying server about pending status...');
+              await notifyServer(nftAddress, signature, 'Pending');
+              
+              // IMPROVED FOLLOW-UP CONFIRMATION CHECK (same as above)
+              try {
+                console.log('Setting up improved follow-up confirmation check...');
+                // Ensure we have a valid connection
+                const validConnection = connection || ensureConnection();
+                
+                // Function to check transaction status and update server
+                const checkAndUpdateStatus = async (retryCount = 0, maxRetries = 5) => {
+                  try {
+                    console.log(`Checking transaction status (attempt ${retryCount + 1}/${maxRetries})...`);
+                    const status = await validConnection.getSignatureStatus(signature, {
+                      searchTransactionHistory: true
+                    });
+                    
+                    if (status && status.value) {
+                      console.log(`Transaction status: ${status.value.confirmationStatus || 'unknown'}`);
+                      
+                      if (status.value.confirmationStatus === 'confirmed' || 
+                          status.value.confirmationStatus === 'finalized') {
+                        console.log('Transaction confirmed, updating status to Sold');
+                        const notifyResult = await notifyServer(nftAddress, signature, 'Sold');
+                        console.log(`Server notification result: ${notifyResult ? 'success' : 'failed'}`);
+                        return true;
+                      }
+                    }
+                    
+                    // If not confirmed and we have retries left, try again
+                    if (retryCount < maxRetries - 1) {
+                      console.log(`Transaction not confirmed yet, will retry in ${(retryCount + 1) * 5} seconds...`);
+                      setTimeout(() => checkAndUpdateStatus(retryCount + 1, maxRetries), (retryCount + 1) * 5000);
+                    } else {
+                      console.log('Max retries reached, final attempt to check status...');
+                      // Make one final attempt with a longer timeout
+                      setTimeout(async () => {
+                        try {
+                          const finalStatus = await validConnection.getSignatureStatus(signature, {
+                            searchTransactionHistory: true
+                          });
+                          
+                          if (finalStatus && finalStatus.value && 
+                              (finalStatus.value.confirmationStatus === 'confirmed' || 
+                               finalStatus.value.confirmationStatus === 'finalized')) {
+                            console.log('Transaction confirmed in final check, updating status to Sold');
+                            await notifyServer(nftAddress, signature, 'Sold');
+                          } else {
+                            console.log('Transaction still not confirmed in final check');
+                          }
+                        } catch (e) {
+                          console.error('Error in final confirmation check:', e);
+                        }
+                      }, 20000); // 20 second delay for final check
+                    }
+                    
+                    return false;
+                  } catch (e) {
+                    console.error(`Error checking transaction status (attempt ${retryCount + 1}):`, e);
+                    
+                    // If we have retries left, try again
+                    if (retryCount < maxRetries - 1) {
+                      setTimeout(() => checkAndUpdateStatus(retryCount + 1, maxRetries), (retryCount + 1) * 5000);
+                    }
+                    
+                    return false;
+                  }
+                };
+                
+                // Start the status check process
+                setTimeout(() => checkAndUpdateStatus(), 5000); // Initial 5 second delay
+              } catch (e) {
+                console.error('Error setting up follow-up confirmation:', e);
+              }
+              
+              // Show success popup with payment breakdown
+              if (responseData.data && responseData.data.breakdown) {
+                showPurchaseSuccessPopup(
+                  isNFT(nft) ? nft.name : 'NFT Purchase',
+                  responseData.data.breakdown,
+                  signature,
+                  'purchase'
+                );
+              }
+              
+              return signature;
+            } catch (error: any) {
+              console.error('Error in follow-up confirmation check:', error);
+            }
+        }
+          }
+        }
+          
+          // If we get here, the Phantom-specific approach didn't work
+          console.log('Phantom-specific approach failed or not available, falling back to standard method');
+        } catch (phantomError) {
+          console.warn('Error with Phantom-specific approach:', phantomError);
+          console.log('Falling back to standard method');
+        }
+        
+        // Standard approach with wallet adapter
+        const signature = await wallet.sendTransaction(transaction, connection, options);
+        console.log('Transaction sent successfully with signature:', signature);
+        
+        // Immediately notify server about the pending transaction
+        console.log('Notifying server about pending status...');
+        await notifyServer(nftAddress, signature, 'Pending');
+        
+        // Add a follow-up confirmation check and update to 'Sold' status
+        try {
+          console.log('Setting up follow-up confirmation check...');
+          // Ensure we have a valid connection
+          const validConnection = connection || ensureConnection();
+          // Wait a bit for the transaction to be processed
+          setTimeout(async () => {
+            try {
+              console.log('Performing follow-up confirmation check for transaction:', signature);
+              const status = await validConnection.getSignatureStatus(signature, {
+                searchTransactionHistory: true
+              });
+              
+              if (status && status.value && 
+                  (status.value.confirmationStatus === 'confirmed' || 
+                   status.value.confirmationStatus === 'finalized')) {
+                console.log('Transaction confirmed in follow-up check, updating status to Sold');
+                await notifyServer(nftAddress, signature, 'Sold');
+              } else {
+                console.log('Transaction still pending in follow-up check, will retry');
+                // Try one more time after a longer delay
+                setTimeout(async () => {
+                  try {
+                    const finalStatus = await validConnection.getSignatureStatus(signature, {
+                      searchTransactionHistory: true
+                    });
+                    
+                    if (finalStatus && finalStatus.value && 
+                        (finalStatus.value.confirmationStatus === 'confirmed' || 
+                         finalStatus.value.confirmationStatus === 'finalized')) {
+                      console.log('Transaction confirmed in final check, updating status to Sold');
+                      await notifyServer(nftAddress, signature, 'Sold');
+                    }
+                  } catch (e) {
+                    console.error('Error in final confirmation check:', e);
+                  }
+                }, 10000); // 10 second delay for final check
+              }
+            } catch (e) {
+              console.error('Error in follow-up confirmation check:', e);
+            }
+          }, 5000); // 5 second delay for initial follow-up
+        } catch (e) {
+          console.error('Error setting up follow-up confirmation:', e);
+        }
+        
+        // Show success popup with payment breakdown
+        if (responseData.data && responseData.data.breakdown) {
+          showPurchaseSuccessPopup(
+            isNFT(nft) ? nft.name : 'NFT Purchase',
+            responseData.data.breakdown,
+            signature,
+            'purchase'
+          );
+        }
+        
+        // Return the signature
+        return signature;
+      } catch (error: any) {
+        console.error('Failed to send transaction', error);
+        
+        // Try a fallback approach with a simpler transaction if possible
+        try {
+          console.log('Attempting fallback with simplified transaction...');
+          
+          // Get a fresh blockhash
+          const { blockhash } = await connection.getLatestBlockhash('confirmed');
+          transaction.recentBlockhash = blockhash;
+          
+          // Try to send the transaction with even more basic options
+          const signature = await wallet.sendTransaction(transaction, connection, {
+            skipPreflight: true
+          });
+          
+          console.log('Fallback transaction sent successfully with signature:', signature);
+          
+          // Notify server about the pending transaction
+          await notifyServer(nftAddress, signature, 'Pending');
+          
+          // Show success popup
+          if (responseData.data && responseData.data.breakdown) {
+            showPurchaseSuccessPopup(
+              isNFT(nft) ? nft.name : 'NFT Purchase',
+              responseData.data.breakdown,
+              signature,
+              'purchase'
+            );
+          }
+          
+          return signature;
+        } catch (fallbackError: any) {
+          console.error('Fallback approach also failed:', fallbackError);
+          await notifyServerTransactionFailed(nftAddress, buyerAddress);
+          return null;
+        }
+      }
+    } catch (error) {
+      console.error('Error processing transaction:', error);
+      await notifyServerTransactionFailed(nftAddress, buyerAddress);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error in purchaseNFT:', error);
+    return null;
+  }
+};
+
+// Add helper function to get purchase data from the server
+const buyNFT = async (nftAddress: string, buyerAddress: string, price: number): Promise<any> => {
+  try {
+    // Regular flow for all NFTs
+    // Special handling for royalty receiver
+    if (buyerAddress === 'ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD') {
+      console.log(`ROYALTY RECEIVER ${buyerAddress} is requesting a purchase transaction for NFT ${nftAddress}`);
+    }
+    
+    // Get the escrow server URL
+    const apiBaseUrl = await getApiBaseUrl();
+    const url = `${apiBaseUrl}/api/market/buy`;
+    
+    // Validate required fields
+    if (!nftAddress) {
+      console.error('Invalid NFT address');
+      return { success: false, message: 'Invalid NFT address' };
+    }
+    
+    if (!buyerAddress) {
+      console.error('Invalid buyer address');
+      return { success: false, message: 'Invalid buyer address' };
+    }
+    
+    // Create the request body - server expects nftAddress, buyerAddress, and price
+    const requestBody = {
+      nftAddress: nftAddress,  // The escrow-server.js expects 'nftAddress', not 'listingId'
+      buyerAddress: buyerAddress,
+      price: price
+    };
+    
+    console.log('Sending request to server with payload:', JSON.stringify(requestBody));
+    
+    // Make the request to the server with timeout handling
+    let response;
+    try {
+      // Create an AbortController to handle timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      if (fetchError.name === 'AbortError') {
+        console.error('Request to server timed out after 15 seconds');
+        return { 
+          success: false, 
+          message: 'Server request timed out. Please try again.',
+          error: 'TIMEOUT'
+        };
+      }
+      
+      console.error('Network error when contacting server:', fetchError);
+      return { 
+        success: false, 
+        message: 'Network error when contacting server. Please check your connection.',
+        error: fetchError.message
+      };
+    }
+    
+    // Handle error responses
+    if (!response.ok) {
+      let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      let errorData = null;
+      
+      try {
+        errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch (parseError) {
+        // If we can't parse the error response, use the status text
+        console.warn('Could not parse error response from server');
+      }
+      
+      console.error('Server returned error:', errorMessage);
+      
+      // Special handling for common error cases
+      if (response.status === 404) {
+        return { 
+          success: false, 
+          message: 'NFT not found in escrow or server endpoint not available',
+          error: 'NOT_FOUND',
+          details: errorData
+        };
+      } else if (response.status === 400) {
+        return { 
+          success: false, 
+          message: 'Invalid request parameters',
+          error: 'BAD_REQUEST',
+          details: errorData
+        };
+      } else if (response.status >= 500) {
+        return { 
+          success: false, 
+          message: 'Server error occurred. Please try again later.',
+          error: 'SERVER_ERROR',
+          details: errorData
+        };
+      }
+      
+      return { 
+        success: false, 
+        message: errorMessage,
+        error: 'UNKNOWN_ERROR',
+        details: errorData
+      };
+    }
+    
+    // Parse the successful response
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error('Error parsing server response:', parseError);
+      return { 
+        success: false, 
+        message: 'Invalid response from server',
+        error: 'PARSE_ERROR'
+      };
+    }
+    
+    // Check if the response indicates success
+    if (!data.success && !data.transaction) {
+      return { 
+        success: false, 
+        message: data.message || data.error || 'Server did not return a transaction',
+        error: 'NO_TRANSACTION',
+        details: data
+      };
+    }
+    
+    // Return a well-structured response
+    return { 
+      success: true, 
+      message: 'Purchase request sent successfully',
+      transaction: data.transaction,
+      serializedTransaction: data.transaction,  // Ensure compatibility with both field names
+      blockhash: data.blockhash,
+      lastValidBlockHeight: data.lastValidBlockHeight,
+      data: {
+        breakdown: data.paymentBreakdown || {
+          price: price,
+          royalties: 0,
+          marketplaceFee: 0,
+          netProceeds: price
+        }
+      }
+    };
+  } catch (error: any) {
+    console.error('Error in buyNFT function:', error);
+    return { 
+      success: false, 
+      message: error.message || 'Failed to process purchase request',
+      error: 'UNEXPECTED_ERROR'
+    };
+  }
+};
+
+// Replace entire sendAndSignTransaction function
+const sendAndSignTransaction = async (
+  transaction: Transaction,
+  connection: Connection,
+  wallet: any
+): Promise<string | null> => {
+  try {
+    console.log("Preparing to sign transaction...");
+    
+    // Ensure wallet is connected
+    if (!wallet?.connected) {
+      console.log("Wallet not connected, attempting to connect...");
+      try {
+        await wallet?.connect();
+      } catch (err) {
+        console.error("Failed to connect wallet", err);
+        return null;
+      }
+    }
+    
+    // Basic validation of wallet
+    if (!wallet || !wallet.publicKey) {
+      console.error("Invalid wallet or missing public key");
+      return null;
+    }
+    
+    // Get a fresh blockhash with finalized commitment for longer validity
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+    console.log(`Using fresh blockhash: ${blockhash} with lastValidBlockHeight: ${lastValidBlockHeight}`);
+    
+    // Ensure fee payer is set to wallet and update blockhash
+    transaction.feePayer = wallet.publicKey as PublicKey;
+    transaction.recentBlockhash = blockhash;
+    
+    // Log transaction details for debugging
+    console.log("Transaction details:", {
+      feePayer: transaction.feePayer ? transaction.feePayer.toString() : "not set",
+      recentBlockhash: transaction.recentBlockhash,
+      instructions: transaction.instructions.length
+    });
+    
+    // Try three different approaches with improved retry logic
+    let signature: string | null = null;
+    let lastError: any = null;
+    
+    // APPROACH 1: Use sign + send separately
+    try {
+      console.log("APPROACH 1: Using signTransaction then sendRawTransaction...");
+      
+      // First sign the transaction
+      const signedTransaction = await wallet.signTransaction(transaction);
+      console.log("Transaction signed successfully");
+      
+      // Then send the signed transaction with improved options
+      const rawTransaction = signedTransaction.serialize();
+      signature = await connection.sendRawTransaction(rawTransaction, {
+        skipPreflight: true,
+        preflightCommitment: 'finalized',
+        maxRetries: 5
+      });
+      
+      console.log("Raw transaction sent with signature:", signature);
+      return signature;
+    } catch (err: any) {
+      console.error("Error in APPROACH 1:", err);
+      lastError = err;
+      
+      // If the first approach fails, try the second approach
+      try {
+        console.log("APPROACH 2: Using sendTransaction directly...");
+        
+        // Send the transaction directly
+        signature = await wallet.sendTransaction(transaction, connection, {
+          skipPreflight: true,
+          preflightCommitment: 'finalized',
+          maxRetries: 5
+        });
+        
+        console.log("Transaction sent directly with signature:", signature);
+        return signature;
+      } catch (err2: any) {
+        console.error("Error in APPROACH 2:", err2);
+        lastError = err2;
+        
+        // If the second approach fails, try a third approach with a new blockhash
+        try {
+          console.log("APPROACH 3: Retrying with a new blockhash...");
+          
+          // Get a fresh blockhash
+          const { blockhash: newBlockhash, lastValidBlockHeight: newLastValidBlockHeight } = 
+            await connection.getLatestBlockhash('finalized');
+          
+          console.log(`Using new blockhash: ${newBlockhash}`);
+          
+          // Update transaction with new blockhash
+          transaction.recentBlockhash = newBlockhash;
+          
+          // Try signing and sending again
+          const signedTransaction = await wallet.signTransaction(transaction);
+          const rawTransaction = signedTransaction.serialize();
+          
+          signature = await connection.sendRawTransaction(rawTransaction, {
+            skipPreflight: true,
+            preflightCommitment: 'finalized',
+            maxRetries: 5
+          });
+          
+          console.log("Transaction sent with new blockhash, signature:", signature);
+          return signature;
+        } catch (err3: any) {
+          console.error("Error in APPROACH 3:", err3);
+          lastError = err3;
+        }
+      }
+    }
+    
+    // If we get here, all approaches failed
+    console.error("All transaction sending approaches failed. Last error:", lastError);
+    return null;
+  } catch (err: any) {
+    console.error("Error in sendAndSignTransaction:", err);
+    return null;
+  }
+};
+
+/**
+ * Shows a purchase success popup with the given NFT name and payment breakdown
+ * @param nftName Name of the NFT that was purchased
+ * @param paymentBreakdown Breakdown of the payment including royalties
+ * @param transactionId Optional transaction ID to include in the popup
+ * @param operationType Type of operation that triggered the popup
+ */
+export const showPurchaseSuccessPopup = (
+  nftName: string,
+  paymentBreakdown: any,
+  transactionId?: string,
+  operationType: 'purchase' | 'listing' | 'unlisting' = 'purchase'
+): void => {
+  // Only show popup for purchase operations
+  if (operationType !== 'purchase') {
+    console.log(`Skipping success popup for ${operationType} operation`);
+    return;
+  }
+
+  if (purchaseSuccessPopupCallback) {
+    try {
+      console.log('Calling purchase success popup callback');
+      purchaseSuccessPopupCallback(nftName, paymentBreakdown, transactionId);
+    } catch (error) {
+      console.error('Error in purchase success popup callback:', error);
+    }
+  } else if (typeof window !== 'undefined' && (window as any).notify) {
+    console.log('Using window.notify for purchase success popup');
+    (window as any).notify.success(`Successfully purchased ${nftName}!`);
+  }
+};
+
+/**
+ * Fetches NFT listing data from Google Sheets
+ * @param nfts Array of NFTs to check for listings
+ * @param connection Optional connection parameter (not used but kept for compatibility)
+ * @returns Updated NFTs with listing information
+ */
+export const fetchMetaplexListingData = async <T extends { mint: string }>(
+  nfts: T[],
+  connection?: Connection
+): Promise<T[]> => {
+  // Delegate to Google Sheets implementation
+  const nftsWithListings = await fetchGoogleSheetsListingData(nfts);
+  
+  // Convert back to expected return type
+  return nftsWithListings as T[];
+};
+
+/**
+ * Initialize Google Sheets for the marketplace
+ */
+export const initializeMarketplace = async (): Promise<void> => {
+  try {
+    await setupGoogleSheets();
+    console.log('Marketplace initialized with Google Sheets');
+  } catch (error) {
+    console.error('Error initializing marketplace:', error);
+    throw error;
+  }
+};
+
+// Cleanup function for burned NFTs (simplified for sheets implementation)
+export const cleanupBurnedNFTListings = async (connection?: Connection): Promise<void> => {
+  console.log('Cleanup function called - no action needed with Google Sheets implementation');
+};
+
+/**
+ * Gets the marketplace authority public key
+ * @returns The public key of the marketplace authority
+ */
+export const getMarketplaceAuthority = (): PublicKey => {
+  // Always use the same marketplace authority address for consistency
+  // This should match the MARKETPLACE_WALLET in the server code
+  const MARKETPLACE_AUTHORITY = 'C4JWRGv7hoSsf6hEnNajMhgCSrsunXa3jtc3NQZ4kGco';
+  
+  // Use environment variable if available, otherwise use hardcoded value
+  const marketplaceAuthorityPubkey = process.env.REACT_APP_MARKETPLACE_AUTHORITY || 
+    process.env.VITE_MARKETPLACE_AUTHORITY || 
+    MARKETPLACE_AUTHORITY;
+  
+  console.log(`Using marketplace authority: ${marketplaceAuthorityPubkey}`);
+  return new PublicKey(marketplaceAuthorityPubkey);
+};
+
+/**
+ * Gets the escrow token account for the marketplace for a given mint
+ * @param mint The mint of the token
+ * @param connection The connection to the Solana network
+ * @returns The public key of the escrow token account
+ */
+export const getEscrowTokenAccount = async (mint: PublicKey, connection?: Connection): Promise<PublicKey> => {
+  console.log(`Getting escrow token account for mint ${mint.toString()}`);
+  
+  try {
+    // Get the marketplace authority
+    const marketplaceAuthority = getMarketplaceAuthority();
+    console.log(`Using marketplace authority: ${marketplaceAuthority.toString()}`);
+    
+    // Create a seed from the marketplace authority and mint
+    const seed = Buffer.concat([
+      marketplaceAuthority.toBuffer(),
+      mint.toBuffer()
+    ]);
+    
+    // Create a keypair from the seed
+    const escrowKeypair = Keypair.fromSeed(seed.slice(0, 32));
+    console.log(`Derived escrow keypair: ${escrowKeypair.publicKey.toString()}`);
+    
+    // Get the associated token address for the escrow
+    const escrowTokenAccount = await getAssociatedTokenAddress(
+      mint,
+      escrowKeypair.publicKey // owner - use derived keypair
+    );
+    
+    console.log(`Derived escrow token account: ${escrowTokenAccount.toString()}`);
+    console.log(`Using seeds for verification:`);
+    console.log(`- Owner (Derived Keypair): ${escrowKeypair.publicKey.toString()}`);
+    console.log(`- Token Program: ${TOKEN_PROGRAM_ID.toString()}`);
+    console.log(`- Mint: ${mint.toString()}`);
+    
+    // Check if the account exists on chain
+    if (connection) {
+      try {
+        const accountInfo = await connection.getAccountInfo(escrowTokenAccount);
+        console.log(`Escrow token account exists on chain: ${accountInfo !== null}`);
+        if (accountInfo) {
+          console.log(`Escrow token account owner: ${accountInfo.owner.toString()}`);
+        }
+      } catch (err: any) {
+        console.log(`Error checking escrow token account on chain: ${err.message}`);
+        // Don't throw here, just log the error
+      }
+    }
+    
+    return escrowTokenAccount;
+  } catch (err: any) {
+    console.error(`Error in getEscrowTokenAccount: ${err.message}`);
+    throw err;
+  }
+};
+
+export const transferNFT = async (mint: PublicKey, connection: Connection, wallet: any): Promise<string> => {
+  try {
+    console.log(`Transferring NFT with mint ${mint.toString()} to marketplace escrow`);
+    
+    if (!wallet.publicKey) {
+      throw new Error('Wallet not connected');
+    }
+    
+    // Get the escrow token account - using our helper function
+    const escrowTokenAccount = await getEscrowTokenAccount(mint, connection);
+    console.log(`Escrow token account: ${escrowTokenAccount.toString()}`);
+    
+    // Implementation here
+    return "Not implemented";
+  } catch (error: any) {
+    console.error(`Error transferring NFT: ${error.message}`);
+    throw error;
+  }
+};

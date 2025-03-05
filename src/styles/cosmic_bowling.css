@@ -1,0 +1,330 @@
+/* Cosmic Bowling Theme - Dark Mode */
+[data-theme="dark"] {
+  /* Custom Properties */
+  --neon-primary: #00ffff;
+  --neon-secondary: #ff00ff;
+  --neon-accent: #ffff00;
+  --dark-bg: #000000;
+  --dark-surface: #121212;
+  --dark-border: #2a2a2a;
+
+  /* Base Styles */
+  background-color: var(--dark-bg) !important;
+  color: var(--neon-primary) !important;
+}
+
+/* Override any tan/light backgrounds in dark mode */
+[data-theme="dark"] .MuiPaper-root,
+[data-theme="dark"] .MuiAppBar-root,
+[data-theme="dark"] .MuiDialog-paper,
+[data-theme="dark"] .MuiCard-root,
+[data-theme="dark"] .ContentPaper,
+[data-theme="dark"] .PageContainer,
+[data-theme="dark"] .ContentContainer,
+[data-theme="dark"] .MuiContainer-root,
+[data-theme="dark"] .MuiContainer-root > .MuiPaper-root,
+[data-theme="dark"] .css-p8g2ac-MuiPaper-root,
+[data-theme="dark"] .css-qwxdj4-MuiContainer-root,
+[data-theme="dark"] .css-otlz2i,
+[data-theme="dark"] .css-2guynv {
+  background-color: var(--dark-bg) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Main container styles in dark mode */
+[data-theme="dark"] .MuiContainer-root {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  margin: 24px auto !important;
+  padding: 0 24px !important;
+  max-width: 1400px !important;
+  position: relative !important;
+}
+
+/* Primary content paper styles */
+[data-theme="dark"] .MuiContainer-root > .MuiPaper-root {
+  background-color: var(--dark-bg) !important;
+  border: 2px solid var(--neon-primary) !important;
+  box-shadow: 0 0 20px var(--neon-primary), inset 0 0 10px var(--neon-primary) !important;
+  border-radius: 8px !important;
+  padding: 24px !important;
+  margin: 0 auto !important;
+  width: 100% !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* NFT Card styles */
+[data-theme="dark"] .MuiCard-root {
+  background-color: var(--dark-surface) !important;
+  border: 1px solid var(--neon-secondary) !important;
+  box-shadow: 0 0 15px var(--neon-secondary) !important;
+  transition: all 0.3s ease !important;
+}
+
+[data-theme="dark"] .MuiCard-root:hover {
+  border-color: var(--neon-accent) !important;
+  box-shadow: 0 0 25px var(--neon-accent) !important;
+  transform: translateY(-2px) !important;
+}
+
+/* Search and filter container */
+[data-theme="dark"] .MuiBox-root.css-nlb5j9 {
+  background-color: var(--dark-surface) !important;
+  border: 1px solid var(--neon-primary) !important;
+  box-shadow: 0 0 10px var(--neon-primary) !important;
+  border-radius: 8px !important;
+  padding: 20px !important;
+  margin-bottom: 24px !important;
+}
+
+/* Enhance form elements text visibility in dark mode */
+[data-theme="dark"] .MuiInputLabel-root,
+[data-theme="dark"] .MuiSelect-select,
+[data-theme="dark"] .MuiInputBase-input {
+  color: #ffffff !important;
+  text-shadow: 0 0 5px var(--neon-primary);
+}
+
+[data-theme="dark"] .MuiFormLabel-root {
+  color: #ffffff !important;
+  opacity: 0.9;
+}
+
+/* Style checkbox label in dark mode */
+[data-theme="dark"] .css-veqe2c {
+  color: #ffffff !important;
+  text-shadow: 0 0 5px var(--neon-primary);
+}
+
+/* Ensure search input text is visible */
+[data-theme="dark"] .MuiOutlinedInput-input {
+  color: #ffffff !important;
+}
+
+/* Style collection dropdown in dark mode */
+[data-theme="dark"] .MuiSelect-select.MuiSelect-outlined {
+  width: 400px !important;
+  max-width: 400px !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .MuiSelect-icon {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .MuiMenuItem-root {
+  color: #ffffff !important;
+}
+
+/* Override footer background in dark mode */
+[data-theme="dark"] .css-2guynv {
+  background-color: var(--dark-bg) !important;
+  border-top: 1px solid var(--neon-primary);
+  box-shadow: 0 0 10px var(--neon-primary);
+}
+
+/* Override button backgrounds in dark mode */
+[data-theme="dark"] .MuiButton-contained,
+[data-theme="dark"] .MuiButton-root,
+[data-theme="dark"] button {
+  background-color: var(--dark-surface) !important;
+  color: var(--neon-primary) !important;
+}
+
+/* Override the vintage paper background in dark mode */
+[data-theme="dark"] [style*="background-image: url('/src/assets/images/vintage-paper.jpg')"] {
+  background-image: none !important;
+  background-color: var(--dark-bg) !important;
+}
+
+/* Navbar Styles */
+[data-theme="dark"] .MuiAppBar-root {
+  background: var(--dark-surface) !important;
+  border: 1px solid var(--neon-primary);
+  box-shadow: 0 0 10px var(--neon-primary), inset 0 0 5px var(--neon-primary);
+}
+
+[data-theme="dark"] .MuiButton-root {
+  color: var(--neon-primary);
+  border-color: var(--neon-primary);
+  text-shadow: 0 0 5px var(--neon-primary);
+}
+
+[data-theme="dark"] .MuiButton-root:hover {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow: 0 0 15px var(--neon-primary);
+}
+
+/* Content Styles */
+[data-theme="dark"] .MuiPaper-root {
+  background-color: var(--dark-surface) !important;
+  border: 1px solid var(--neon-secondary);
+  box-shadow: 0 0 20px var(--neon-secondary);
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+[data-theme="dark"] .MuiTypography-root {
+  color: var(--neon-primary);
+  text-shadow: 0 0 5px var(--neon-primary);
+}
+
+/* Image Carousel */
+[data-theme="dark"] .carousel-container {
+  background: var(--dark-surface);
+  border: 2px solid var(--neon-accent);
+  box-shadow: 0 0 20px var(--neon-accent);
+}
+
+[data-theme="dark"] .carousel-nav-button {
+  background: var(--dark-surface);
+  color: var(--neon-accent);
+  border: 1px solid var(--neon-accent);
+  box-shadow: 0 0 10px var(--neon-accent);
+}
+
+[data-theme="dark"] .carousel-nav-button:hover {
+  background: rgba(255, 255, 0, 0.1);
+  box-shadow: 0 0 20px var(--neon-accent);
+}
+
+/* Form Elements */
+[data-theme="dark"] .MuiTextField-root {
+  color: var(--neon-primary);
+}
+
+[data-theme="dark"] .MuiOutlinedInput-root {
+  border-color: var(--neon-primary);
+  width: 400px !important;
+  max-width: 400px !important;
+}
+
+[data-theme="dark"] .MuiOutlinedInput-root:hover {
+  border-color: var(--neon-secondary);
+  box-shadow: 0 0 10px var(--neon-secondary);
+}
+
+/* Animations */
+@keyframes neonPulse {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+[data-theme="dark"] .neon-text {
+  animation: neonPulse 2s infinite;
+}
+
+/* Footer */
+[data-theme="dark"] footer {
+  background: var(--dark-surface);
+  border-top: 1px solid var(--neon-primary);
+  box-shadow: 0 0 10px var(--neon-primary);
+}
+
+/* Dialog/Modal */
+[data-theme="dark"] .MuiDialog-paper {
+  background: var(--dark-bg) !important;
+  border: 1px solid var(--neon-secondary) !important;
+  box-shadow: 0 0 20px var(--neon-secondary) !important;
+}
+
+/* Style info boxes in NFT Detail Modal */
+[data-theme="dark"] .MuiDialog-paper .MuiBox-root {
+  background: none !important;
+}
+
+[data-theme="dark"] .MuiDialog-paper .MuiTypography-root {
+  color: var(--neon-primary) !important;
+  text-shadow: 0 0 5px var(--neon-primary) !important;
+}
+
+/* Mint ID container styles */
+.css-vfhetp {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  font-family: monospace !important;
+  word-break: break-all !important;
+}
+
+/* Light mode mint ID styles */
+.css-vfhetp {
+  color: #8b4513 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.css-vfhetp:hover {
+  color: #ff6b00 !important;
+  text-shadow: 0 0 2px rgba(255, 107, 0, 0.4) !important;
+}
+
+/* Dark mode mint ID styles */
+[data-theme="dark"] .css-vfhetp {
+  color: #fff700 !important;
+  text-shadow: 0 0 4px #ffff00 !important;
+  font-weight: 500 !important;
+  opacity: 1 !important;
+}
+
+[data-theme="dark"] .css-vfhetp:hover {
+  color: var(--neon-secondary) !important;
+  text-shadow: 0 0 6px var(--neon-secondary) !important;
+}
+
+/* Icon styles for both modes */
+.css-vfhetp .MuiSvgIcon-root {
+  color: inherit !important;
+  opacity: 0.9 !important;
+}
+
+/* Link styles */
+.css-vfhetp a {
+  color: inherit !important;
+  text-decoration: none !important;
+}
+
+/* Remove any white borders in the modal */
+[data-theme="dark"] .MuiDialog-paper img {
+  border-color: var(--dark-bg) !important;
+}
+
+[data-theme="dark"] .MuiDialog-paper .MuiDivider-root {
+  border-color: var(--neon-primary) !important;
+  opacity: 0.5;
+}
+
+/* Links */
+[data-theme="dark"] a {
+  color: var(--neon-accent);
+  text-shadow: 0 0 5px var(--neon-accent);
+}
+
+[data-theme="dark"] a:hover {
+  color: var(--neon-secondary);
+  text-shadow: 0 0 10px var(--neon-secondary);
+}
+
+/* Switch monkey icon in dark mode */
+[data-theme="dark"] .css-16js2hq[src*="/monkey.png"] {
+  content: url("/src/assets/images/dark_monkey.png") !important;
+}
+
+[data-theme="dark"] .MuiDialog-paper .MuiTypography-root a[href*="explorer.solana.com"] {
+  color: #ffff00 !important;
+  text-shadow: 0 0 4px rgba(255, 255, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .MuiDialog-paper .MuiTypography-root a[href*="explorer.solana.com"]:hover {
+  color: #ffff80 !important;
+  text-shadow: 0 0 6px rgba(255, 255, 0, 0.6) !important;
+}
+
+[data-theme="dark"] .MuiMenu-paper {
+  width: 400px !important;
+  max-width: 400px !important;
+} 
