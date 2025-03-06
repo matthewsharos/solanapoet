@@ -10,14 +10,13 @@ import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-ad
 import { base58 } from '@metaplex-foundation/umi/serializers';
 import { createSignerFromKeypair, signerIdentity, sol, Umi } from '@metaplex-foundation/umi';
 import { 
-  mplAuctionHouse, 
-  type AuctionHouse,
-  type AuctionHouseListing,
-  createAuctionHouse as createAH,
+  AuctionHouse,
   findAuctionHouseByAddress,
-  createListing,
-  cancelListing,
-  executeSale
+  createAuctionHouse as createAH,
+  createListing as createAHListing,
+  cancelListing as cancelAHListing,
+  executeSale as executeAHSale,
+  mplAuctionHouse
 } from '@metaplex-foundation/mpl-auction-house';
 import BN from 'bn.js';
 import { NFT } from '../types/nft';
@@ -328,21 +327,35 @@ export async function listNFTForSaleMetaplex(
       seller: wallet.publicKey
     } as any;
 
-    await createListing(umi, params);
+    await createAHListing(umi, params);
   } catch (error) {
     console.error('Error listing NFT:', error);
     throw error;
   }
 }
 
+export interface NFTListing {
+  mint: PublicKey;
+  price: {
+    basisPoints: bigint;
+  };
+  seller: PublicKey;
+  tokenSize: bigint;
+  tradeState: PublicKey;
+  metadata: PublicKey;
+  purchaseReceipt: PublicKey | null;
+  createdAt: Date;
+  canceledAt: Date | null;
+}
+
 export async function unlistNFTMetaplex(
   wallet: WalletContextState,
   umi: Umi,
-  listing: AuctionHouseListing,
+  listing: NFTListing,
   auctionHouse: AuctionHouse
 ): Promise<void> {
   try {
-    await cancelListing(umi, {
+    await cancelAHListing(umi, {
       auctionHouse,
       listing
     });
@@ -355,7 +368,7 @@ export async function unlistNFTMetaplex(
 export async function purchaseNFTMetaplex(
   wallet: WalletContextState,
   umi: Umi,
-  listing: AuctionHouseListing,
+  listing: NFTListing,
   auctionHouse: AuctionHouse
 ): Promise<void> {
   try {
@@ -365,7 +378,7 @@ export async function purchaseNFTMetaplex(
       buyer: wallet.publicKey
     } as any;
 
-    await executeSale(umi, params);
+    await executeAHSale(umi, params);
   } catch (error) {
     console.error('Error purchasing NFT:', error);
     throw error;
