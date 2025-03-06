@@ -249,6 +249,67 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
   }
 };
 
+// Add diagnostic endpoint
+router.get('/test-config', async (req, res) => {
+  const results = {
+    envVarsPresent: {
+      GOOGLE_CREDENTIALS_JSON: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+    },
+    credentialsValid: false,
+    authClientCreated: false,
+    sheetsApiConnected: false,
+    canReadSpreadsheet: false,
+    error: null
+  };
+
+  try {
+    // Step 1: Test credentials parsing
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}');
+      results.credentialsValid = !!(credentials.client_email && credentials.private_key);
+      
+      // Log credential structure (without sensitive data)
+      console.log('Credentials structure:', {
+        hasClientEmail: !!credentials.client_email,
+        hasPrivateKey: !!credentials.private_key,
+        type: credentials.type,
+        project_id: credentials.project_id
+      });
+    } catch (e) {
+      results.error = 'Failed to parse credentials JSON';
+      return res.json(results);
+    }
+
+    // Step 2: Test auth client creation
+    try {
+      const auth = await getGoogleAuth();
+      results.authClientCreated = true;
+
+      // Step 3: Test Sheets API connection
+      const sheets = google.sheets({ version: 'v4', auth });
+      results.sheetsApiConnected = true;
+
+      // Step 4: Test reading from spreadsheet
+      if (process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+          range: 'collections!A1:A1' // Just try to read a single cell
+        });
+        results.canReadSpreadsheet = true;
+      }
+    } catch (e) {
+      results.error = e instanceof Error ? e.message : 'Unknown error occurred';
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error('Diagnostic test failed:', error);
+    results.error = error instanceof Error ? error.message : 'Unknown error occurred';
+    res.json(results);
+  }
+});
+
 router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
