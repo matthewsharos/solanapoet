@@ -43,20 +43,24 @@ let auth: OAuth2Client | null = null;
 // Initialize Google Sheets auth
 export const getGoogleAuth = async () => {
   try {
-    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Google credentials not set. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
     }
 
-    console.log('Initializing auth using credentials from GOOGLE_CREDENTIALS_JSON');
+    console.log('Initializing auth using individual credentials');
     
-    // Parse credentials and fix private key formatting
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-    if (credentials.private_key) {
-      credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+    // Process private key to handle escaped newlines
+    let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+    if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+      console.log('Converting escaped newlines in private key to actual newlines');
+      privateKey = privateKey.replace(/\\n/g, '\n');
     }
 
     const auth = new google.auth.GoogleAuth({
-      credentials,
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey
+      },
       scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
 

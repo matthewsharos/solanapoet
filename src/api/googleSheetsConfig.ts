@@ -163,7 +163,7 @@ export const get = async (sheetName: string) => {
 console.log('Google Sheets Config:', {
   spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
   sheets: GOOGLE_SHEETS_CONFIG.sheets,
-  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL,
   hasSpreadsheetId: !!process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID
 });
 

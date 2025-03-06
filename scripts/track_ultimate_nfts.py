@@ -12,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import pickle
+import logging
+import sys
 
 # Load environment variables
 load_dotenv()
@@ -31,10 +33,23 @@ CHECKPOINT_FILE = 'checkpoint.json'
 
 def get_google_sheets_service():
     creds = None
-    # Load credentials from environment variable
-    if os.getenv('GOOGLE_CREDENTIALS_JSON'):
-        creds_dict = json.loads(os.getenv('GOOGLE_CREDENTIALS_JSON'))
-        creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+    # Setup Google Sheets credentials
+    if os.getenv('GOOGLE_CLIENT_EMAIL') and os.getenv('GOOGLE_PRIVATE_KEY'):
+        private_key = os.getenv('GOOGLE_PRIVATE_KEY')
+        # Handle escaped newlines
+        if '\\n' in private_key and '\n' not in private_key:
+            private_key = private_key.replace('\\n', '\n')
+        
+        creds_dict = {
+            'client_email': os.getenv('GOOGLE_CLIENT_EMAIL'),
+            'private_key': private_key
+        }
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    elif os.path.exists('credentials.json'):
+        creds = Credentials.from_service_account_file('credentials.json', scopes=SCOPES)
+    else:
+        logging.error('No credentials found. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or provide credentials.json')
+        sys.exit(1)
     return build('sheets', 'v4', credentials=creds)
 
 def save_checkpoint(page, last_date):

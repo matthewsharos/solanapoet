@@ -9,35 +9,24 @@ async function testGoogleSheets() {
     if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
       console.log('Using GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
       
+      // Process private key to handle escaped newlines
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
       auth = new google.auth.GoogleAuth({
         credentials: {
           client_email: process.env.GOOGLE_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_PRIVATE_KEY
+          private_key: privateKey
         },
         scopes: ['https://www.googleapis.com/auth/spreadsheets']
       });
       
       client = await auth.getClient();
-    } 
-    // Fall back to JSON credentials
-    else if (process.env.GOOGLE_CREDENTIALS_JSON) {
-      console.log('Using GOOGLE_CREDENTIALS_JSON');
-      // Parse the credentials JSON and fix private key format
-      const rawCredentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}');
-      const credentials = {
-        ...rawCredentials,
-        private_key: rawCredentials.private_key.replace(/\\n/g, '\n')
-      };
-      
-      // Create auth client
-      auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets']
-      });
-
-      client = await auth.getClient();
     } else {
-      throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_CREDENTIALS_JSON environment variables');
+      throw new Error('Google credentials not found. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
     }
     
     const sheets = google.sheets({ version: 'v4', auth: client });
