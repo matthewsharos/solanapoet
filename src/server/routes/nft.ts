@@ -224,27 +224,62 @@ const uploadImageHandler = async (req: FileRequest, res: Response): Promise<void
       return;
     }
 
-    const uploadDir = path.join(__dirname, '../../../uploads');
-    
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    // Instead of saving to disk, upload directly to Pinata
+    try {
+      const ipfsHash = await uploadBufferToPinata(imageFile.data, imageFile.name);
+      const ipfsUrl = `${IPFS_GATEWAY}${ipfsHash}`;
+      
+      res.json({ 
+        success: true, 
+        fileName: imageFile.name,
+        filePath: ipfsUrl,
+        ipfsHash
+      });
+    } catch (pinataError) {
+      console.error('Error uploading to Pinata:', pinataError);
+      res.status(500).json({ success: false, message: 'Error uploading to IPFS' });
     }
-    
-    const fileName = `${uuidv4()}${path.extname(imageFile.name)}`;
-    const filePath = path.join(uploadDir, fileName);
-    
-    // Move the file to the uploads directory
-    await imageFile.mv(filePath);
-    
-    res.json({ 
-      success: true, 
-      fileName,
-      filePath: `/uploads/${fileName}` 
-    });
   } catch (error) {
     console.error('Error uploading image:', error);
     res.status(500).json({ success: false, message: 'Error uploading image' });
+  }
+};
+
+// Helper function to upload buffer to Pinata
+const uploadBufferToPinata = async (fileBuffer: Buffer, fileName: string): Promise<string> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', fileBuffer, { filename: fileName });
+    
+    // Add metadata
+    const metadata = JSON.stringify({
+      name: fileName
+    });
+    formData.append('pinataMetadata', metadata);
+    
+    // Add options
+    const options = JSON.stringify({
+      cidVersion: 0
+    });
+    formData.append('pinataOptions', options);
+    
+    // Upload to Pinata
+    const response = await axios.post<PinataResponse>(
+      'https://api.pinata.cloud/pinning/pinFileToIPFS',
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${PINATA_JWT}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+    
+    // Return the IPFS hash
+    return response.data.IpfsHash;
+  } catch (error) {
+    console.error('Error uploading buffer to Pinata:', error);
+    throw new Error('Failed to upload file to IPFS');
   }
 };
 
@@ -294,14 +329,11 @@ const uploadHandler = async (req: FileRequest, res: Response): Promise<void> => 
       return;
     }
     
-    // Save image file temporarily
+    // Upload image buffer directly to Pinata instead of writing to disk
     const fileName = `${Date.now()}-${imageFile.name}`;
-    const filePath = path.join(__dirname, '../uploads', fileName);
-    
-    await imageFile.mv(filePath);
     
     // Upload image to Pinata
-    const imageHash = await uploadFileToPinata(filePath, fileName);
+    const imageHash = await uploadBufferToPinata(imageFile.data, fileName);
     const imageUrl = `${IPFS_GATEWAY}${imageHash}`;
     
     // Create metadata
@@ -349,9 +381,6 @@ const uploadHandler = async (req: FileRequest, res: Response): Promise<void> => 
     });
     
     await newNFT.save();
-    
-    // Remove temporary file
-    fs.unlinkSync(filePath);
     
     res.json({
       success: true,

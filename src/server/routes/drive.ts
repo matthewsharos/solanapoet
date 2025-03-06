@@ -6,7 +6,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const router = express.Router();
-const upload = multer({ dest: 'uploads/' });
+// Use memory storage instead of disk storage for Vercel's read-only filesystem
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 // Upload file to Google Drive
 router.post('/upload', upload.single('file'), async (req, res) => {
@@ -37,10 +39,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       folderId
     });
 
-    // Create a readable stream from the uploaded file
+    // Create a readable stream from the file buffer in memory
     const media = {
       mimeType: fileMetadata.mimeType,
-      body: fs.createReadStream(req.file.path),
+      body: req.file.buffer,
     };
 
     // Upload file to Google Drive
@@ -56,8 +58,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       webViewLink: file.data.webViewLink
     });
 
-    // Clean up the temporary file
-    fs.unlinkSync(req.file.path);
+    // No need to clean up temporary file since we're using memory storage
 
     res.json({
       id: file.data.id,

@@ -13,22 +13,8 @@ dotenv.config();
 
 const router = Router();
 
-// Configure multer for file uploads - using OS temp directory for Vercel compatibility
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    // Use OS temp directory for Vercel compatibility
-    const uploadDir = path.join(os.tmpdir(), 'uploads');
-    // Ensure upload directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  }
-});
+// Configure multer for file uploads - using memory storage for Vercel compatibility
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -38,7 +24,8 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     // Accept images only
     if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
-      return cb(new Error('Only image files are allowed!'));
+      const error: any = new Error('Only image files are allowed!');
+      return cb(error, false);
     }
     cb(null, true);
   }
@@ -49,11 +36,11 @@ const PINATA_JWT = process.env.PINATA_JWT || '';
 const AUTHORIZED_MINTER = process.env.AUTHORIZED_MINTER || '';
 const IPFS_GATEWAY = process.env.IPFS_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
 
-// Helper function to upload file to Pinata
-const uploadFileToPinata = async (filePath: string, fileName: string): Promise<string> => {
+// Helper function to upload buffer to Pinata
+const uploadBufferToPinata = async (fileBuffer: Buffer, fileName: string): Promise<string> => {
   try {
     const formData = new FormData();
-    formData.append('file', fs.createReadStream(filePath));
+    formData.append('file', fileBuffer, { filename: fileName });
     
     const metadata = JSON.stringify({
       name: fileName
@@ -78,7 +65,7 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
     
     return response.data.IpfsHash;
   } catch (error) {
-    console.error('Error uploading file to Pinata:', error);
+    console.error('Error uploading to Pinata:', error);
     throw new Error('Failed to upload file to IPFS');
   }
 };
@@ -108,23 +95,20 @@ interface GetCollectionsByCreatorRequest extends Request {
 
 // Endpoint to create a new collection
 const createCollection = async (req: CreateCollectionRequest, res: Response): Promise<void> => {
-  let uploadedFilePath: string | undefined;
-  
   try {
     if (!req.file) {
       res.status(400).json({ error: 'No image file uploaded' });
       return;
     }
 
-    uploadedFilePath = req.file.path;
     const { name, description, symbol, ultimates } = req.body;
     
     if (!name || !description || !symbol) {
       throw new Error('Missing required fields');
     }
 
-    // Upload image to IPFS via Pinata
-    const ipfsHash = await uploadFileToPinata(uploadedFilePath, req.file.originalname);
+    // Upload image buffer to IPFS via Pinata
+    const ipfsHash = await uploadBufferToPinata(req.file.buffer, req.file.originalname);
     const imageUrl = `${IPFS_GATEWAY}${ipfsHash}`;
 
     // Create new collection
@@ -141,25 +125,16 @@ const createCollection = async (req: CreateCollectionRequest, res: Response): Pr
 
     await newCollection.save();
     
-    res.status(200).json({ 
-      success: true, 
-      collection: newCollection 
+    res.status(201).json({
+      success: true,
+      collection: newCollection
     });
   } catch (error) {
     console.error('Error creating collection:', error);
-    res.status(500).json({ 
-      error: 'Failed to create collection',
-      message: error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to create collection'
     });
-  } finally {
-    // Clean up the uploaded file in the finally block
-    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
-      try {
-        fs.unlinkSync(uploadedFilePath);
-      } catch (cleanupError) {
-        console.error('Error cleaning up uploaded file:', cleanupError);
-      }
-    }
   }
 };
 
