@@ -17,10 +17,24 @@ interface UpdateDisplayNameRequest {
 const getGoogleAuth = async (): Promise<OAuth2Client> => {
   try {
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+      console.error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+      throw new Error('Google credentials not configured');
     }
 
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    let credentials;
+    try {
+      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    } catch (parseError) {
+      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', parseError);
+      throw new Error('Invalid Google credentials format');
+    }
+
+    if (!credentials.client_email || !credentials.private_key) {
+      console.error('Missing required fields in Google credentials');
+      throw new Error('Invalid Google credentials structure');
+    }
+
+    console.log('Initializing Google Sheets auth with client email:', credentials.client_email);
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -121,13 +135,12 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
 const getSheetDataHandler: RequestHandler = async (req, res) => {
   try {
     const sheetName = req.params.sheetName;
-    console.log('Fetching sheet data for:', sheetName, {
-      hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
-      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      environment: process.env.NODE_ENV,
-      configSheets: GOOGLE_SHEETS_CONFIG.sheets
-    });
-    
+    console.log('Fetching sheet data for:', sheetName);
+
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID not configured');
+    }
+
     if (!GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets]) {
       console.error('Invalid sheet name requested:', sheetName);
       res.status(400).json({
@@ -138,27 +151,18 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
     }
 
     // Initialize Google auth
-    console.log('Getting Google auth...');
     const auth = await getGoogleAuth();
-    console.log('Creating sheets client...');
     const sheets = google.sheets({ version: 'v4', auth });
 
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId;
-    console.log('Using spreadsheet ID:', spreadsheetId);
-
     // Get sheet data
-    console.log('Fetching data from sheet...', {
-      spreadsheetId,
-      range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets]
-    });
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets],
     });
 
     console.log('Data fetched successfully:', {
-      rowCount: response.data.values?.length || 0,
-      hasValues: !!response.data.values
+      sheetName,
+      rowCount: response.data.values?.length || 0
     });
 
     res.json({
@@ -166,15 +170,10 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
       data: response.data.values || []
     });
   } catch (error) {
-    console.error('Error in getSheetDataHandler:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      type: error instanceof Error ? error.constructor.name : typeof error
-    });
+    console.error('Error in getSheetDataHandler:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch sheet data',
-      details: error instanceof Error ? error.stack : undefined
+      error: error instanceof Error ? error.message : 'Failed to fetch sheet data'
     });
   }
 };

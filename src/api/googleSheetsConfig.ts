@@ -18,15 +18,31 @@ export const GOOGLE_SHEETS_CONFIG = {
 };
 
 // Initialize config from API
-fetch('/api/config')
-  .then(response => response.json())
-  .then(config => {
+const initializeConfig = async () => {
+  try {
+    const response = await fetch('/api/config');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const config = await response.json();
+    
+    if (!config.GOOGLE_SHEETS_SPREADSHEET_ID) {
+      console.warn('No spreadsheet ID found in config');
+      return;
+    }
+
     GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
-    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
-  })
-  .catch(error => {
-    console.error('Failed to load config:', error);
-  });
+    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = true;
+    console.log('Google Sheets config initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize config:', error);
+  }
+};
+
+// Initialize the configuration
+initializeConfig().catch(error => {
+  console.error('Failed to initialize Google Sheets config:', error);
+});
 
 // Log environment variables for debugging
 console.log('Google Sheets Config:', {
@@ -161,14 +177,20 @@ export const createSheetsClient = async (): Promise<SheetsClient> => {
 export let sheets: SheetsClient | null = null;
 
 // Initialize sheets client
-(async () => {
+const initializeSheetsClient = async () => {
   try {
     sheets = await createSheetsClient();
     console.log('Google Sheets client initialized successfully');
   } catch (error) {
     console.error('Failed to initialize Google Sheets client:', error);
+    sheets = null;
   }
-})();
+};
+
+// Initialize the sheets client
+initializeSheetsClient().catch(error => {
+  console.error('Failed to initialize sheets client:', error);
+});
 
 // Helper function to format sheet name for API request
 const getSheetRange = (sheetName: string) => {

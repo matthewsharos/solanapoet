@@ -95,10 +95,26 @@ console.log('API routes registered');
 
 // Pass environment variables to the client
 app.get('/api/config', (req, res) => {
-  res.json({
-    GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-    GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
-  });
+  try {
+    const config = {
+      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
+    };
+
+    // Log the config being sent (excluding sensitive data)
+    console.log('Sending config to client:', {
+      hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID
+    });
+
+    res.json(config);
+  } catch (error) {
+    console.error('Error in /api/config endpoint:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
 });
 
 // Add catch-all route for debugging
