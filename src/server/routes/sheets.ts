@@ -475,6 +475,22 @@ router.get('/debug-env', async (req, res) => {
   }
 });
 
+// Simple health check endpoint
+router.get('/health', async (req, res) => {
+  try {
+    return res.status(200).json({
+      status: 'ok',
+      time: new Date().toISOString()
+    });
+  } catch (error: any) {
+    console.error('Health check failed:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+});
+
 // Add error logging middleware
 router.use((err: any, req: Request, res: Response, next: any) => {
   console.error('Server error:', {
@@ -501,6 +517,7 @@ router.use((req: Request, res: Response, next: any) => {
   next();
 });
 
+// Register routes
 router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
