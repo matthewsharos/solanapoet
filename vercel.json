@@ -10,7 +10,7 @@
       "src": "src/server/index.ts",
       "use": "@vercel/node@3.0.0",
       "config": {
-        "includeFiles": ["src/server/**/*"],
+        "includeFiles": ["src/server/**/*", "src/api/**/*"],
         "nodeVersion": "18.x"
       }
     },
@@ -26,7 +26,13 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "src/server/index.ts"
+      "dest": "src/server/index.ts",
+      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept",
+        "Access-Control-Allow-Credentials": "true"
+      }
     },
     {
       "src": "^/assets/(.*)",

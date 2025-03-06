@@ -209,13 +209,39 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
   try {
     console.log('GET /display_names endpoint called');
     
+    console.log('Google Sheets Config:', {
+      hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
+      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
+    });
+
+    let credentials;
+    try {
+      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}');
+      if (!credentials.client_email || !credentials.private_key) {
+        throw new Error('Invalid Google credentials format: missing required fields');
+      }
+    } catch (parseError) {
+      console.error('Failed to parse Google credentials:', parseError);
+      res.status(500).json({
+        success: false,
+        error: 'Invalid Google credentials configuration'
+      });
+      return;
+    }
+    
     const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
+      credentials,
       scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
 
+    console.log('Google Auth initialized');
+
     const client = await auth.getClient();
+    console.log('Google Auth client obtained');
+    
     const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    console.log('Google Sheets client initialized');
     
     const displayNames = await getAllDisplayNames(sheets);
     console.log('Fetched display names:', displayNames);
@@ -226,7 +252,17 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       data: displayNames
     });
   } catch (error) {
-    console.error('Error fetching display names:', error);
+    console.error('Error fetching display names:', {
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error,
+      googleConfig: {
+        hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
+        hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
+      }
+    });
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'

@@ -21,14 +21,27 @@ export const GOOGLE_SHEETS_CONFIG = {
 const initializeConfig = async () => {
   try {
     console.log('Initializing Google Sheets config...');
-    const response = await fetch('/api/config');
+    const configUrl = `${API_BASE_URL}/api/config`;
+    console.log('Fetching config from:', configUrl);
+    
+    const response = await fetch(configUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      credentials: 'same-origin'
+    });
     
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Config API error:', {
         status: response.status,
         statusText: response.statusText,
-        body: errorText
+        body: errorText,
+        url: configUrl,
+        apiBaseUrl: API_BASE_URL,
+        environment: process.env.NODE_ENV
       });
       throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
     }
@@ -37,24 +50,43 @@ const initializeConfig = async () => {
     console.log('Received config:', {
       hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
       hasGoogleCredentials: config.hasGoogleCredentials,
-      isConfigured: config.isConfigured
+      isConfigured: config.isConfigured,
+      apiBaseUrl: API_BASE_URL,
+      environment: process.env.NODE_ENV
     });
     
     if (!config.isConfigured) {
       console.warn('Google Sheets is not fully configured:', {
         hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-        hasGoogleCredentials: config.hasGoogleCredentials
+        hasGoogleCredentials: config.hasGoogleCredentials,
+        apiBaseUrl: API_BASE_URL,
+        environment: process.env.NODE_ENV,
+        error: config.error,
+        message: config.message
       });
       return;
     }
 
     GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
-    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = true;
+    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
     GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
     GOOGLE_SHEETS_CONFIG.isConfigured = config.isConfigured;
-    console.log('Google Sheets config initialized successfully');
+    console.log('Google Sheets config initialized successfully:', {
+      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
+      hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
+      isConfigured: GOOGLE_SHEETS_CONFIG.isConfigured
+    });
   } catch (error) {
-    console.error('Failed to initialize config:', error);
+    console.error('Failed to initialize config:', {
+      error: error instanceof Error ? {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      } : error,
+      apiBaseUrl: API_BASE_URL,
+      nodeEnv: process.env.NODE_ENV
+    });
     throw error;
   }
 };

@@ -43,6 +43,12 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
     let credentials;
     try {
       credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+      
+      // Fix private key format if needed
+      if (credentials.private_key) {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+      }
+      
       console.log('Successfully parsed Google credentials with fields:', Object.keys(credentials));
     } catch (parseError) {
       console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', {
@@ -75,11 +81,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
     console.log('Successfully created Google auth client');
     return client;
   } catch (error) {
-    console.error('Error in getGoogleAuth:', {
-      error,
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    console.error('Error in getGoogleAuth:', error);
     throw error;
   }
 };

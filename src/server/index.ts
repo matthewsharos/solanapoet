@@ -71,15 +71,26 @@ const PORT = process.env.PORT || 3002;
 
 // Middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : process.env.FRONTEND_URL,
+  origin: process.env.NODE_ENV === 'development' 
+    ? 'http://localhost:5173' 
+    : ['https://solanapoet.vercel.app', 'https://www.solanapoet.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
-// Add error handling middleware at the top
+// Add better error logging middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('Global error handler caught:', err);
+  console.error('Global error handler caught:', {
+    error: err instanceof Error ? {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    } : err,
+    url: req.url,
+    method: req.method,
+    body: req.body
+  });
   if (!res.headersSent) {
     res.status(500).json({
       error: 'Internal server error',
@@ -111,33 +122,92 @@ console.log('API routes registered');
 // Pass environment variables to the client
 app.get('/api/config', (req, res) => {
   try {
-    const hasGoogleCredentials = !!process.env.GOOGLE_CREDENTIALS_JSON;
-    console.log('Checking Google credentials:', {
-      hasCredentials: hasGoogleCredentials,
-      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0
+    // Debug log all relevant environment variables
+    console.log('Environment variables state:', {
+      NODE_ENV: process.env.NODE_ENV,
+      hasGoogleCredentialsEnv: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
+      hasSpreadsheetIdEnv: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set'
     });
+
+    // Check if required environment variables are present
+    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
+      console.error('GOOGLE_CREDENTIALS_JSON is not set');
+      return res.status(500).json({ 
+        error: 'Configuration error',
+        message: 'Google credentials not configured',
+        hasGoogleCredentials: false,
+        isConfigured: false
+      });
+    }
+
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+      console.error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
+      return res.status(500).json({ 
+        error: 'Configuration error',
+        message: 'Spreadsheet ID not configured',
+        hasGoogleCredentials: true,
+        isConfigured: false
+      });
+    }
+
+    // Validate Google credentials format
+    let credentials;
+    try {
+      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+      
+      // Fix private key format if needed
+      if (credentials.private_key) {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+      }
+      
+      console.log('Parsed credentials structure:', {
+        hasClientEmail: !!credentials.client_email,
+        hasPrivateKey: !!credentials.private_key,
+        hasType: !!credentials.type,
+        type: credentials.type
+      });
+
+      if (!credentials.client_email || !credentials.private_key) {
+        console.error('Invalid credentials format - missing required fields');
+        return res.status(500).json({
+          error: 'Configuration error',
+          message: 'Invalid Google credentials format: missing required fields',
+          hasGoogleCredentials: false,
+          isConfigured: false
+        });
+      }
+    } catch (parseError) {
+      console.error('Failed to parse Google credentials:', parseError);
+      return res.status(500).json({
+        error: 'Configuration error',
+        message: 'Invalid Google credentials JSON format',
+        hasGoogleCredentials: false,
+        isConfigured: false
+      });
+    }
 
     const config = {
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
-      hasGoogleCredentials,
-      isConfigured: hasGoogleCredentials && !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+      hasGoogleCredentials: true,
+      isConfigured: true
     };
 
     // Log the config being sent (excluding sensitive data)
     console.log('Sending config to client:', {
       hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID,
       hasGoogleCredentials: config.hasGoogleCredentials,
-      isConfigured: config.isConfigured
+      isConfigured: config.isConfigured,
+      environment: process.env.NODE_ENV
     });
 
     res.json(config);
   } catch (error) {
-    console.error('Error in /api/config endpoint:', error);
+    console.error('Unexpected error in /api/config endpoint:', error);
     res.status(500).json({ 
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error occurred',
+      error: 'Configuration error',
+      message: 'An unexpected error occurred',
       hasGoogleCredentials: false,
       isConfigured: false
     });
