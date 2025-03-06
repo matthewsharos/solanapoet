@@ -1,10 +1,5 @@
 {
   "version": 2,
-  "buildCommand": "npm run vercel-build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
-  "framework": null,
-  "outputDirectory": "dist",
   "builds": [
     {
       "src": "src/server/index.ts",
@@ -21,7 +16,7 @@
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist",
-        "zeroConfig": true
+        "buildCommand": "npm run build"
       }
     }
   ],
