@@ -9,7 +9,7 @@ import { sheets_v4 } from '@googleapis/sheets';
 const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
-  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Default to the provided spreadsheet ID
   scopes: [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file',
@@ -21,6 +21,16 @@ const GOOGLE_SHEETS_CONFIG = {
     artRequests: 'art_requests'
   }
 };
+
+// Validate configuration on startup
+(() => {
+  if (!GOOGLE_SHEETS_CONFIG.hasSpreadsheetId) {
+    console.warn('GOOGLE_SHEETS_SPREADSHEET_ID not set, using default');
+  }
+  if (!GOOGLE_SHEETS_CONFIG.hasGoogleCredentials) {
+    console.error('GOOGLE_CREDENTIALS_JSON not set');
+  }
+})();
 
 const router = express.Router();
 
@@ -304,6 +314,50 @@ router.get('/test-config', async (req, res) => {
       error: 'Diagnostic endpoint error',
       details: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
+    });
+  }
+});
+
+// Add test endpoint to verify configuration
+router.get('/test', async (req: Request, res: Response) => {
+  try {
+    // Test environment variables
+    const envStatus = {
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0
+    };
+
+    console.log('Testing Google Sheets configuration:', envStatus);
+
+    // Test auth
+    const auth = await getGoogleAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Test API access
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      range: 'A1:A1'
+    });
+
+    res.json({
+      success: true,
+      envStatus,
+      apiTest: {
+        success: true,
+        response: response.data
+      }
+    });
+  } catch (error) {
+    console.error('Error testing Google Sheets configuration:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      envStatus: {
+        hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON
+      }
     });
   }
 });

@@ -48,8 +48,15 @@ export const getGoogleAuth = async () => {
     }
 
     console.log('Initializing auth using credentials from GOOGLE_CREDENTIALS_JSON');
+    
+    // Parse credentials and fix private key formatting
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+    }
+
     const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
+      credentials,
       scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
 
@@ -59,42 +66,6 @@ export const getGoogleAuth = async () => {
     throw error;
   }
 };
-
-async function initializeAuth() {
-  try {
-    // First try using direct credentials from env
-    if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
-      console.log('Initializing auth using credentials from GOOGLE_SHEETS_CREDENTIALS');
-      const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
-      auth = await new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      }).getClient() as OAuth2Client;
-      console.log('Successfully initialized Google Sheets auth');
-      return;
-    }
-    
-    // Then try using credentials file
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      console.log('Initializing auth using credentials file from GOOGLE_APPLICATION_CREDENTIALS');
-      auth = await new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      }).getClient() as OAuth2Client;
-      console.log('Successfully initialized Google Sheets auth');
-      return;
-    }
-
-    throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
-  } catch (error) {
-    console.error('Failed to initialize Google Sheets auth:', error);
-    auth = null;
-    throw new Error('Google Sheets authentication failed. Please check your credentials.');
-  }
-}
-
-// Initialize auth when the module loads
-initializeAuth().catch(console.error);
 
 // Cache configuration
 const cache = new Map<string, { data: any; timestamp: number }>();
@@ -122,7 +93,7 @@ export async function getSheetValues(spreadsheetId: string, range: string): Prom
     try {
       if (!auth) {
         console.log('Auth not initialized, attempting to initialize...');
-        await initializeAuth();
+        await getGoogleAuth();
         if (!auth) {
           throw new Error('Failed to initialize Google Sheets authentication');
         }
@@ -171,7 +142,7 @@ export async function appendSheetValues(
 ): Promise<AppendResponse> {
   try {
     if (!auth) {
-      await initializeAuth();
+      await getGoogleAuth();
       if (!auth) {
         throw new Error('Failed to initialize Google Sheets authentication');
       }
@@ -204,7 +175,7 @@ export async function updateSheetValues(
 ): Promise<UpdateResponse> {
   try {
     if (!auth) {
-      await initializeAuth();
+      await getGoogleAuth();
       if (!auth) {
         throw new Error('Failed to initialize Google Sheets authentication');
       }
@@ -235,7 +206,7 @@ export async function batchUpdate(
 ): Promise<BatchUpdateResponse> {
   try {
     if (!auth) {
-      await initializeAuth();
+      await getGoogleAuth();
       if (!auth) {
         throw new Error('Failed to initialize Google Sheets authentication');
       }
