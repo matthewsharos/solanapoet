@@ -9,62 +9,35 @@ import { OAuth2Client } from 'google-auth-library';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Initialize Google Drive auth
-const getGoogleAuth = async () => {
+// Initialize Google Drive API client
+export const getDriveClient = async () => {
   try {
-    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Google credentials not set. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
     }
 
-    console.log('Initializing auth using credentials from GOOGLE_CREDENTIALS_JSON');
+    console.log('Initializing Drive API client with individual credentials');
+    
+    // Process private key to handle escaped newlines
+    let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+    if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+      console.log('Converting escaped newlines in private key to actual newlines');
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
     const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
-      scopes: ['https://www.googleapis.com/auth/drive.file']
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey
+      },
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
     });
 
-    return auth;
+    const client = await auth.getClient();
+    console.log('Successfully created Drive API client');
+    return google.drive({ version: 'v3', auth: client as OAuth2Client });
   } catch (error) {
-    console.error('Error initializing Google auth:', error);
-    throw error;
-  }
-};
-
-// Create a Google Drive instance using service account
-const getDriveInstance = async (): Promise<drive_v3.Drive> => {
-  try {
-    let auth: OAuth2Client;
-    
-    // First try using direct credentials from env
-    if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
-      console.log('Using credentials from GOOGLE_SHEETS_CREDENTIALS');
-      const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
-      
-      if (!credentials.client_email || !credentials.private_key) {
-        throw new Error('Invalid Google Sheets credentials in GOOGLE_SHEETS_CREDENTIALS');
-      }
-      
-      auth = new google.auth.JWT({
-        email: credentials.client_email,
-        key: credentials.private_key,
-        scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
-      });
-    }
-    // Then try using credentials file
-    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      console.log('Using credentials file from GOOGLE_APPLICATION_CREDENTIALS');
-      const authClient = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-        scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
-      });
-      auth = await authClient.getClient() as OAuth2Client;
-    }
-    else {
-      throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
-    }
-    
-    return google.drive({ version: 'v3', auth });
-  } catch (error) {
-    console.error('Error creating Google Drive instance:', error);
+    console.error('Error initializing Google Drive API:', error);
     throw error;
   }
 };
@@ -94,7 +67,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     }
 
     console.log('Creating Google Drive instance...');
-    const drive = await getDriveInstance();
+    const drive = await getDriveClient();
     
     // Create a readable stream from the buffer
     const fileStream = new Readable();

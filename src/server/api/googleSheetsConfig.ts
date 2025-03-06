@@ -6,14 +6,14 @@ import { OAuth2Client } from 'google-auth-library';
 // Log environment variables for debugging
 console.log('Initializing Google Sheets Config:', {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
   environment: process.env.NODE_ENV
 });
 
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
   spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   scopes: [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -83,7 +83,7 @@ export const createSheetsClient = async () => {
     if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
       console.log('Creating sheets client using GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
       
-      // Process private key to handle possible missing actual newlines
+      // Process private key to handle escaped newlines
       let privateKey = process.env.GOOGLE_PRIVATE_KEY;
       if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
         console.log('Converting escaped newlines in private key to actual newlines');
@@ -102,19 +102,7 @@ export const createSheetsClient = async () => {
       return google.sheets({ version: 'v4', auth: client as OAuth2Client });
     }
     
-    // Fall back to JSON credentials
-    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_CREDENTIALS_JSON environment variables');
-    }
-
-    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const client = await auth.getClient();
-    return google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    throw new Error('Google credentials not found. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
   } catch (error) {
     console.error('Error creating sheets client:', error);
     throw error;

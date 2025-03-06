@@ -5,7 +5,7 @@ import { OAuth2Client } from 'google-auth-library';
 // Google Sheets configuration
 const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
   spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   scopes: [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -63,6 +63,24 @@ const getAllDisplayNames = async (sheets: any): Promise<DisplayName[]> => {
   return displayNames;
 };
 
+// Add a function to get Google authentication
+const getGoogleAuth = async () => {
+  // Process private key to handle escaped newlines
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+    console.log('Converting escaped newlines in private key to actual newlines');
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+  
+  return new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: privateKey
+    },
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+};
+
 // Update display name in Google Sheets
 router.post('/update', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -77,11 +95,7 @@ router.post('/update', async (req: Request, res: Response): Promise<void> => {
     }
 
     // Initialize Google Sheets with credentials from environment variable
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
-
+    const auth = await getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
 
     // Get current display names
@@ -146,11 +160,7 @@ router.post('/update', async (req: Request, res: Response): Promise<void> => {
 // Add a new endpoint to force refresh display names
 router.post('/refresh', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
+    const auth = await getGoogleAuth();
     const client = await auth.getClient();
     const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
     
@@ -174,11 +184,7 @@ router.post('/refresh', async (_req: Request, res: Response): Promise<void> => {
 // Add a debug endpoint to get raw display names data
 router.get('/debug', async (_req: Request, res: Response): Promise<void> => {
   try {
-    const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
+    const auth = await getGoogleAuth();
     const client = await auth.getClient();
     const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
     
@@ -215,30 +221,9 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
     });
 
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}');
-      if (!credentials.client_email || !credentials.private_key) {
-        throw new Error('Invalid Google credentials format: missing required fields');
-      }
-    } catch (parseError) {
-      console.error('Failed to parse Google credentials:', parseError);
-      res.status(500).json({
-        success: false,
-        error: 'Invalid Google credentials configuration'
-      });
-      return;
-    }
-    
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
-
-    console.log('Google Auth initialized');
-
+    const auth = await getGoogleAuth();
     const client = await auth.getClient();
-    console.log('Google Auth client obtained');
+    console.log('Google Auth initialized');
     
     const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
     console.log('Google Sheets client initialized');
