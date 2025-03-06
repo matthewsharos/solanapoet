@@ -17,7 +17,8 @@
     "cleanup": "echo 'Cleaned up existing processes'",
     "prestart": "npm run cleanup",
     "start": "concurrently \"npm run dev\" \"npm run dev:server\"",
-    "create-auction-house": "tsx src/scripts/create-auction-house.ts"
+    "create-auction-house": "tsx src/scripts/create-auction-house.ts",
+    "vercel-build": "npm run build"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

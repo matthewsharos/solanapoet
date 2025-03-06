@@ -249,38 +249,55 @@ app.post('/check-seller', async (req: Request, res: Response) => {
   }
 });
 
-// Start server
-const startServer = async () => {
-  try {
-    // Connect to MongoDB
-    await mongoose.connect(MONGO_URI);
-    console.log('Connected to MongoDB successfully');
+// MongoDB connection
+let cachedDb: typeof mongoose | null = null;
 
-    // Start the server
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server is running on port ${PORT}`);
-      console.log(`Server address: ${JSON.stringify(server.address())}`);
-    }).on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use. Please free up port ${PORT} or specify a different port.`);
-        process.exit(1);
-      } else {
-        console.error('Failed to start server:', err);
-        process.exit(1);
-      }
-    });
-
-    // Add error handler
-    server.on('error', (err: any) => {
-      console.error('Server error:', err);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+async function connectToDatabase() {
+  if (cachedDb) {
+    return cachedDb;
   }
-};
 
-startServer();
+  try {
+    const db = await mongoose.connect(MONGO_URI);
+    cachedDb = db;
+    console.log('Connected to MongoDB');
+    return db;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+}
+
+// Connect to MongoDB before handling requests
+app.use(async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    console.error('Failed to connect to database:', error);
+    res.status(500).json({ error: 'Database connection failed' });
+  }
+});
+
+// Remove direct server start and export app for Vercel
+export default app;
+
+// Only start server in development
+if (process.env.NODE_ENV === 'development') {
+  const startServer = async () => {
+    try {
+      await connectToDatabase();
+      app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+      });
+    } catch (error) {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    }
+  };
+
+  startServer();
+}
 
 const collectionsFilePath = path.join(__dirname, 'collections.json');
 const listingsFilePath = path.join(__dirname, 'listings.json');
@@ -325,6 +342,4 @@ export {
   addListing,
   validCollections,
   currentListings
-};
-
-export default app; 
+}; 
