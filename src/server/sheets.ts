@@ -41,7 +41,7 @@ interface BatchUpdateResponse {
 let auth: OAuth2Client | null = null;
 
 // Initialize Google Sheets auth
-const getGoogleAuth = async () => {
+export const getGoogleAuth = async () => {
   try {
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
       throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');

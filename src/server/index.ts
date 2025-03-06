@@ -8,7 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
-import { getGoogleAuth } from './routes/sheets';
+import { getGoogleAuth } from './sheets';
 
 // Import routes
 import authRoutes from './routes/auth';
