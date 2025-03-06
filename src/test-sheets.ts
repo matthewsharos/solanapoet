@@ -3,14 +3,28 @@ import { GOOGLE_SHEETS_CONFIG } from './api/googleSheetsConfig';
 import { OAuth2Client } from 'google-auth-library';
 import { sheets_v4 } from 'googleapis';
 
-async function testGoogleSheetsConnection() {
+interface GoogleSheetsConfig {
+  spreadsheetId: string;
+  sheets: {
+    collections: string;
+    ultimates: string;
+    displayNames: string;
+    artRequests: string;
+  };
+  credentialsPath: string;
+  scopes: string[];
+}
+
+const config = GOOGLE_SHEETS_CONFIG as GoogleSheetsConfig;
+
+async function testSheets() {
   try {
     console.log('Initializing Google Sheets API connection...');
-    console.log('Using credentials file:', GOOGLE_SHEETS_CONFIG.credentialsPath);
+    console.log('Using credentials file:', config.credentialsPath);
     
     const auth = new google.auth.GoogleAuth({
-      keyFile: GOOGLE_SHEETS_CONFIG.credentialsPath,
-      scopes: GOOGLE_SHEETS_CONFIG.scopes,
+      keyFile: config.credentialsPath,
+      scopes: config.scopes,
     });
 
     const authClient = await auth.getClient() as OAuth2Client;
@@ -18,8 +32,8 @@ async function testGoogleSheetsConnection() {
 
     console.log('Testing connection to Collections sheet...');
     const collectionsResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: `${GOOGLE_SHEETS_CONFIG.sheets.collections}!A:F`,
+      spreadsheetId: config.spreadsheetId,
+      range: `${config.sheets.collections}!A:F`,
     });
 
     if (collectionsResponse.data.values) {
@@ -30,8 +44,8 @@ async function testGoogleSheetsConnection() {
 
     console.log('\nTesting connection to Display Names sheet...');
     const displayNamesResponse = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: `${GOOGLE_SHEETS_CONFIG.sheets.displayNames}!A:B`,
+      spreadsheetId: config.spreadsheetId,
+      range: `${config.sheets.displayNames}!A:B`,
     });
 
     if (displayNamesResponse.data.values) {
@@ -42,9 +56,9 @@ async function testGoogleSheetsConnection() {
 
     console.log('\nGoogle Sheets API connection test completed successfully!');
   } catch (error) {
-    console.error('Error testing Google Sheets connection:', error);
+    console.error('Error:', error);
     process.exit(1);
   }
 }
 
-testGoogleSheetsConnection(); 
+testSheets(); 

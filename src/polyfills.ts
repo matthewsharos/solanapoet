@@ -27,7 +27,7 @@ if (typeof window !== 'undefined') {
     window.TextEncoder = util.TextEncoder;
   }
   if (typeof window.TextDecoder === 'undefined') {
-    window.TextDecoder = util.TextDecoder;
+    window.TextDecoder = util.TextDecoder as any;
   }
 }
 

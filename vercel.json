@@ -3,12 +3,12 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "framework": "vite",
+  "framework": null,
   "outputDirectory": "dist",
   "builds": [
     {
       "src": "src/server/index.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node@3.0.0"
     },
     {
       "src": "package.json",
@@ -27,12 +27,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "env": {
-    "VITE_HELIUS_API_KEY": "1aac55c4-5c9d-411a-bd46-37479a165e6d",
-    "GOOGLE_APPLICATION_CREDENTIALS": "./credentials.json",
-    "GOOGLE_SHEETS_SPREADSHEET_ID": "1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0",
-    "MONGO_URI": "mongodb://localhost:27017/solanapoet",
-    "NODE_ENV": "production"
-  }
+  ]
 } 

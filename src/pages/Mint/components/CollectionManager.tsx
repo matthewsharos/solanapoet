@@ -83,33 +83,40 @@ export const CollectionManager: React.FC<CollectionManagerProps> = ({
 
     setLoading(true);
     try {
-      const collectionAddress = await createCollection(
+      const collectionAddress = new PublicKey(wallet.publicKey!);
+      const collection: Collection = {
+        address: collectionAddress,
+        creators: [
+          {
+            address: wallet.publicKey!,
+            verified: true,
+            share: 100
+          }
+        ],
+        symbol: formData.symbol,
+        name: formData.name,
+        description: formData.description,
+        image: formData.image,
+        sellerFeeBasisPoints: formData.sellerFeeBasisPoints,
+        externalUrl: undefined
+      };
+
+      await createCollection(
         wallet,
         connection,
-        {
-          ...formData,
-          creators: [
-            {
-              address: wallet.publicKey!,
-              verified: true,
-              share: 100
-            }
-          ]
-        }
+        collection
       );
 
-      if (collectionAddress) {
-        setFormData({
-          name: '',
-          symbol: '',
-          description: '',
-          image: '',
-          creators: [],
-          sellerFeeBasisPoints: 500
-        });
-        setShowCreateForm(false);
-        loadCollections();
-      }
+      setFormData({
+        name: '',
+        symbol: '',
+        description: '',
+        image: '',
+        creators: [],
+        sellerFeeBasisPoints: 500
+      });
+      setShowCreateForm(false);
+      loadCollections();
     } finally {
       setLoading(false);
     }

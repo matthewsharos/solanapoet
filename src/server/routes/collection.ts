@@ -1,5 +1,5 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
+import multer from 'multer';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
@@ -7,10 +7,42 @@ import fs from 'fs';
 import axios from 'axios';
 import FormData from 'form-data';
 import Collection from '../models/Collection';
+import os from 'os';
 
 dotenv.config();
 
-const router = express.Router();
+const router = Router();
+
+// Configure multer for file uploads - using OS temp directory for Vercel compatibility
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    // Use OS temp directory for Vercel compatibility
+    const uploadDir = path.join(os.tmpdir(), 'uploads');
+    // Ensure upload directory exists
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (_req, file, cb) => {
+    // Accept images only
+    if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
+      return cb(new Error('Only image files are allowed!'));
+    }
+    cb(null, true);
+  }
+});
 
 // Pinata credentials from environment variables
 const PINATA_JWT = process.env.PINATA_JWT || '';
@@ -23,19 +55,16 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
     const formData = new FormData();
     formData.append('file', fs.createReadStream(filePath));
     
-    // Add metadata
     const metadata = JSON.stringify({
       name: fileName
     });
     formData.append('pinataMetadata', metadata);
     
-    // Add options
     const options = JSON.stringify({
       cidVersion: 0
     });
     formData.append('pinataOptions', options);
     
-    // Upload to Pinata
     const response = await axios.post(
       'https://api.pinata.cloud/pinning/pinFileToIPFS',
       formData,
@@ -47,7 +76,6 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
       }
     );
     
-    // Return the IPFS hash
     return response.data.IpfsHash;
   } catch (error) {
     console.error('Error uploading file to Pinata:', error);
@@ -55,92 +83,96 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
   }
 };
 
+// Define types for request handlers
+interface CreateCollectionRequest extends Request {
+  file?: Express.Multer.File;
+  body: {
+    name: string;
+    description: string;
+    symbol: string;
+    ultimates?: string | boolean;
+  };
+}
+
+interface GetCollectionRequest extends Request {
+  params: {
+    collectionId: string;
+  };
+}
+
+interface GetCollectionsByCreatorRequest extends Request {
+  params: {
+    creator: string;
+  };
+}
+
 // Endpoint to create a new collection
-router.post('/create', async (req: Request, res: Response) => {
+const createCollection = async (req: CreateCollectionRequest, res: Response): Promise<void> => {
+  let uploadedFilePath: string | undefined;
+  
   try {
-    // Check if user is authorized
-    const { creator } = req.body;
-    
-    if (creator !== AUTHORIZED_MINTER) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Not authorized to create collections' 
-      });
+    if (!req.file) {
+      res.status(400).json({ error: 'No image file uploaded' });
+      return;
     }
-    
-    // Check if image file is provided
-    if (!req.files || !req.files.image) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Collection image is required' 
-      });
-    }
-    
-    // Get form data
-    const { name, description, symbol } = req.body;
+
+    uploadedFilePath = req.file.path;
+    const { name, description, symbol, ultimates } = req.body;
     
     if (!name || !description || !symbol) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Name, description, and symbol are required' 
-      });
+      throw new Error('Missing required fields');
     }
-    
-    // Save image file temporarily
-    const imageFile = req.files.image as any;
-    const fileName = `collection-${Date.now()}-${imageFile.name}`;
-    const filePath = path.join(__dirname, '../uploads', fileName);
-    
-    await imageFile.mv(filePath);
-    
-    // Upload image to Pinata
-    const imageHash = await uploadFileToPinata(filePath, fileName);
-    const imageUrl = `${IPFS_GATEWAY}${imageHash}`;
-    
-    // Generate a unique ID for the collection
+
+    // Upload image to IPFS via Pinata
+    const ipfsHash = await uploadFileToPinata(uploadedFilePath, req.file.originalname);
+    const imageUrl = `${IPFS_GATEWAY}${ipfsHash}`;
+
+    // Create new collection
     const collectionId = uuidv4();
-    
-    // Create collection in database
     const newCollection = new Collection({
       collectionId,
       name,
       description,
       symbol,
       imageUrl,
-      creator
+      creator: AUTHORIZED_MINTER,
+      ultimates: ultimates === 'true' || ultimates === true
     });
-    
+
     await newCollection.save();
     
-    // Remove temporary file
-    fs.unlinkSync(filePath);
-    
-    res.json({
-      success: true,
-      collection: {
-        collectionId,
-        name,
-        description,
-        symbol,
-        imageUrl,
-        creator
-      }
+    res.status(200).json({ 
+      success: true, 
+      collection: newCollection 
     });
   } catch (error) {
     console.error('Error creating collection:', error);
-    res.status(500).json({ success: false, message: 'Error creating collection' });
+    res.status(500).json({ 
+      error: 'Failed to create collection',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  } finally {
+    // Clean up the uploaded file in the finally block
+    if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+      try {
+        fs.unlinkSync(uploadedFilePath);
+      } catch (cleanupError) {
+        console.error('Error cleaning up uploaded file:', cleanupError);
+      }
+    }
   }
-});
+};
+
+router.post('/create', upload.single('image'), createCollection);
 
 // Endpoint to get all collections
-router.get('/', async (_req: Request, res: Response) => {
+const getAllCollections = async (_req: Request, res: Response): Promise<void> => {
   try {
     let collections = [];
     try {
       collections = await Collection.find();
     } catch (dbError) {
       console.warn('MongoDB error when fetching collections:', dbError);
-      // Return mock data if MongoDB is not available
       collections = [
         {
           collectionId: 'mock-collection-1',
@@ -161,17 +193,20 @@ router.get('/', async (_req: Request, res: Response) => {
     console.error('Error fetching collections:', error);
     res.status(500).json({ success: false, message: 'Error fetching collections' });
   }
-});
+};
+
+router.get('/', getAllCollections);
 
 // Endpoint to get a specific collection
-router.get('/:collectionId', async (req: Request, res: Response) => {
+const getCollection = async (req: GetCollectionRequest, res: Response): Promise<void> => {
   try {
     const { collectionId } = req.params;
     
     const collection = await Collection.findOne({ collectionId });
     
     if (!collection) {
-      return res.status(404).json({ success: false, message: 'Collection not found' });
+      res.status(404).json({ success: false, message: 'Collection not found' });
+      return;
     }
     
     res.json({
@@ -182,10 +217,12 @@ router.get('/:collectionId', async (req: Request, res: Response) => {
     console.error('Error fetching collection:', error);
     res.status(500).json({ success: false, message: 'Error fetching collection' });
   }
-});
+};
+
+router.get('/:collectionId', getCollection);
 
 // Endpoint to get collections by creator
-router.get('/creator/:creator', async (req: Request, res: Response) => {
+const getCollectionsByCreator = async (req: GetCollectionsByCreatorRequest, res: Response): Promise<void> => {
   try {
     const { creator } = req.params;
     
@@ -199,6 +236,8 @@ router.get('/creator/:creator', async (req: Request, res: Response) => {
     console.error('Error fetching collections by creator:', error);
     res.status(500).json({ success: false, message: 'Error fetching collections by creator' });
   }
-});
+};
+
+router.get('/creator/:creator', getCollectionsByCreator);
 
 export default router; 

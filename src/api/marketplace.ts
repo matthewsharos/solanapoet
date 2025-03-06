@@ -1,28 +1,26 @@
-import { 
-  Connection, 
-  Transaction, 
-  PublicKey, 
-  LAMPORTS_PER_SOL, 
-  SystemProgram, 
-  TransactionInstruction, 
-  sendAndConfirmTransaction, 
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  TransactionInstruction,
+  sendAndConfirmTransaction,
   Commitment,
   TransactionSignature,
-  VersionedTransaction
+  VersionedTransaction,
+  Keypair,
 } from '@solana/web3.js';
-import { 
+
+import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction
 } from '@solana/spl-token';
+
 import { WalletContextState } from '@solana/wallet-adapter-react';
-import { Keypair } from '@solana/web3.js';
-import { isOriginalSeller } from './escrow';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { getListing } from '../api/storage';
+import { fetchListing } from './market/listings';
 import { sendTransactionWithFallback } from './transactionHelpers';
+import { isOriginalSeller } from './escrow';
 import bs58 from 'bs58';
 import { callPurchaseSuccessPopupCallback } from './purchaseCallbacks';
 import { createSheetsClient, GOOGLE_SHEETS_CONFIG } from './googleSheetsConfig';
@@ -33,12 +31,6 @@ interface TransactionOptions {
   skipPreflight?: boolean;
   preflightCommitment?: Commitment;
   maxRetries?: number;
-}
-
-interface TransactionResponse {
-  signature: TransactionSignature;
-  success: boolean;
-  error?: any;
 }
 
 interface WalletInterface {
@@ -53,9 +45,16 @@ interface WalletInterface {
   connected?: boolean;
 }
 
-type NFTWithObjectOwner = Omit<NFT, 'owner'> & {
+interface NFTWithObjectOwner extends Omit<NFT, 'owner'> {
   owner: string | NFTOwner;
-};
+  ownerAddress?: string;
+}
+
+interface TransactionResponse {
+  signature: TransactionSignature;
+  success: boolean;
+  error?: any;
+}
 
 interface StoredListing {
   price: number;

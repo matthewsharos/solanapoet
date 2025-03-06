@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "outDir": "dist/server",
+    "noEmit": false,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src/server/**/*"],
+  "exclude": ["node_modules", "dist", "src/client"]
+} 

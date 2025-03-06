@@ -1,23 +1,13 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+import { Request, Response } from 'express';
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req: Request, res: Response) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Fetch SOL price from CoinGecko API
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd'
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch SOL price');
-    }
-
+    // Fetch SOL price from a reliable source
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
     const data = await response.json();
     const solPrice = data.solana.usd;
 

@@ -1,4 +1,4 @@
-import express, { Router, Request, Response } from 'express';
+import express, { Request, Response, Router } from 'express';
 import { getOAuth2Client } from '../utils/google';
 import dotenv from 'dotenv';
 
@@ -13,32 +13,21 @@ if (!AUTHORIZED_MINTER) {
   console.warn('WARNING: AUTHORIZED_MINTER environment variable is not set. No wallet will be authorized to mint NFTs.');
 }
 
+type CheckMinterParams = {
+  walletAddress: string;
+};
+
 // Check if a wallet is authorized to mint NFTs
-router.get('/check-minter/:walletAddress', async (req: Request, res: Response) => {
-  try {
-    const { walletAddress } = req.params;
-    
-    if (!walletAddress) {
-      return res.status(400).json({
-        success: false,
-        message: 'Wallet address is required'
-      });
-    }
-    
-    // Check if the wallet address is in the list of authorized minters
-    const isAuthorized = walletAddress === AUTHORIZED_MINTER;
-    
-    return res.json({
-      success: true,
-      isAuthorized
-    });
-  } catch (error) {
-    console.error('Error checking minter authorization:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error while checking authorization'
-    });
+router.get<CheckMinterParams>('/check-minter/:walletAddress', (req: Request<CheckMinterParams>, res: Response): void => {
+  const { walletAddress } = req.params;
+  
+  if (!walletAddress) {
+    res.status(400).json({ error: 'Wallet address is required' });
+    return;
   }
+
+  const isAuthorized = walletAddress.toLowerCase() === AUTHORIZED_MINTER.toLowerCase();
+  res.json({ isAuthorized });
 });
 
 router.post('/google', async (req: Request, res: Response) => {

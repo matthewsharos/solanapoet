@@ -1,4 +1,4 @@
-import express, { Request, Response, Application } from 'express';
+import express, { Request, Response, Application, RequestHandler } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -197,12 +197,12 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // Add check-seller endpoint
-app.post('/check-seller', async (req: Request, res: Response) => {
+const checkSellerHandler = async (req: Request<{}, CheckSellerResponse, CheckSellerRequest>, res: Response): Promise<void> => {
   try {
     console.log('Check seller request received:', req.body);
     
     // Validate request parameters
-    const { nftAddress, walletAddress } = req.body as CheckSellerRequest;
+    const { nftAddress, walletAddress } = req.body;
     
     if (!nftAddress || !walletAddress) {
       const response: CheckSellerResponse = {
@@ -210,7 +210,8 @@ app.post('/check-seller', async (req: Request, res: Response) => {
         isOriginalSeller: false,
         message: 'Missing required parameters: nftAddress and walletAddress are required'
       };
-      return res.status(400).json(response);
+      res.status(400).json(response);
+      return;
     }
     
     // Special case for royalty receiver
@@ -222,7 +223,8 @@ app.post('/check-seller', async (req: Request, res: Response) => {
         isOriginalSeller: true,
         message: 'Royalty receiver is always verified as seller'
       };
-      return res.status(200).json(response);
+      res.status(200).json(response);
+      return;
     }
     
     // Use the verifySellerAddress function from googleSheets.js
@@ -237,7 +239,8 @@ app.post('/check-seller', async (req: Request, res: Response) => {
       isOriginalSeller,
       message: isOriginalSeller ? 'Wallet is verified as the original seller' : 'Wallet is not the original seller'
     };
-    return res.status(200).json(response);
+    res.status(200).json(response);
+    return;
   } catch (error) {
     console.error('Error checking seller:', error);
     const response: CheckSellerResponse = {
@@ -245,9 +248,12 @@ app.post('/check-seller', async (req: Request, res: Response) => {
       isOriginalSeller: false,
       message: `Error checking seller: ${error instanceof Error ? error.message : String(error)}`
     };
-    return res.status(500).json(response);
+    res.status(500).json(response);
+    return;
   }
-});
+};
+
+app.post('/check-seller', checkSellerHandler);
 
 // MongoDB connection
 let cachedDb: typeof mongoose | null = null;

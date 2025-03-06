@@ -19,7 +19,7 @@ import { NFT } from '../types/nft';
 
 // Replace with your actual marketplace program ID
 const MARKETPLACE_PROGRAM_ID = new PublicKey(
-  import.meta.env.VITE_MARKETPLACE_PROGRAM_ID || 
+  process.env.VITE_MARKETPLACE_PROGRAM_ID || 
   '11111111111111111111111111111111' // Default to System Program as fallback
 );
 
@@ -44,7 +44,7 @@ export const getEscrowAccount = async (
   nftMint: PublicKey,
   seller: PublicKey
 ): Promise<[PublicKey, number]> => {
-  return PublicKey.findProgramAddress(
+  return PublicKey.findProgramAddressSync(
     [
       Buffer.from('escrow'),
       nftMint.toBuffer(),

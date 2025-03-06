@@ -1,20 +1,72 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Request, Response, Router, RequestHandler } from 'express';
+import fileUpload, { UploadedFile, FileArray } from 'express-fileupload';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
-import { UploadedFile } from 'express-fileupload';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import FormData from 'form-data';
 import NFT from '../models/NFT';
 import Collection from '../models/Collection';
 import { google } from 'googleapis';
 import { getSheetValues } from '../sheets';
 
+// Define interfaces for our responses and requests
+interface HeliusResponse {
+  result?: HeliusNFTData;
+  data?: HeliusNFTData[];
+}
+
+interface HeliusNFTData {
+  id: string;
+  content: {
+    metadata: {
+      name: string;
+      symbol: string;
+      description: string;
+      files: Array<{ uri: string; type: string }>;
+      attributes: Array<{ trait_type: string; value: string }>;
+    };
+    files?: Array<{ uri: string; type: string }>;
+    links: {
+      image: string;
+    };
+  };
+  metadata: Record<string, unknown>;
+  owner: string;
+  ownership?: {
+    owner: string;
+    [key: string]: any;
+  };
+  grouping?: Array<any>;
+}
+
+interface NFTCacheEntry {
+  data: HeliusNFTData;
+  timestamp: number;
+}
+
+interface PinataResponse {
+  IpfsHash: string;
+  PinSize: number;
+  Timestamp: string;
+}
+
+interface FileRequest extends Omit<Request, 'files'> {
+  files?: {
+    [key: string]: UploadedFile;
+  } | null;
+}
+
 dotenv.config();
 
-const router = express.Router();
+const router = Router();
+
+// Configure file upload middleware
+router.use(fileUpload({
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size
+  abortOnLimit: true
+}));
 
 // Environment variables
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
@@ -33,11 +85,11 @@ if (!AUTHORIZED_MINTER) {
 }
 
 // Add cache for NFT data
-const NFT_CACHE = new Map();
+const NFT_CACHE = new Map<string, NFTCacheEntry>();
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
 // Helper function to get cached NFT data
-const getCachedNFTData = (mintAddress: string) => {
+const getCachedNFTData = (mintAddress: string): HeliusNFTData | null => {
   const cached = NFT_CACHE.get(mintAddress);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
     return cached.data;
@@ -46,7 +98,7 @@ const getCachedNFTData = (mintAddress: string) => {
 };
 
 // Helper function to cache NFT data
-const cacheNFTData = (mintAddress: string, data: any) => {
+const cacheNFTData = (mintAddress: string, data: HeliusNFTData): void => {
   NFT_CACHE.set(mintAddress, {
     data,
     timestamp: Date.now()
@@ -54,10 +106,10 @@ const cacheNFTData = (mintAddress: string, data: any) => {
 };
 
 // Helper function to fetch NFT data from Helius with retries
-const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<any> => {
+const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<HeliusNFTData> => {
   try {
     // First try the RPC API
-    const rpcResponse = await axios.post(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
+    const rpcResponse = await axios.post<HeliusResponse>(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
       jsonrpc: "2.0",
       id: "my-id",
       method: "getAsset",
@@ -71,12 +123,16 @@ const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<any> =
     }
 
     // If RPC API returns no data, try the metadata API
-    const metadataResponse = await axios.post(`https://api.helius.xyz/v0/tokens/metadata?api-key=${HELIUS_API_KEY}`, {
+    const metadataResponse = await axios.post<HeliusResponse>(`https://api.helius.xyz/v0/tokens/metadata?api-key=${HELIUS_API_KEY}`, {
       mintAccounts: [mintAddress]
     });
 
-    return metadataResponse.data[0];
-  } catch (error: any) {
+    if (!metadataResponse.data.data?.[0]) {
+      throw new Error('No metadata found');
+    }
+
+    return metadataResponse.data.data[0];
+  } catch (error) {
     if (retries > 0) {
       const delay = Math.min(2000 * Math.pow(2, 3 - retries), 8000);
       console.log(`Retrying Helius API fetch for ${mintAddress}, ${retries} attempts remaining. Waiting ${delay}ms...`);
@@ -106,7 +162,7 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
     formData.append('pinataOptions', options);
     
     // Upload to Pinata
-    const response = await axios.post(
+    const response = await axios.post<PinataResponse>(
       'https://api.pinata.cloud/pinning/pinFileToIPFS',
       formData,
       {
@@ -126,9 +182,9 @@ const uploadFileToPinata = async (filePath: string, fileName: string): Promise<s
 };
 
 // Helper function to upload metadata to Pinata
-const uploadMetadataToPinata = async (metadata: any): Promise<string> => {
+const uploadMetadataToPinata = async (metadata: Record<string, unknown>): Promise<string> => {
   try {
-    const response = await axios.post(
+    const response = await axios.post<PinataResponse>(
       'https://api.pinata.cloud/pinning/pinJSONToIPFS',
       metadata,
       {
@@ -160,14 +216,14 @@ router.get('/auth-check', (req: Request, res: Response) => {
 });
 
 // Endpoint to upload NFT image
-router.post('/upload-image', async (req: Request, res: Response) => {
+const uploadImageHandler = async (req: FileRequest, res: Response): Promise<void> => {
   try {
-    if (!req.files || Object.keys(req.files).length === 0) {
-      res.status(400).json({ success: false, message: 'No files were uploaded' });
+    const imageFile = req.files?.image as UploadedFile | undefined;
+    if (!imageFile) {
+      res.status(400).json({ success: false, message: 'No image file was uploaded' });
       return;
     }
 
-    const image = req.files.image as UploadedFile;
     const uploadDir = path.join(__dirname, '../../../uploads');
     
     // Create directory if it doesn't exist
@@ -175,11 +231,11 @@ router.post('/upload-image', async (req: Request, res: Response) => {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     
-    const fileName = `${uuidv4()}${path.extname(image.name)}`;
+    const fileName = `${uuidv4()}${path.extname(imageFile.name)}`;
     const filePath = path.join(uploadDir, fileName);
     
     // Move the file to the uploads directory
-    await image.mv(filePath);
+    await imageFile.mv(filePath);
     
     res.json({ 
       success: true, 
@@ -190,11 +246,16 @@ router.post('/upload-image', async (req: Request, res: Response) => {
     console.error('Error uploading image:', error);
     res.status(500).json({ success: false, message: 'Error uploading image' });
   }
-});
+};
 
-// Endpoint to mint a new NFT
-router.post('/mint', async (req: Request, res: Response) => {
+const uploadHandler = async (req: FileRequest, res: Response): Promise<void> => {
   try {
+    const imageFile = req.files?.image as UploadedFile | undefined;
+    if (!imageFile) {
+      res.status(400).json({ error: 'No image file was uploaded' });
+      return;
+    }
+
     // Check if user is authorized to mint
     const { walletAddress } = req.body;
     
@@ -202,15 +263,6 @@ router.post('/mint', async (req: Request, res: Response) => {
       res.status(403).json({ 
         success: false, 
         message: 'Not authorized to mint NFTs' 
-      });
-      return;
-    }
-    
-    // Check if image file is provided
-    if (!req.files || !req.files.image) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Image file is required' 
       });
       return;
     }
@@ -227,12 +279,9 @@ router.post('/mint', async (req: Request, res: Response) => {
     }
     
     // Parse attributes if they're provided as a string
-    let parsedAttributes = [];
-    if (attributes) {
-      parsedAttributes = typeof attributes === 'string' 
-        ? JSON.parse(attributes) 
-        : attributes;
-    }
+    const parsedAttributes = attributes 
+      ? (typeof attributes === 'string' ? JSON.parse(attributes) : attributes)
+      : [];
     
     // Check if collection exists
     const collection = await Collection.findOne({ collectionId });
@@ -246,7 +295,6 @@ router.post('/mint', async (req: Request, res: Response) => {
     }
     
     // Save image file temporarily
-    const imageFile = req.files.image as any;
     const fileName = `${Date.now()}-${imageFile.name}`;
     const filePath = path.join(__dirname, '../uploads', fileName);
     
@@ -320,10 +368,35 @@ router.post('/mint', async (req: Request, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('Error minting NFT:', error);
-    res.status(500).json({ success: false, message: 'Error minting NFT' });
+    console.error('Error handling upload:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
-});
+};
+
+router.post('/upload-image', uploadImageHandler as RequestHandler);
+router.post('/upload', uploadHandler as RequestHandler);
+
+router.post('/mint', (async (req: FileRequest, res: Response) => {
+  try {
+    if (!req.files) {
+      res.status(400).json({ error: 'No files were uploaded' });
+      return;
+    }
+
+    const files = req.files;
+    if (!files.image) {
+      res.status(400).json({ error: 'No image file uploaded' });
+      return;
+    }
+
+    const imageFile = files.image;
+    
+    // ... rest of the code ...
+  } catch (error) {
+    console.error('Error minting NFT:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}) as RequestHandler);
 
 // Endpoint to get all NFTs
 router.get('/', async (_req: Request, res: Response) => {
@@ -502,18 +575,30 @@ router.get('/helius/:mintAddress', async (req: Request, res: Response) => {
     const grouping = nftData.grouping || [];
     const collection = grouping.find((g: any) => g.group_key === 'collection')?.group_value;
 
-    const nftResponse = {
-      mint: mintAddress,
-      name: metadata.name || ultimateData?.name || 'Unknown NFT',
-      symbol: metadata.symbol,
-      description: metadata.description,
-      image: files[0]?.uri || content.links?.image || '',
-      attributes: metadata.attributes,
-      owner: {
-        publicKey: ultimateData?.owner || ownership.owner,
-        displayName: ownerDisplayName
+    const ownerAddress = ultimateData?.owner || (ownership && 'owner' in ownership ? ownership.owner : '');
+
+    const nftResponse: HeliusNFTData = {
+      id: mintAddress,
+      content: {
+        metadata: {
+          name: metadata.name || ultimateData?.name || 'Unknown NFT',
+          symbol: metadata.symbol || '',
+          description: metadata.description || '',
+          files: files.map(f => ({ uri: f.uri, type: f.type })),
+          attributes: metadata.attributes || []
+        },
+        files,
+        links: {
+          image: files[0]?.uri || content.links?.image || ''
+        }
       },
-      collection: ultimateData?.collection_id || collection
+      metadata: {},
+      owner: ownerAddress,
+      ownership: {
+        owner: ownerAddress,
+        ...(ownership as Record<string, any>)
+      },
+      grouping: grouping || []
     };
 
     // Cache the response

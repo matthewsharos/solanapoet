@@ -126,7 +126,15 @@ interface Collection {
   name: string;
   firstNftDate: string;
   createdAt: string;
-  ultimates: boolean; // We convert to boolean for UI purposes
+  ultimates: boolean;
+}
+
+interface CollectionResponse {
+  collectionId: string;
+  name: string;
+  firstNftDate: string;
+  createdAt: string;
+  ultimates: string | boolean | string[];
 }
 
 const CollectionManager: React.FC = () => {
@@ -180,17 +188,16 @@ const CollectionManager: React.FC = () => {
       // Map API collection format to our component's collection format
       const formattedCollections = collectionsData.map(collection => {
         // Convert ultimates to boolean
-        const ultimatesValue = collection.ultimates === true || collection.ultimates === 'TRUE';
+        const ultimatesValue = collection.ultimates === true || 
+          (typeof collection.ultimates === 'string' && String(collection.ultimates).toUpperCase() === 'TRUE');
 
-        const mappedCollection: Collection = {
+        return {
           collectionId: collection.address,
           name: collection.name,
           firstNftDate: collection.creationDate || (collection.addedAt ? new Date(collection.addedAt).toISOString() : new Date().toISOString()),
           createdAt: collection.addedAt ? new Date(collection.addedAt).toISOString() : new Date().toISOString(),
           ultimates: ultimatesValue
-        };
-
-        return mappedCollection;
+        } as Collection;
       });
       
       // Ensure we're not setting the same collections array reference
@@ -639,22 +646,32 @@ const CollectionManager: React.FC = () => {
   
   const handleFilterChange = async (collection: Collection, ultimates: string[]) => {
     try {
-      const success = await updateCollectionUltimates(collection.collectionId, ultimates);
-      if (success) {
-        setSuccess('Collection ultimates updated successfully!');
-        // Update local state
-        setCollections(collections.map(c => 
-          c.collectionId === collection.collectionId 
-            ? { ...c, ultimates } 
-            : c
-        ));
-      } else {
-        setError('Failed to update collection ultimates.');
-      }
+      // Update collection with new ultimates
+      const updatedCollection = {
+        ...collection,
+        ultimates: ultimates.length > 0
+      };
+
+      // Update local state
+      setCollections(collections.map(c =>
+        c.collectionId === collection.collectionId
+          ? updatedCollection
+          : c
+      ));
+
+      // Update backend
+      await updateCollectionUltimates(collection.collectionId, ultimates);
+      setSuccess('Collection updated successfully');
     } catch (error) {
-      console.error('Error updating collection ultimates:', error);
-      setError('Failed to update collection ultimates. Please try again.');
+      console.error('Error updating collection:', error);
+      setError('Failed to update collection');
     }
+  };
+  
+  const handleUpdateCollection = (collection: Collection) => {
+    setCollections(collections.map(c => 
+      c.collectionId === collection.collectionId ? collection : c
+    ));
   };
   
   if (!isAuthorizedMinter) {
