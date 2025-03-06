@@ -7,14 +7,19 @@
   "outputDirectory": "dist",
   "builds": [
     {
-      "src": "src/server/**/*.{ts,js}",
-      "use": "@vercel/node@3.0.0"
+      "src": "src/server/index.ts",
+      "use": "@vercel/node@3.0.0",
+      "config": {
+        "includeFiles": ["src/server/**/*"],
+        "nodeVersion": "18.x"
+      }
     },
     {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "dist",
+        "zeroConfig": true
       }
     }
   ],

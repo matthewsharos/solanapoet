@@ -8,7 +8,12 @@
     "allowJs": true,
     "checkJs": false,
     "skipLibCheck": true,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "target": "ESNext",
+    "rootDir": "src/server"
   },
   "include": ["src/server/**/*"],
   "exclude": ["node_modules", "dist", "src/client"]
