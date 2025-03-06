@@ -260,25 +260,33 @@ router.get('/test-config', async (req, res) => {
     authClientCreated: false,
     sheetsApiConnected: false,
     canReadSpreadsheet: false,
-    error: null as string | null
+    error: null as string | null,
+    // Add detailed diagnostics
+    diagnostics: {
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
+      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
+      credentialsPreview: process.env.GOOGLE_CREDENTIALS_JSON ? 
+        `${process.env.GOOGLE_CREDENTIALS_JSON.substring(0, 50)}...` : 'not set',
+      credentialsStructure: null as any
+    }
   };
 
   try {
-    // Step 1: Test credentials parsing
-    try {
-      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}');
-      results.credentialsValid = !!(credentials.client_email && credentials.private_key);
-      
-      // Log credential structure (without sensitive data)
-      console.log('Credentials structure:', {
-        hasClientEmail: !!credentials.client_email,
-        hasPrivateKey: !!credentials.private_key,
+    // Test credentials parsing
+    if (process.env.GOOGLE_CREDENTIALS_JSON) {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+      results.diagnostics.credentialsStructure = {
+        hasType: !!credentials.type,
         type: credentials.type,
-        project_id: credentials.project_id
-      });
-    } catch (e) {
-      results.error = 'Failed to parse credentials JSON';
-      return res.json(results);
+        hasProjectId: !!credentials.project_id,
+        projectId: credentials.project_id,
+        hasClientEmail: !!credentials.client_email,
+        clientEmail: credentials.client_email,
+        hasPrivateKey: !!credentials.private_key,
+        privateKeyPreview: credentials.private_key ? 
+          `${credentials.private_key.substring(0, 50)}...` : 'not set'
+      };
+      results.credentialsValid = !!(credentials.client_email && credentials.private_key);
     }
 
     // Step 2: Test auth client creation
