@@ -251,79 +251,60 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
 
 // Add diagnostic endpoint
 router.get('/test-config', async (req, res) => {
-  const results = {
-    envVarsPresent: {
-      GOOGLE_CREDENTIALS_JSON: !!process.env.GOOGLE_CREDENTIALS_JSON,
-      GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
-    },
-    credentialsValid: false,
-    authClientCreated: false,
-    sheetsApiConnected: false,
-    canReadSpreadsheet: false,
-    error: null as string | null,
-    // Add detailed diagnostics
-    diagnostics: {
-      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
-      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
-      credentialsPreview: process.env.GOOGLE_CREDENTIALS_JSON ? 
-        `${process.env.GOOGLE_CREDENTIALS_JSON.substring(0, 50)}...` : 'not set',
-      credentialsStructure: null as any,
-      rawCredentials: process.env.GOOGLE_CREDENTIALS_JSON || 'not set', // Add raw credentials for debugging
-      parseError: null as string | null
-    }
-  };
-
   try {
-    // Test credentials parsing
+    // First, just log the raw environment variables
+    console.log('Raw environment variables:', {
+      hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+    });
+
+    const results = {
+      envVarsPresent: {
+        GOOGLE_CREDENTIALS_JSON: !!process.env.GOOGLE_CREDENTIALS_JSON,
+        GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+      },
+      credentialsValid: false,
+      authClientCreated: false,
+      sheetsApiConnected: false,
+      canReadSpreadsheet: false,
+      error: null as string | null,
+      diagnostics: {
+        spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
+        credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
+        credentialsFirstChar: process.env.GOOGLE_CREDENTIALS_JSON ? 
+          process.env.GOOGLE_CREDENTIALS_JSON[0] : 'not set',
+        credentialsLastChar: process.env.GOOGLE_CREDENTIALS_JSON ? 
+          process.env.GOOGLE_CREDENTIALS_JSON[process.env.GOOGLE_CREDENTIALS_JSON.length - 1] : 'not set',
+        parseError: null as string | null
+      }
+    };
+
+    // Attempt to parse credentials if present
     if (process.env.GOOGLE_CREDENTIALS_JSON) {
       try {
         const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-        results.diagnostics.credentialsStructure = {
-          hasType: !!credentials.type,
-          type: credentials.type,
-          hasProjectId: !!credentials.project_id,
-          projectId: credentials.project_id,
-          hasClientEmail: !!credentials.client_email,
-          clientEmail: credentials.client_email,
-          hasPrivateKey: !!credentials.private_key,
-          privateKeyPreview: credentials.private_key ? 
-            `${credentials.private_key.substring(0, 50)}...` : 'not set'
-        };
         results.credentialsValid = !!(credentials.client_email && credentials.private_key);
+        results.diagnostics.parseError = null;
       } catch (parseError) {
         results.diagnostics.parseError = parseError instanceof Error ? 
           `JSON Parse Error: ${parseError.message}` : 'Unknown parse error';
         results.error = `Failed to parse credentials: ${results.diagnostics.parseError}`;
-        return res.json(results);
       }
+    } else {
+      results.error = 'GOOGLE_CREDENTIALS_JSON is not set';
     }
 
-    // Step 2: Test auth client creation
-    try {
-      const auth = await getGoogleAuth();
-      results.authClientCreated = true;
-
-      // Step 3: Test Sheets API connection
-      const sheets = google.sheets({ version: 'v4', auth });
-      results.sheetsApiConnected = true;
-
-      // Step 4: Test reading from spreadsheet
-      if (process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
-        const response = await sheets.spreadsheets.values.get({
-          spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-          range: 'collections!A1:A1' // Just try to read a single cell
-        });
-        results.canReadSpreadsheet = true;
-      }
-    } catch (e) {
-      results.error = e instanceof Error ? e.message : 'Unknown error occurred';
-    }
-
-    res.json(results);
+    // Always return a response
+    return res.json(results);
   } catch (error) {
-    console.error('Diagnostic test failed:', error);
-    results.error = error instanceof Error ? error.message : 'Unknown error occurred';
-    res.json(results);
+    // If anything goes wrong, return error info
+    return res.json({
+      error: 'Diagnostic endpoint error',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    });
   }
 });
 
