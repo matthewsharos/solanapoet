@@ -71,9 +71,7 @@ const PORT = process.env.PORT || 3002;
 
 // Middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'development' 
-    ? 'http://localhost:5173' 
-    : ['https://solanapoet.vercel.app', 'https://www.solanapoet.vercel.app'],
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true,
@@ -92,8 +90,14 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     method: req.method,
     body: req.body,
     query: req.query,
-    params: req.params
+    params: req.params,
+    env: {
+      hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      nodeEnv: process.env.NODE_ENV
+    }
   });
+  
   if (!res.headersSent) {
     res.status(500).json({
       error: {
@@ -126,7 +130,6 @@ app.use('/api/drive', driveRoutes);
 console.log('API routes registered');
 
 // Pass environment variables to the client
-app.get('/api/config', async (req, res) => {
   try {
     // Debug log all relevant environment variables
     console.log('Environment variables state:', {
