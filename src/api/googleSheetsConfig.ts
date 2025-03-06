@@ -4,7 +4,7 @@ import { API_BASE_URL } from './config';
 
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
+  spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Use hardcoded ID for now
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',
@@ -16,8 +16,8 @@ export const GOOGLE_SHEETS_CONFIG = {
 // Log environment variables for debugging
 console.log('Google Sheets Config:', {
   spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-  apiKeyExists: !!process.env.GOOGLE_API_KEY,
-  apiKeyLength: process.env.GOOGLE_API_KEY?.length,
+  sheets: GOOGLE_SHEETS_CONFIG.sheets,
+  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
   hasSpreadsheetId: !!process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID
 });
 

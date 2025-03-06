@@ -17,34 +17,43 @@ export const getGoogleAuth = async (): Promise<OAuth2Client> => {
   try {
     let credentials;
     
-    if (process.env.NODE_ENV === 'production') {
-      // In production (Vercel), use environment variables
-      if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-        throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
-      }
-      console.log('Using production credentials from environment variable');
+    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
+      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+    }
+
+    try {
+      console.log('Parsing Google credentials from environment variable...');
       credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-      console.log('Credentials loaded successfully:', {
+      console.log('Credentials parsed successfully:', {
         type: credentials.type,
         project_id: credentials.project_id,
         client_email: credentials.client_email
       });
-    } else {
-      // In development, use the credentials file
-      const credentialsPath = path.join(process.cwd(), 'credentials.json');
-      console.log('Using development credentials from file:', credentialsPath);
-      credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf-8'));
+    } catch (parseError) {
+      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', parseError);
+      throw new Error('Invalid GOOGLE_CREDENTIALS_JSON format');
     }
     
+    if (!credentials.client_email || !credentials.private_key) {
+      console.error('Missing required credential fields:', {
+        hasClientEmail: !!credentials.client_email,
+        hasPrivateKey: !!credentials.private_key
+      });
+      throw new Error('Invalid credentials: missing client_email or private_key');
+    }
+    
+    console.log('Creating Google auth client...');
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
     });
     
-    console.log('Google auth initialized successfully');
-    return auth.getClient() as Promise<OAuth2Client>;
+    console.log('Getting auth client...');
+    const client = await auth.getClient() as OAuth2Client;
+    console.log('Google auth client created successfully');
+    return client;
   } catch (error) {
-    console.error('Error loading Google credentials:', error);
+    console.error('Error in getGoogleAuth:', error);
     throw error;
   }
 };
@@ -137,8 +146,10 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
 const getSheetDataHandler: RequestHandler = async (req, res) => {
   try {
     const sheetName = req.params.sheetName;
+    console.log('Fetching sheet data for:', sheetName);
     
     if (!GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets]) {
+      console.error('Invalid sheet name requested:', sheetName);
       res.status(400).json({
         success: false,
         error: 'Invalid sheet name'
@@ -147,13 +158,23 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
     }
 
     // Initialize Google auth
+    console.log('Getting Google auth...');
     const auth = await getGoogleAuth();
+    console.log('Creating sheets client...');
     const sheets = google.sheets({ version: 'v4', auth });
 
+    const spreadsheetId = GOOGLE_SHEETS_CONFIG.spreadsheetId;
+    console.log('Using spreadsheet ID:', spreadsheetId);
+
     // Get sheet data
+    console.log('Fetching data from sheet...');
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets],
+    });
+
+    console.log('Data fetched successfully:', {
+      rowCount: response.data.values?.length || 0
     });
 
     res.json({
@@ -161,10 +182,11 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
       data: response.data.values || []
     });
   } catch (error) {
-    console.error('Error fetching sheet data:', error);
+    console.error('Error in getSheetDataHandler:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch sheet data'
+      error: error instanceof Error ? error.message : 'Failed to fetch sheet data',
+      details: error instanceof Error ? error.stack : undefined
     });
   }
 };
