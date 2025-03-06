@@ -22,10 +22,17 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
       if (!process.env.GOOGLE_CREDENTIALS_JSON) {
         throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
       }
+      console.log('Using production credentials from environment variable');
       credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+      console.log('Credentials loaded successfully:', {
+        type: credentials.type,
+        project_id: credentials.project_id,
+        client_email: credentials.client_email
+      });
     } else {
       // In development, use the credentials file
       const credentialsPath = path.join(process.cwd(), 'credentials.json');
+      console.log('Using development credentials from file:', credentialsPath);
       credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf-8'));
     }
     
@@ -34,10 +41,37 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
     
+    console.log('Google auth initialized successfully');
     return auth.getClient() as Promise<OAuth2Client>;
   } catch (error) {
     console.error('Error loading Google credentials:', error);
     throw error;
+  }
+};
+
+// Get display names
+const getDisplayNamesHandler: RequestHandler = async (req, res) => {
+  try {
+    // Initialize Google auth
+    const auth = await getGoogleAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Get display names
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
+    });
+
+    res.json({
+      success: true,
+      data: response.data.values || []
+    });
+  } catch (error) {
+    console.error('Error fetching display names:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch display names'
+    });
   }
 };
 
@@ -135,6 +169,7 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
   }
 };
 
+router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
 
