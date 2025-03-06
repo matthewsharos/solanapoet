@@ -1,5 +1,7 @@
 import { sheets_v4 } from '@googleapis/sheets';
 import { google } from 'googleapis';
+import { GaxiosPromise } from 'gaxios';
+import { OAuth2Client } from 'google-auth-library';
 
 // Log environment variables for debugging
 console.log('Initializing Google Sheets Config:', {
@@ -69,7 +71,7 @@ export interface SheetsClient {
 }
 
 // Create sheets client
-export const createSheetsClient = async (): Promise<SheetsClient> => {
+export const createSheetsClient = async () => {
   try {
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
       throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
@@ -82,7 +84,7 @@ export const createSheetsClient = async (): Promise<SheetsClient> => {
     });
 
     const client = await auth.getClient();
-    return google.sheets({ version: 'v4', auth: client });
+    return google.sheets({ version: 'v4', auth: client as OAuth2Client });
   } catch (error) {
     console.error('Error creating sheets client:', error);
     throw error;
