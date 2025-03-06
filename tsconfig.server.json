@@ -13,8 +13,8 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "target": "ESNext",
-    "rootDir": "src/server"
+    "rootDir": "src"
   },
-  "include": ["src/server/**/*"],
+  "include": ["src/server/**/*", "src/api/**/*"],
   "exclude": ["node_modules", "dist", "src/client"]
 } 
