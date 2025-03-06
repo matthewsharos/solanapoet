@@ -5,14 +5,14 @@ import { OAuth2Client } from 'google-auth-library';
 
 // Log environment variables for debugging
 console.log('Initializing Google Sheets Config:', {
-  hasSpreadsheetId: !!process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
+  hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
   environment: process.env.NODE_ENV
 });
 
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Fallback to default ID
+  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Fallback to default ID
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',

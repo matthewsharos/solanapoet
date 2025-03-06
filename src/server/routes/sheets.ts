@@ -42,7 +42,7 @@ const getDisplayNamesHandler: RequestHandler = async (req, res) => {
 
     // Get display names
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
     });
 
@@ -78,7 +78,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
 
     // Get existing display names
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
     });
 
@@ -88,7 +88,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
     if (rowIndex === -1) {
       // Add new row
       await sheets.spreadsheets.values.append({
-        spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
         range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
         valueInputOption: 'RAW',
         requestBody: {
@@ -98,7 +98,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
     } else {
       // Update existing row
       await sheets.spreadsheets.values.update({
-        spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
         range: `${GOOGLE_SHEETS_CONFIG.sheets.displayNames}!A${rowIndex + 1}:B${rowIndex + 1}`,
         valueInputOption: 'RAW',
         requestBody: {
@@ -123,7 +123,7 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
     const sheetName = req.params.sheetName;
     console.log('Fetching sheet data for:', sheetName, {
       hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
-      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       environment: process.env.NODE_ENV,
       configSheets: GOOGLE_SHEETS_CONFIG.sheets
     });
@@ -143,7 +143,7 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
     console.log('Creating sheets client...');
     const sheets = google.sheets({ version: 'v4', auth });
 
-    const spreadsheetId = process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId;
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId;
     console.log('Using spreadsheet ID:', spreadsheetId);
 
     // Get sheet data
