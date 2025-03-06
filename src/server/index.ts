@@ -11,6 +11,8 @@ import sheetsRouter from './api/sheets';
 import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
 import displayNamesRouter from './routes/displayNames';
+import sheetsRoutes from './routes/sheets';
+import driveRoutes from './routes/drive';
 
 // Get current directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +103,8 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/drive', driveRouter);
 app.use('/api/sheets', sheetsRouter);
 app.use('/api/display-names', displayNamesRouter);
+app.use('/api/sheets', sheetsRoutes);
+app.use('/api/drive', driveRoutes);
 console.log('API routes registered');
 
 // Add catch-all route for debugging
@@ -348,4 +352,10 @@ export {
   addListing,
   validCollections,
   currentListings
-}; 
+};
+
+// Error handling middleware
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+}); 

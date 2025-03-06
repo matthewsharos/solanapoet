@@ -13,7 +13,7 @@ interface UpdateDisplayNameRequest {
 }
 
 // Helper function to get Google Sheets auth
-const getGoogleAuth = async (): Promise<OAuth2Client> => {
+export const getGoogleAuth = async (): Promise<OAuth2Client> => {
   try {
     let credentials;
     
@@ -38,7 +38,7 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
     
     const auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
     });
     
     console.log('Google auth initialized successfully');

@@ -79,3 +79,7 @@ lerna-debug.log*
 # Vite
 .vite/
 .vercel
+
+# Temporary uploads
+/uploads
+**/uploads/
