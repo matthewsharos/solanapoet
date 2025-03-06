@@ -267,26 +267,35 @@ router.get('/test-config', async (req, res) => {
       credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
       credentialsPreview: process.env.GOOGLE_CREDENTIALS_JSON ? 
         `${process.env.GOOGLE_CREDENTIALS_JSON.substring(0, 50)}...` : 'not set',
-      credentialsStructure: null as any
+      credentialsStructure: null as any,
+      rawCredentials: process.env.GOOGLE_CREDENTIALS_JSON || 'not set', // Add raw credentials for debugging
+      parseError: null as string | null
     }
   };
 
   try {
     // Test credentials parsing
     if (process.env.GOOGLE_CREDENTIALS_JSON) {
-      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-      results.diagnostics.credentialsStructure = {
-        hasType: !!credentials.type,
-        type: credentials.type,
-        hasProjectId: !!credentials.project_id,
-        projectId: credentials.project_id,
-        hasClientEmail: !!credentials.client_email,
-        clientEmail: credentials.client_email,
-        hasPrivateKey: !!credentials.private_key,
-        privateKeyPreview: credentials.private_key ? 
-          `${credentials.private_key.substring(0, 50)}...` : 'not set'
-      };
-      results.credentialsValid = !!(credentials.client_email && credentials.private_key);
+      try {
+        const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        results.diagnostics.credentialsStructure = {
+          hasType: !!credentials.type,
+          type: credentials.type,
+          hasProjectId: !!credentials.project_id,
+          projectId: credentials.project_id,
+          hasClientEmail: !!credentials.client_email,
+          clientEmail: credentials.client_email,
+          hasPrivateKey: !!credentials.private_key,
+          privateKeyPreview: credentials.private_key ? 
+            `${credentials.private_key.substring(0, 50)}...` : 'not set'
+        };
+        results.credentialsValid = !!(credentials.client_email && credentials.private_key);
+      } catch (parseError) {
+        results.diagnostics.parseError = parseError instanceof Error ? 
+          `JSON Parse Error: ${parseError.message}` : 'Unknown parse error';
+        results.error = `Failed to parse credentials: ${results.diagnostics.parseError}`;
+        return res.json(results);
+      }
     }
 
     // Step 2: Test auth client creation
