@@ -1,4 +1,4 @@
-import express, { Request, Response, Application, RequestHandler } from 'express';
+import express, { Request, Response, Application, RequestHandler, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
@@ -53,19 +53,21 @@ interface Listing {
 // Load environment variables first
 dotenv.config();
 
-console.log('Environment variables:', {
-  PORT: process.env.PORT,
+// Debug environment variables
+console.log('Server starting with environment:', {
   NODE_ENV: process.env.NODE_ENV,
-  MONGO_URI: process.env.MONGO_URI,
-  GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
-  GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  PORT: process.env.PORT,
+  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  hasDriveFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
+  hasFrontendUrl: !!process.env.FRONTEND_URL,
   hasHeliusApiKey: !!process.env.VITE_HELIUS_API_KEY,
   hasSolanaRpcUrl: !!process.env.VITE_SOLANA_RPC_URL
 });
 
 // Create Express app
 const app: Application = express();
-const PORT = 3002; // Force port 3002
+const PORT = process.env.PORT || 3002;
 
 // Middleware
 app.use(cors({
@@ -74,6 +76,19 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
+// Add error handling middleware at the top
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('Global error handler caught:', err);
+  if (!res.headersSent) {
+    res.status(500).json({
+      error: 'Internal server error',
+      message: err instanceof Error ? err.message : 'Unknown error occurred'
+    });
+  }
+  next(err);
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

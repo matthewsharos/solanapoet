@@ -20,11 +20,24 @@ export const GOOGLE_SHEETS_CONFIG = {
 // Initialize config from API
 const initializeConfig = async () => {
   try {
+    console.log('Initializing Google Sheets config...');
     const response = await fetch('/api/config');
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      console.error('Config API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
+      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
     }
+
     const config = await response.json();
+    console.log('Received config:', {
+      hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID
+    });
     
     if (!config.GOOGLE_SHEETS_SPREADSHEET_ID) {
       console.warn('No spreadsheet ID found in config');
@@ -36,6 +49,7 @@ const initializeConfig = async () => {
     console.log('Google Sheets config initialized successfully');
   } catch (error) {
     console.error('Failed to initialize config:', error);
+    throw error;
   }
 };
 
@@ -202,6 +216,7 @@ const getSheetRange = (sheetName: string) => {
  */
 export const get = async (sheetName: string): Promise<SheetResponse> => {
   try {
+    console.log(`Fetching sheet data for: ${sheetName}`);
     const response = await fetch(`${API_BASE_URL}/api/sheets/${sheetName}`);
     
     if (response.status === 429) {
@@ -216,15 +231,22 @@ export const get = async (sheetName: string): Promise<SheetResponse> => {
     }
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Sheet API error for ${sheetName}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
+      });
       return {
         success: false,
         data: [],
-        error: `HTTP error! status: ${response.status}`
+        error: `HTTP error! status: ${response.status}, body: ${errorText}`
       };
     }
 
     const result = await response.json();
     if (!result.success) {
+      console.error(`API reported error for ${sheetName}:`, result.error);
       return {
         success: false,
         data: [],
@@ -232,12 +254,16 @@ export const get = async (sheetName: string): Promise<SheetResponse> => {
       };
     }
 
+    console.log(`Successfully fetched ${sheetName} data:`, {
+      rowCount: result.data?.length || 0
+    });
+
     return {
       success: true,
       data: result.data || []
     };
   } catch (error) {
-    console.error('Error fetching from Google Sheets:', error);
+    console.error(`Error fetching ${sheetName} from Google Sheets:`, error);
     return {
       success: false,
       data: [],
