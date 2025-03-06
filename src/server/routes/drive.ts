@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
 import { google } from 'googleapis';
 import multer from 'multer';
-import { getGoogleAuth } from '../sheets'; // Reuse the same auth function
+import { getGoogleAuth } from '../sheets.js'; // Update import to use .js extension
 import * as fs from 'fs';
 import * as path from 'path';
 
