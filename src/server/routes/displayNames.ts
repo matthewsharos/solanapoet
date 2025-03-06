@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { GOOGLE_SHEETS_CONFIG } from '../../api/googleSheetsConfig';
+import { GOOGLE_SHEETS_CONFIG } from '../../server/api/googleSheetsConfig';
 
 const router = Router();
 
