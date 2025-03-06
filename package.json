@@ -10,6 +10,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:server": "tsc --project tsconfig.server.json",
+    "build:vercel": "npm run build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "server": "ts-node src/server/index.ts",
@@ -18,8 +19,7 @@
     "cleanup": "echo 'Cleaned up existing processes'",
     "prestart": "npm run cleanup",
     "start": "concurrently \"npm run dev\" \"npm run dev:server\"",
-    "create-auction-house": "tsx src/scripts/create-auction-house.ts",
-    "vercel-build": "npm run build && npm run build:server"
+    "create-auction-house": "tsx src/scripts/create-auction-house.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",
