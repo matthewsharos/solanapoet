@@ -122,6 +122,13 @@ app.use(express.urlencoded({ extended: true }));
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
+// Serve static frontend files in production
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the dist directory
+  console.log('Serving frontend from dist directory');
+  app.use(express.static(path.join(__dirname, '../../dist')));
+}
+
 // API routes
 console.log('Registering API routes...');
 app.use('/api/auth', authRoutes);
@@ -151,65 +158,91 @@ app.get('/api/config', (req: Request, res: Response) => {
     // Check if required environment variables are present
     if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
       console.error('Google authentication credentials are not set');
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: {
           code: 'MISSING_GOOGLE_CREDENTIALS',
-          message: 'Google authentication failed. Missing credentials.',
-          details: 'GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY environment variables are missing'
+          message: 'Google authentication credentials are not set'
         }
       });
     }
 
     if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
-      console.error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
-      return res.status(500).json({ 
+      console.error('Google Sheets spreadsheet ID is not set');
+      return res.status(500).json({
         error: {
           code: 'MISSING_SPREADSHEET_ID',
-          message: 'Spreadsheet ID not configured',
-          details: 'GOOGLE_SHEETS_SPREADSHEET_ID environment variable is missing'
+          message: 'Google Sheets spreadsheet ID is not set'
         }
       });
     }
 
-    // Process private key to handle escaped newlines
-    let privateKey = process.env.GOOGLE_PRIVATE_KEY;
-    if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+    // Check for GOOGLE_CLIENT_EMAIL
+    const client_email = process.env.GOOGLE_CLIENT_EMAIL;
+    let private_key = process.env.GOOGLE_PRIVATE_KEY;
+
+    // Convert escaped newlines to actual newlines if necessary
+    if (private_key?.includes('\\n')) {
       console.log('Converting escaped newlines in private key to actual newlines');
-      privateKey = privateKey.replace(/\\n/g, '\n');
+      private_key = private_key.replace(/\\n/g, '\n');
     }
 
-    // Test Google Sheets API connection
+    // Initialize Google auth
     const auth = new google.auth.GoogleAuth({
       credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: privateKey
+        client_email,
+        private_key
       },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'],
     });
 
-    // Create config object to return to the client
-    const config = {
-      googleSheets: {
-        isConfigured: true,
-        hasCredentials: true,
-        hasSpreadsheetId: true,
-        spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
-      },
-      environment: process.env.NODE_ENV || 'development'
+    const sheetConfig = {
+      auth,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
     };
 
-    res.json(config);
+    // Return a success response
+    res.json({
+      success: true,
+      config: {
+        googleSheets: {
+          configured: true,
+          spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+        },
+        environment: process.env.NODE_ENV || 'development'
+      }
+    });
   } catch (error) {
-    console.error('Unexpected error in /api/config endpoint:', error);
-    res.status(500).json({ 
+    console.error('Error in /api/config:', error);
+    res.status(500).json({
       error: {
-        code: 'UNEXPECTED_ERROR',
-        message: 'An unexpected error occurred',
-        details: error instanceof Error ? error.message : String(error)
+        code: 'CONFIG_ERROR',
+        message: error instanceof Error ? error.message : 'Error retrieving configuration'
       }
     });
   }
 });
+
+// Health check endpoint
+app.get('/api/health', (req: Request, res: Response<HealthCheckResponse>) => {
+  res.json({
+    status: 'ok',
+    port: Number(process.env.PORT) || 3002,
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Add a catch-all route to serve the frontend for client-side routing
+// This should be added after all API routes
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    // Exclude API routes from this catch-all
+    if (!req.path.startsWith('/api/')) {
+      console.log(`Serving index.html for path: ${req.path}`);
+      res.sendFile(path.join(__dirname, '../../dist/index.html'));
+    }
+  });
+}
 
 // Add catch-all route for debugging
 app.use((req: Request, res: Response, next) => {
