@@ -111,15 +111,25 @@ console.log('API routes registered');
 // Pass environment variables to the client
 app.get('/api/config', (req, res) => {
   try {
+    const hasGoogleCredentials = !!process.env.GOOGLE_CREDENTIALS_JSON;
+    console.log('Checking Google credentials:', {
+      hasCredentials: hasGoogleCredentials,
+      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0
+    });
+
     const config = {
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
+      hasGoogleCredentials,
+      isConfigured: hasGoogleCredentials && !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
     };
 
     // Log the config being sent (excluding sensitive data)
     console.log('Sending config to client:', {
       hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID
+      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID,
+      hasGoogleCredentials: config.hasGoogleCredentials,
+      isConfigured: config.isConfigured
     });
 
     res.json(config);
@@ -127,7 +137,9 @@ app.get('/api/config', (req, res) => {
     console.error('Error in /api/config endpoint:', error);
     res.status(500).json({ 
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error occurred'
+      message: error instanceof Error ? error.message : 'Unknown error occurred',
+      hasGoogleCredentials: false,
+      isConfigured: false
     });
   }
 });

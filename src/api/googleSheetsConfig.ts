@@ -6,8 +6,8 @@ import { API_BASE_URL } from './config';
 export const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: false,
   hasGoogleCredentials: false,
+  isConfigured: false,
   spreadsheetId: '',
-  credentialsPath: '',
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   sheets: {
     collections: 'collections',
@@ -36,16 +36,22 @@ const initializeConfig = async () => {
     const config = await response.json();
     console.log('Received config:', {
       hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasDriveFolderId: !!config.GOOGLE_DRIVE_FOLDER_ID
+      hasGoogleCredentials: config.hasGoogleCredentials,
+      isConfigured: config.isConfigured
     });
     
-    if (!config.GOOGLE_SHEETS_SPREADSHEET_ID) {
-      console.warn('No spreadsheet ID found in config');
+    if (!config.isConfigured) {
+      console.warn('Google Sheets is not fully configured:', {
+        hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasGoogleCredentials: config.hasGoogleCredentials
+      });
       return;
     }
 
     GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
     GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = true;
+    GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
+    GOOGLE_SHEETS_CONFIG.isConfigured = config.isConfigured;
     console.log('Google Sheets config initialized successfully');
   } catch (error) {
     console.error('Failed to initialize config:', error);
@@ -216,6 +222,19 @@ const getSheetRange = (sheetName: string) => {
  */
 export const get = async (sheetName: string): Promise<SheetResponse> => {
   try {
+    if (!GOOGLE_SHEETS_CONFIG.isConfigured) {
+      console.error('Google Sheets is not properly configured:', {
+        hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
+        hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
+        isConfigured: GOOGLE_SHEETS_CONFIG.isConfigured
+      });
+      return {
+        success: false,
+        data: [],
+        error: 'Google Sheets is not properly configured'
+      };
+    }
+
     console.log(`Fetching sheet data for: ${sheetName}`);
     const response = await fetch(`${API_BASE_URL}/api/sheets/${sheetName}`);
     

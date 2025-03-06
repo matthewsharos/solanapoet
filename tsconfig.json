@@ -30,6 +30,6 @@
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "types": ["express-fileupload"]
   },
-  "include": ["src"],
+  "include": ["src/**/*"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
