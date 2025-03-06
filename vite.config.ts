@@ -34,6 +34,14 @@ export default defineConfig({
     commonjsOptions: {
       transformMixedEsModules: true,
     },
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+    sourcemap: true,
+    assetsDir: 'assets',
+    emptyOutDir: true,
   },
   server: {
     proxy: {
