@@ -59,13 +59,31 @@ console.log('Environment variables:', {
   PORT: process.env.PORT,
   NODE_ENV: process.env.NODE_ENV,
   MONGO_URI: process.env.MONGO_URI,
-  VITE_GOOGLE_DRIVE_FOLDER_ID: process.env.VITE_GOOGLE_DRIVE_FOLDER_ID
+  VITE_GOOGLE_DRIVE_FOLDER_ID: process.env.VITE_GOOGLE_DRIVE_FOLDER_ID,
+  VITE_GOOGLE_SHEETS_SPREADSHEET_ID: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
+  hasHeliusApiKey: !!process.env.VITE_HELIUS_API_KEY,
+  hasSolanaRpcUrl: !!process.env.VITE_SOLANA_RPC_URL
 });
 
 // Create Express app
 const app: Application = express();
 const PORT = 3002; // Force port 3002
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/solanapoet';
+
+// Verify required environment variables
+const requiredEnvVars = [
+  'GOOGLE_CREDENTIALS_JSON',
+  'VITE_GOOGLE_SHEETS_SPREADSHEET_ID',
+  'VITE_GOOGLE_DRIVE_FOLDER_ID',
+  'VITE_HELIUS_API_KEY',
+  'VITE_SOLANA_RPC_URL'
+];
+
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+if (missingEnvVars.length > 0) {
+  console.error('Missing required environment variables:', missingEnvVars);
+  process.exit(1);
+}
 
 // Verify Google Sheets credentials are available
 if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {

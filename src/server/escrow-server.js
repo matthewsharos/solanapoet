@@ -32,6 +32,20 @@ import { isNFTInEscrow } from './escrow-utils.js';
 const ROYALTY_RECEIVER_ADDRESS = 'ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD';
 const DEFAULT_ROYALTY_PERCENTAGE = 3; // Default to 3% royalty
 
+// Get environment variables
+const heliusApiKey = process.env.VITE_HELIUS_API_KEY;
+const rpcUrl = process.env.VITE_SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+
+if (!heliusApiKey) {
+  console.error('VITE_HELIUS_API_KEY environment variable not set');
+  process.exit(1);
+}
+
+console.log('Using RPC URL:', rpcUrl);
+
+// Initialize connection
+const connection = new Connection(rpcUrl, 'confirmed');
+
 // Helper function to fetch NFT metadata using Helius DAS API
 async function fetchNFTMetadataFromHelius(nftAddress) {
   try {
@@ -211,12 +225,6 @@ app.post('/api/market/listings', async (req, res) => {
       });
     }
     
-    // Create a connection to the Solana network
-    const connection = new Connection(
-      process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d',
-      'confirmed'
-    );
-    
     // Get the marketplace authority from environment or use a default
     const marketplaceAuthority = process.env.MARKETPLACE_AUTHORITY || 'C4JWRGv7hoSsf6hEnNajMhgCSrsunXa3jtc3NQZ4kGco';
     console.log(`Using marketplace authority: ${marketplaceAuthority}`);
@@ -370,13 +378,7 @@ app.post('/api/market/unlist', async (req, res) => {
     }
     
     try {
-      // Create connection to the Solana network
-      const connection = new Connection(
-        process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d',
-        'confirmed'
-      );
-      
-      // Derive the escrow keypair for this NFT
+      // Get the escrow keypair for this NFT
       const escrowKeypair = deriveEscrowKeypair(nftAddress);
       console.log(`Using escrow keypair: ${escrowKeypair.publicKey.toString()}`);
       
@@ -468,12 +470,6 @@ app.post('/api/market/buy', async (req, res) => {
         message: 'Missing required parameters: nftAddress, buyerAddress, and price are required' 
       });
     }
-    
-    // Create a connection to the Solana network
-    const connection = new Connection(
-      process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d',
-      'confirmed'  // Use confirmed commitment level for better compatibility
-    );
     
     // Special handling for the royalty receiver address
     const isRoyaltyReceiver = buyerAddress === ROYALTY_RECEIVER_ADDRESS;

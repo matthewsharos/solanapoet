@@ -421,4 +421,13 @@ export const listNFTForSale = async (
     console.error('Error in listNFTForSale:', error);
     throw error;
   }
+};
+
+// Update the RPC URL configuration
+export const getRpcUrl = () => {
+  const rpcUrl = process.env.VITE_SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.VITE_HELIUS_API_KEY}`;
+  if (!rpcUrl) {
+    throw new Error('No RPC URL available. Please set VITE_SOLANA_RPC_URL or VITE_HELIUS_API_KEY');
+  }
+  return rpcUrl;
 }; 
