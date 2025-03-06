@@ -1,5 +1,5 @@
 import { Router, Request, Response, RequestHandler } from 'express';
-import { getSheetValues, appendSheetValues, updateSheetValues, batchUpdate } from '../sheets';
+import { getSheetValues, appendSheetValues, updateSheetValues, batchUpdate } from '../sheets.js';
 
 interface SheetError {
   message: string;

@@ -2,14 +2,14 @@ import express, { Request, Response, Router, RequestHandler } from 'express';
 import fileUpload, { UploadedFile, FileArray } from 'express-fileupload';
 import dotenv from 'dotenv';
 import { v4 as uuidv4 } from 'uuid';
-import path from 'path';
-import fs from 'fs';
+import * as path from 'path';
+import * as fs from 'fs';
 import axios, { AxiosResponse } from 'axios';
 import FormData from 'form-data';
 import NFT from '../models/NFT';
 import Collection from '../models/Collection';
 import { google } from 'googleapis';
-import { getSheetValues } from '../sheets';
+import { getSheetValues } from '../sheets.js';
 
 // Define interfaces for our responses and requests
 interface HeliusResponse {
