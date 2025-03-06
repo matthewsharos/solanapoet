@@ -6,27 +6,26 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import driveRouter from './api/drive';
-import sheetsRouter from './api/sheets';
 import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
-import displayNamesRouter from './routes/displayNames';
-import sheetsRoutes from './routes/sheets';
-import driveRoutes from './routes/drive';
-
-// Get current directory name
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getGoogleAuth } from './routes/sheets';
 
 // Import routes
 import authRoutes from './routes/auth';
 import nftRoutes from './routes/nft';
 import collectionRoutes from './routes/collection';
 import marketRoutes from './routes/market';
+import displayNamesRouter from './routes/displayNames';
+import sheetsRoutes from './routes/sheets';
+import driveRoutes from './routes/drive';
 // @ts-ignore
 import listingRoutes from './routes/listing-routes';
 // @ts-ignore
 import transactionRoutes from './routes/transaction-routes';
+
+// Get current directory name
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Types
 interface HealthCheckResponse {
@@ -59,7 +58,8 @@ dotenv.config();
 console.log('Environment variables:', {
   PORT: process.env.PORT,
   NODE_ENV: process.env.NODE_ENV,
-  MONGO_URI: process.env.MONGO_URI
+  MONGO_URI: process.env.MONGO_URI,
+  VITE_GOOGLE_DRIVE_FOLDER_ID: process.env.VITE_GOOGLE_DRIVE_FOLDER_ID
 });
 
 // Create Express app
@@ -100,8 +100,6 @@ app.use('/api/collection', collectionRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/listing', listingRoutes);
 app.use('/api/transactions', transactionRoutes);
-app.use('/api/drive', driveRouter);
-app.use('/api/sheets', sheetsRouter);
 app.use('/api/display-names', displayNamesRouter);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/drive', driveRoutes);
@@ -123,21 +121,20 @@ app.use((req: Request, res: Response, next) => {
 app.get('/api/sheets/:sheetName', async (req: Request, res: Response): Promise<void> => {
   try {
     const { sheetName } = req.params;
-    const spreadsheetId = '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0';
+    const spreadsheetId = process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID;
+
+    if (!spreadsheetId) {
+      throw new Error('VITE_GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not set');
+    }
 
     console.log('Fetching Google Sheets data:', {
       sheetName,
       spreadsheetId,
-      hasCredentials: !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+      hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON
     });
 
-    const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    const auth = await getGoogleAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
     
     try {
       const response = await sheets.spreadsheets.values.get({

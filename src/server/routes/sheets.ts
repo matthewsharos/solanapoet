@@ -58,7 +58,7 @@ const getDisplayNamesHandler: RequestHandler = async (req, res) => {
 
     // Get display names
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
     });
 
@@ -94,7 +94,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
 
     // Get existing display names
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
     });
 
@@ -104,7 +104,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
     if (rowIndex === -1) {
       // Add new row
       await sheets.spreadsheets.values.append({
-        spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
         range: GOOGLE_SHEETS_CONFIG.sheets.displayNames,
         valueInputOption: 'RAW',
         requestBody: {
@@ -114,7 +114,7 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
     } else {
       // Update existing row
       await sheets.spreadsheets.values.update({
-        spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
         range: `${GOOGLE_SHEETS_CONFIG.sheets.displayNames}!A${rowIndex + 1}:B${rowIndex + 1}`,
         valueInputOption: 'RAW',
         requestBody: {
@@ -152,7 +152,7 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
 
     // Get sheet data
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets],
     });
 

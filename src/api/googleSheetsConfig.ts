@@ -4,7 +4,7 @@ import { API_BASE_URL } from './config';
 
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
+  spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',
@@ -17,7 +17,8 @@ export const GOOGLE_SHEETS_CONFIG = {
 console.log('Google Sheets Config:', {
   spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
   apiKeyExists: !!process.env.GOOGLE_API_KEY,
-  apiKeyLength: process.env.GOOGLE_API_KEY?.length
+  apiKeyLength: process.env.GOOGLE_API_KEY?.length,
+  hasSpreadsheetId: !!process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID
 });
 
 // Response type for Google Sheets API

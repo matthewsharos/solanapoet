@@ -15,6 +15,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    const folderId = process.env.VITE_GOOGLE_DRIVE_FOLDER_ID;
+    if (!folderId) {
+      throw new Error('VITE_GOOGLE_DRIVE_FOLDER_ID environment variable is not set');
+    }
+
     const auth = await getGoogleAuth();
     const drive = google.drive({ version: 'v3', auth });
 
@@ -23,8 +28,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const fileMetadata = {
       name: metadata.name || req.file.originalname,
       mimeType: metadata.mimeType || req.file.mimetype,
-      parents: metadata.parents || [process.env.GOOGLE_DRIVE_FOLDER_ID],
+      parents: metadata.parents || [folderId],
     };
+
+    console.log('Uploading file to Google Drive:', {
+      name: fileMetadata.name,
+      mimeType: fileMetadata.mimeType,
+      folderId
+    });
 
     // Create a readable stream from the uploaded file
     const media = {
@@ -37,6 +48,12 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       requestBody: fileMetadata,
       media: media,
       fields: 'id, webContentLink, webViewLink',
+    });
+
+    console.log('File uploaded successfully:', {
+      id: file.data.id,
+      webContentLink: file.data.webContentLink,
+      webViewLink: file.data.webViewLink
     });
 
     // Clean up the temporary file
