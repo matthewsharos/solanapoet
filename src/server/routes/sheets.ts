@@ -1,7 +1,7 @@
 import express, { Request, Response, RequestHandler } from 'express';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { GOOGLE_SHEETS_CONFIG } from '../../server/api/googleSheetsConfig';
+import { GOOGLE_SHEETS_CONFIG } from '../api/googleSheetsConfig';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sheets_v4 } from '@googleapis/sheets';
