@@ -17,82 +17,117 @@ export const GOOGLE_SHEETS_CONFIG = {
   },
 };
 
-// Initialize config from API
-export const initializeConfig = async () => {
-  try {
-    console.log('Initializing Google Sheets config...');
-    const configUrl = `${API_BASE_URL}/api/config`;
-    console.log('Fetching config from:', configUrl);
-    
-    const response = await fetch(configUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      credentials: 'same-origin'
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Config API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText,
-        url: configUrl,
-        apiBaseUrl: API_BASE_URL
+// Initialize config from API with retries
+export const initializeConfig = async (retries = 3, delay = 2000) => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      console.log(`Initializing Google Sheets config (attempt ${attempt + 1}/${retries})...`);
+      const configUrl = `${API_BASE_URL}/api/config`;
+      console.log('Fetching config from:', configUrl);
+      
+      const response = await fetch(configUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
       });
-      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-    }
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Config API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+          url: configUrl,
+          apiBaseUrl: API_BASE_URL,
+          attempt: attempt + 1
+        });
 
-    const config = await response.json();
-    console.log('Received config:', {
-      hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasGoogleCredentials: config.hasGoogleCredentials,
-      isConfigured: config.isConfigured
-    });
-    
-    if (!config.isConfigured) {
-      console.warn('Google Sheets is not fully configured:', {
+        // If we have retries left, wait and try again
+        if (attempt < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+      }
+
+      const config = await response.json();
+      
+      // Check for error in response
+      if (config.error) {
+        console.error('Server reported error:', config.error);
+        throw new Error(config.error.message || 'Server configuration error');
+      }
+
+      console.log('Received config:', {
         hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
         hasGoogleCredentials: config.hasGoogleCredentials,
-        error: config.error,
-        message: config.message
+        isConfigured: config.isConfigured
       });
-      return;
-    }
+      
+      if (!config.isConfigured) {
+        console.warn('Google Sheets is not fully configured:', {
+          hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+          hasGoogleCredentials: config.hasGoogleCredentials,
+          error: config.error,
+          message: config.message
+        });
+        return;
+      }
 
-    GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
-    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
-    GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
-    GOOGLE_SHEETS_CONFIG.isConfigured = config.isConfigured;
-    
-    console.log('Google Sheets config initialized successfully:', {
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
-      hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
-      isConfigured: GOOGLE_SHEETS_CONFIG.isConfigured
-    });
-  } catch (error) {
-    console.error('Failed to initialize config:', {
-      error: error instanceof Error ? {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      } : error
-    });
-    throw error;
+      GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
+      GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
+      GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
+      GOOGLE_SHEETS_CONFIG.isConfigured = config.isConfigured;
+      
+      console.log('Google Sheets config initialized successfully:', {
+        spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
+        hasSpreadsheetId: GOOGLE_SHEETS_CONFIG.hasSpreadsheetId,
+        hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
+        isConfigured: GOOGLE_SHEETS_CONFIG.isConfigured
+      });
+
+      // If we successfully got the config, break out of retry loop
+      break;
+    } catch (error) {
+      console.error('Failed to initialize config:', {
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error,
+        attempt: attempt + 1
+      });
+
+      // If this was our last attempt, throw the error
+      if (attempt === retries - 1) {
+        throw error;
+      }
+
+      // Otherwise, wait before trying again
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 };
 
-// Initialize config when module loads
-initializeConfig().catch(console.error);
+// Initialize config when module loads with retries
+initializeConfig().catch(error => {
+  console.error('Failed to initialize Google Sheets config after all retries:', error);
+});
 
 // Export helper functions
 export const get = async (sheetName: string) => {
   try {
     if (!GOOGLE_SHEETS_CONFIG.isConfigured) {
-      throw new Error('Google Sheets not configured');
+      // Try to initialize config one more time if it failed
+      await initializeConfig(1);
+      
+      if (!GOOGLE_SHEETS_CONFIG.isConfigured) {
+        throw new Error('Google Sheets not configured');
+      }
     }
     
     const response = await fetch(`${API_BASE_URL}/api/sheets/${sheetName}`);

@@ -29,9 +29,11 @@
       "dest": "src/server/index.ts",
       "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
       "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept",
-        "Access-Control-Allow-Credentials": "true"
+        "Access-Control-Allow-Origin": "https://solanapoet.vercel.app",
+        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Max-Age": "86400"
       }
     },
     {
@@ -53,6 +55,7 @@
   ],
   "env": {
     "GOOGLE_CREDENTIALS_JSON": "@google_credentials_json",
-    "GOOGLE_SHEETS_SPREADSHEET_ID": "@google_sheets_spreadsheet_id"
+    "GOOGLE_SHEETS_SPREADSHEET_ID": "@google_sheets_spreadsheet_id",
+    "NODE_ENV": "production"
   }
 } 

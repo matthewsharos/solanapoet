@@ -75,8 +75,9 @@ app.use(cors({
     ? 'http://localhost:5173' 
     : ['https://solanapoet.vercel.app', 'https://www.solanapoet.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+  maxAge: 86400 // 24 hours
 }));
 
 // Add better error logging middleware
@@ -89,12 +90,17 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     } : err,
     url: req.url,
     method: req.method,
-    body: req.body
+    body: req.body,
+    query: req.query,
+    params: req.params
   });
   if (!res.headersSent) {
     res.status(500).json({
-      error: 'Internal server error',
-      message: err instanceof Error ? err.message : 'Unknown error occurred'
+      error: {
+        code: '500',
+        message: err instanceof Error ? err.message : 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      }
     });
   }
   next(err);
