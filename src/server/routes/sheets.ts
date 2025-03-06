@@ -260,7 +260,7 @@ router.get('/test-config', async (req, res) => {
     authClientCreated: false,
     sheetsApiConnected: false,
     canReadSpreadsheet: false,
-    error: null
+    error: null as string | null
   };
 
   try {
