@@ -11,7 +11,7 @@ import { google } from 'googleapis';
 import { getGoogleAuth } from './routes/sheets.js';
 
 // Import routes
-import authRoutes from './routes/auth';
+import authRoutes from './routes/auth.js';
 import nftRoutes from './routes/nft';
 import collectionRoutes from './routes/collection';
 import marketRoutes from './routes/market';
