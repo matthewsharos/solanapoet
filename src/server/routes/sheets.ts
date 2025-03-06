@@ -381,6 +381,43 @@ router.get('/test', async (req: Request, res: Response) => {
   }
 });
 
+// Add a test endpoint to verify Google Sheets connection
+router.get('/test-connection', async (req, res) => {
+  try {
+    console.log('Testing Google Sheets connection...');
+    
+    // Get auth client
+    const authClient = await getGoogleAuth();
+    console.log('Successfully got auth client');
+    
+    // Create sheets client
+    const sheets = google.sheets({ version: 'v4', auth: authClient });
+    
+    // Get spreadsheet info to verify connection
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId;
+    const response = await sheets.spreadsheets.get({
+      spreadsheetId
+    });
+    
+    // Return success with spreadsheet info
+    return res.status(200).json({
+      success: true,
+      message: 'Google Sheets connection successful',
+      spreadsheetTitle: response.data.properties?.title,
+      // Include information about authentication method used
+      authMethod: process.env.GOOGLE_CLIENT_EMAIL ? 'Direct credentials' : 'JSON credentials',
+      sheets: response.data.sheets?.map(sheet => sheet.properties?.title).filter(Boolean)
+    });
+  } catch (error: any) {
+    console.error('Google Sheets test connection failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Google Sheets connection failed',
+      error: error.message
+    });
+  }
+});
+
 // Add error logging middleware
 router.use((err: any, req: Request, res: Response, next: any) => {
   console.error('Server error:', {
