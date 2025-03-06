@@ -11,7 +11,9 @@
       "use": "@vercel/node@3.0.0",
       "config": {
         "includeFiles": ["src/server/**/*", "src/api/**/*"],
-        "nodeVersion": "18.x"
+        "nodeVersion": "18.x",
+        "maxDuration": 10,
+        "memory": 1024
       }
     },
     {
@@ -23,6 +25,12 @@
       }
     }
   ],
+  "functions": {
+    "src/server/index.ts": {
+      "memory": 1024,
+      "maxDuration": 10
+    }
+  },
   "routes": [
     {
       "src": "/api/(.*)",
@@ -52,10 +60,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "env": {
-    "GOOGLE_CREDENTIALS_JSON": "@google_credentials_json",
-    "GOOGLE_SHEETS_SPREADSHEET_ID": "@google_sheets_spreadsheet_id",
-    "NODE_ENV": "production"
-  }
+  ]
 } 
