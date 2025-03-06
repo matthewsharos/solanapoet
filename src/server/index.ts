@@ -1,7 +1,6 @@
 import express, { Request, Response, Application, RequestHandler } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
 import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
@@ -12,16 +11,16 @@ import { getGoogleAuth } from './routes/sheets.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
-import nftRoutes from './routes/nft';
-import collectionRoutes from './routes/collection';
-import marketRoutes from './routes/market';
-import displayNamesRouter from './routes/displayNames';
+import nftRoutes from './routes/nft.js';
+import collectionRoutes from './routes/collection.js';
+import marketRoutes from './routes/market.js';
+import displayNamesRouter from './routes/displayNames.js';
 import sheetsRoutes from './routes/sheets.js';
-import driveRoutes from './routes/drive';
+import driveRoutes from './routes/drive.js';
 // @ts-ignore
-import listingRoutes from './routes/listing-routes';
+import listingRoutes from './routes/listing-routes.js';
 // @ts-ignore
-import transactionRoutes from './routes/transaction-routes';
+import transactionRoutes from './routes/transaction-routes.js';
 
 // Get current directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -32,7 +31,6 @@ interface HealthCheckResponse {
   status: string;
   port: number;
   timestamp: string;
-  mongodb: 'connected' | 'disconnected';
   environment: string;
 }
 
@@ -68,42 +66,6 @@ console.log('Environment variables:', {
 // Create Express app
 const app: Application = express();
 const PORT = 3002; // Force port 3002
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/solanapoet';
-
-// Verify required environment variables
-const requiredEnvVars = [
-  'GOOGLE_CREDENTIALS_JSON',
-  'VITE_GOOGLE_SHEETS_SPREADSHEET_ID',
-  'VITE_GOOGLE_DRIVE_FOLDER_ID',
-  'VITE_HELIUS_API_KEY',
-  'VITE_SOLANA_RPC_URL'
-];
-
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
-if (missingEnvVars.length > 0) {
-  console.error('Missing required environment variables:', missingEnvVars);
-  process.exit(1);
-}
-
-// Verify Google Sheets credentials are available
-if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-  console.error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
-  process.exit(1);
-}
-
-// Verify Google credentials are valid JSON
-try {
-  JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-} catch (error) {
-  console.error('GOOGLE_CREDENTIALS_JSON is not valid JSON:', error);
-  process.exit(1);
-}
-
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
 
 // Middleware
 app.use(cors({
@@ -149,7 +111,6 @@ app.get('/health', (req: Request, res: Response) => {
     status: 'ok',
     port: PORT,
     timestamp: new Date().toISOString(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     environment: process.env.NODE_ENV || 'development'
   };
   
@@ -220,54 +181,14 @@ const checkSellerHandler = async (req: Request<{}, CheckSellerResponse, CheckSel
 
 app.post('/check-seller', checkSellerHandler);
 
-// MongoDB connection
-let cachedDb: typeof mongoose | null = null;
-
-async function connectToDatabase() {
-  if (cachedDb) {
-    return cachedDb;
-  }
-
-  try {
-    const db = await mongoose.connect(MONGO_URI);
-    cachedDb = db;
-    console.log('Connected to MongoDB');
-    return db;
-  } catch (error) {
-    console.error('MongoDB connection error:', error);
-    throw error;
-  }
-}
-
-// Connect to MongoDB before handling requests
-app.use(async (req, res, next) => {
-  try {
-    await connectToDatabase();
-    next();
-  } catch (error) {
-    console.error('Failed to connect to database:', error);
-    res.status(500).json({ error: 'Database connection failed' });
-  }
-});
-
-// Remove direct server start and export app for Vercel
+// Remove MongoDB connection code and middleware
 export default app;
 
 // Only start server in development
 if (process.env.NODE_ENV === 'development') {
-  const startServer = async () => {
-    try {
-      await connectToDatabase();
-      app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-      });
-    } catch (error) {
-      console.error('Failed to start server:', error);
-      process.exit(1);
-    }
-  };
-
-  startServer();
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
 }
 
 const collectionsFilePath = path.join(__dirname, 'collections.json');
