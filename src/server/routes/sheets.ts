@@ -44,8 +44,27 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
   try {
     console.log('Starting Google auth initialization...');
     
+    // Try using direct client email and private key env variables
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      console.log('Using separate GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
+      console.log('Initializing Google Sheets auth with client email:', process.env.GOOGLE_CLIENT_EMAIL);
+      
+      // Create auth client with individual credentials
+      const auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+
+      console.log('Created GoogleAuth instance, attempting to get client...');
+      return await auth.getClient() as OAuth2Client;
+    }
+    
+    // Fall back to JSON credentials
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      console.error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+      console.error('Neither GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY nor GOOGLE_CREDENTIALS_JSON environment variables are set');
       throw new Error('Google credentials not configured');
     }
 

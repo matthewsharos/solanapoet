@@ -79,8 +79,25 @@ export interface SheetsClient {
 // Create sheets client
 export const createSheetsClient = async () => {
   try {
+    // First try using direct client email and private key env variables
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      console.log('Creating sheets client using GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
+      
+      const auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+
+      const client = await auth.getClient();
+      return google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    }
+    
+    // Fall back to JSON credentials
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+      throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY or GOOGLE_CREDENTIALS_JSON environment variables');
     }
 
     const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);

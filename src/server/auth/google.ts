@@ -9,7 +9,21 @@ export async function getGoogleAuth(): Promise<OAuth2Client> {
   }
 
   try {
-    // First try using direct credentials from env
+    // First try using direct client email and private key env variables
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      console.log('Initializing auth using GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
+      auth = await new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: process.env.GOOGLE_PRIVATE_KEY
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      }).getClient() as OAuth2Client;
+      console.log('Successfully initialized Google Sheets auth with client email');
+      return auth;
+    }
+    
+    // Next try using JSON credentials from env
     if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
       console.log('Initializing auth using credentials from GOOGLE_SHEETS_CREDENTIALS');
       const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
@@ -32,7 +46,7 @@ export async function getGoogleAuth(): Promise<OAuth2Client> {
       return auth;
     }
 
-    throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
+    throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY, GOOGLE_SHEETS_CREDENTIALS, or GOOGLE_APPLICATION_CREDENTIALS environment variables');
   } catch (error) {
     console.error('Failed to initialize Google Sheets auth:', error);
     auth = null;

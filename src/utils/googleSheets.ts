@@ -26,7 +26,19 @@ interface NFTListing {
 // Authenticate with Google using service account credentials
 async function getAuthClient(): Promise<JWT> {
   try {
-    // First try using direct credentials from env
+    // First try using direct client email and private key from env variables
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      console.log('Using credentials from GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
+      
+      return new google.auth.JWT(
+        process.env.GOOGLE_CLIENT_EMAIL,
+        undefined,
+        process.env.GOOGLE_PRIVATE_KEY, // The private key already has newlines in the env var
+        SCOPES
+      );
+    }
+    
+    // Next try using JSON credentials from env
     if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
       console.log('Using credentials from GOOGLE_SHEETS_CREDENTIALS');
       const credentials: GoogleCredentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
@@ -53,7 +65,7 @@ async function getAuthClient(): Promise<JWT> {
       return auth.getClient() as Promise<JWT>;
     }
 
-    throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
+    throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY, GOOGLE_SHEETS_CREDENTIALS, or GOOGLE_APPLICATION_CREDENTIALS environment variables');
   } catch (error) {
     console.error('Error authenticating with Google:', error);
     throw error;
