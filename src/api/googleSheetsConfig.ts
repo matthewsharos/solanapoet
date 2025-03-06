@@ -34,52 +34,66 @@ export const initializeConfig = async (retries = 3, delay = 2000) => {
         credentials: 'include'
       });
       
+      const config = await response.json();
+      
       if (!response.ok) {
-        const errorText = await response.text();
         console.error('Config API error:', {
           status: response.status,
           statusText: response.statusText,
-          body: errorText,
-          url: configUrl,
-          apiBaseUrl: API_BASE_URL,
+          error: config.error,
           attempt: attempt + 1
         });
 
         // If we have retries left, wait and try again
         if (attempt < retries - 1) {
+          console.log(`Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
 
-        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+        throw new Error(`Config API error: ${config.error?.message || response.statusText}`);
       }
 
-      const config = await response.json();
-      
       // Check for error in response
       if (config.error) {
-        console.error('Server reported error:', config.error);
+        console.error('Server reported error:', {
+          code: config.error.code,
+          message: config.error.message,
+          details: config.error.details
+        });
+        
+        // If we have retries left and this is a potentially recoverable error
+        if (attempt < retries - 1 && 
+            ['AUTH_INITIALIZATION_FAILED', 'UNEXPECTED_ERROR'].includes(config.error.code)) {
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
         throw new Error(config.error.message || 'Server configuration error');
       }
 
       console.log('Received config:', {
-        hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasSpreadsheetId: config.hasSpreadsheetId,
         hasGoogleCredentials: config.hasGoogleCredentials,
         isConfigured: config.isConfigured
       });
       
       if (!config.isConfigured) {
         console.warn('Google Sheets is not fully configured:', {
-          hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+          hasSpreadsheetId: config.hasSpreadsheetId,
           hasGoogleCredentials: config.hasGoogleCredentials,
-          error: config.error,
-          message: config.message
+          error: config.error
         });
+        
+        GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = config.hasSpreadsheetId;
+        GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
+        GOOGLE_SHEETS_CONFIG.isConfigured = false;
         return;
       }
 
       GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
-      GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
+      GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = config.hasSpreadsheetId;
       GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = config.hasGoogleCredentials;
       GOOGLE_SHEETS_CONFIG.isConfigured = config.isConfigured;
       
@@ -104,6 +118,9 @@ export const initializeConfig = async (retries = 3, delay = 2000) => {
 
       // If this was our last attempt, throw the error
       if (attempt === retries - 1) {
+        GOOGLE_SHEETS_CONFIG.isConfigured = false;
+        GOOGLE_SHEETS_CONFIG.hasGoogleCredentials = false;
+        GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = false;
         throw error;
       }
 

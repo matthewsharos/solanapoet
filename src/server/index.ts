@@ -126,7 +126,7 @@ app.use('/api/drive', driveRoutes);
 console.log('API routes registered');
 
 // Pass environment variables to the client
-app.get('/api/config', (req, res) => {
+app.get('/api/config', async (req, res) => {
   try {
     // Debug log all relevant environment variables
     console.log('Environment variables state:', {
@@ -142,11 +142,12 @@ app.get('/api/config', (req, res) => {
       console.error('GOOGLE_CREDENTIALS_JSON is not set');
       return res.status(500).json({ 
         error: {
-          code: '500',
+          code: 'MISSING_CREDENTIALS',
           message: 'Google credentials not configured',
           details: 'GOOGLE_CREDENTIALS_JSON environment variable is missing'
         },
         hasGoogleCredentials: false,
+        hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
         isConfigured: false
       });
     }
@@ -155,11 +156,12 @@ app.get('/api/config', (req, res) => {
       console.error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
       return res.status(500).json({ 
         error: {
-          code: '500',
+          code: 'MISSING_SPREADSHEET_ID',
           message: 'Spreadsheet ID not configured',
           details: 'GOOGLE_SHEETS_SPREADSHEET_ID environment variable is missing'
         },
         hasGoogleCredentials: true,
+        hasSpreadsheetId: false,
         isConfigured: false
       });
     }
@@ -185,11 +187,12 @@ app.get('/api/config', (req, res) => {
         console.error('Invalid credentials format - missing required fields');
         return res.status(500).json({
           error: {
-            code: '500',
+            code: 'INVALID_CREDENTIALS_FORMAT',
             message: 'Invalid Google credentials format',
             details: 'Missing required fields in credentials (client_email or private_key)'
           },
           hasGoogleCredentials: false,
+          hasSpreadsheetId: true,
           isConfigured: false
         });
       }
@@ -197,46 +200,66 @@ app.get('/api/config', (req, res) => {
       console.error('Failed to parse Google credentials:', parseError);
       return res.status(500).json({
         error: {
-          code: '500',
+          code: 'INVALID_CREDENTIALS_JSON',
           message: 'Invalid Google credentials JSON format',
           details: parseError instanceof Error ? parseError.message : 'Unknown parse error'
         },
         hasGoogleCredentials: false,
+        hasSpreadsheetId: true,
         isConfigured: false
       });
     }
 
     // Test Google Sheets API connection
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
+    try {
+      const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+      });
 
-    // Return successful configuration
-    const config = {
-      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasGoogleCredentials: true,
-      isConfigured: true
-    };
+      // Try to get the client to verify auth works
+      await auth.getClient();
 
-    // Log the config being sent (excluding sensitive data)
-    console.log('Sending config to client:', {
-      hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasGoogleCredentials: config.hasGoogleCredentials,
-      isConfigured: config.isConfigured,
-      environment: process.env.NODE_ENV
-    });
+      // Return successful configuration
+      const config = {
+        GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasGoogleCredentials: true,
+        hasSpreadsheetId: true,
+        isConfigured: true
+      };
 
-    res.json(config);
+      // Log the config being sent (excluding sensitive data)
+      console.log('Sending config to client:', {
+        hasSpreadsheetId: !!config.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasGoogleCredentials: config.hasGoogleCredentials,
+        isConfigured: config.isConfigured,
+        environment: process.env.NODE_ENV
+      });
+
+      res.json(config);
+    } catch (authError) {
+      console.error('Failed to initialize Google auth:', authError);
+      return res.status(500).json({
+        error: {
+          code: 'AUTH_INITIALIZATION_FAILED',
+          message: 'Failed to initialize Google auth',
+          details: authError instanceof Error ? authError.message : 'Unknown auth error'
+        },
+        hasGoogleCredentials: true,
+        hasSpreadsheetId: true,
+        isConfigured: false
+      });
+    }
   } catch (error) {
     console.error('Unexpected error in /api/config endpoint:', error);
     res.status(500).json({ 
       error: {
-        code: '500',
+        code: 'UNEXPECTED_ERROR',
         message: 'An unexpected error occurred',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       hasGoogleCredentials: false,
+      hasSpreadsheetId: false,
       isConfigured: false
     });
   }
