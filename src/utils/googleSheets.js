@@ -11,21 +11,33 @@ const LISTINGS_SHEET_NAME = process.env.GOOGLE_SHEETS_LISTINGS_SHEET_NAME || 'Li
 // Authenticate with Google using service account credentials
 async function getAuthClient() {
   try {
-    // Parse credentials from environment variable
-    const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS || '{}');
-    
-    if (!credentials.client_email || !credentials.private_key) {
-      throw new Error('Missing or invalid Google Sheets credentials in environment variables');
+    // First try using direct credentials from env
+    if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
+      console.log('Using credentials from GOOGLE_SHEETS_CREDENTIALS');
+      const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
+      
+      if (!credentials.client_email || !credentials.private_key) {
+        throw new Error('Invalid Google Sheets credentials in GOOGLE_SHEETS_CREDENTIALS');
+      }
+      
+      return new google.auth.JWT(
+        credentials.client_email,
+        null,
+        credentials.private_key,
+        SCOPES
+      );
     }
     
-    const auth = new google.auth.JWT(
-      credentials.client_email,
-      null,
-      credentials.private_key,
-      SCOPES
-    );
-    
-    return auth;
+    // Then try using credentials file
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log('Using credentials file from GOOGLE_APPLICATION_CREDENTIALS');
+      return new google.auth.GoogleAuth({
+        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        scopes: SCOPES,
+      }).getClient();
+    }
+
+    throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
   } catch (error) {
     console.error('Error authenticating with Google:', error);
     throw error;

@@ -4,25 +4,43 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import { Request, Response } from 'express';
 import { drive_v3 } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 // Create a Google Drive instance using service account
-const getDriveInstance = (): drive_v3.Drive => {
+const getDriveInstance = async (): Promise<drive_v3.Drive> => {
   try {
-    // Parse credentials from environment variable
-    const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS || '{}');
+    let auth: OAuth2Client;
     
-    if (!credentials.client_email || !credentials.private_key) {
-      throw new Error('Missing or invalid Google credentials in environment variables');
+    // First try using direct credentials from env
+    if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
+      console.log('Using credentials from GOOGLE_SHEETS_CREDENTIALS');
+      const credentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
+      
+      if (!credentials.client_email || !credentials.private_key) {
+        throw new Error('Invalid Google Sheets credentials in GOOGLE_SHEETS_CREDENTIALS');
+      }
+      
+      auth = new google.auth.JWT({
+        email: credentials.client_email,
+        key: credentials.private_key,
+        scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
+      });
     }
-    
-    const auth = new google.auth.JWT({
-      email: credentials.client_email,
-      key: credentials.private_key,
-      scopes: ['https://www.googleapis.com/auth/drive.file']
-    });
+    // Then try using credentials file
+    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      console.log('Using credentials file from GOOGLE_APPLICATION_CREDENTIALS');
+      const authClient = new google.auth.GoogleAuth({
+        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
+      });
+      auth = await authClient.getClient() as OAuth2Client;
+    }
+    else {
+      throw new Error('Neither GOOGLE_SHEETS_CREDENTIALS nor GOOGLE_APPLICATION_CREDENTIALS environment variable is set');
+    }
     
     return google.drive({ version: 'v3', auth });
   } catch (error) {
@@ -51,19 +69,24 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       console.log('Metadata received:', metadata);
     } catch (error) {
       console.error('Error parsing metadata:', error);
-      res.status(400).json({ error: 'Invalid metadata format' });
+      res.status(400).json({ error: 'Invalid metadata format', details: error instanceof Error ? error.message : String(error) });
       return;
     }
 
     console.log('Creating Google Drive instance...');
-    const drive = getDriveInstance();
+    const drive = await getDriveInstance();
     
     // Create a readable stream from the buffer
     const fileStream = new Readable();
     fileStream.push(file.buffer);
     fileStream.push(null);
 
-    console.log('Uploading file to Google Drive...');
+    console.log('Uploading file to Google Drive...', {
+      name: metadata.name,
+      mimeType: metadata.mimeType,
+      parents: metadata.parents
+    });
+    
     const response = await drive.files.create({
       requestBody: {
         name: metadata.name,
@@ -74,6 +97,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
         mimeType: metadata.mimeType,
         body: fileStream,
       },
+      fields: 'id, webViewLink, webContentLink',
     });
 
     if (!response.data.id) {
@@ -92,21 +116,34 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       },
     });
 
-    console.log('Getting file metadata...');
-    const fileData = await drive.files.get({
-      fileId: response.data.id,
-      fields: 'id, webViewLink, webContentLink',
-    });
-
     console.log('Sending response to client...');
     res.json({
-      id: fileData.data.id,
-      webViewLink: fileData.data.webViewLink,
-      webContentLink: fileData.data.webContentLink,
+      id: response.data.id,
+      webViewLink: response.data.webViewLink,
+      webContentLink: response.data.webContentLink,
     });
   } catch (error) {
     console.error('Error uploading file:', error);
-    res.status(500).json({ error: 'Failed to upload file', details: error instanceof Error ? error.message : String(error) });
+    let errorMessage = 'Failed to upload file';
+    let errorDetails = '';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = error.stack || '';
+    } else if (typeof error === 'object' && error !== null) {
+      // Handle Google API errors
+      const apiError = error as any;
+      if (apiError.errors && apiError.errors.length > 0) {
+        errorMessage = apiError.errors[0].message;
+        errorDetails = JSON.stringify(apiError.errors);
+      }
+    }
+    
+    res.status(500).json({
+      error: errorMessage,
+      details: errorDetails,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 

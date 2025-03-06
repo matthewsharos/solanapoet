@@ -6,8 +6,11 @@ import bodyParser from 'body-parser';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import sheetsRouter from './api/sheets';  // Remove .js extension
 import driveRouter from './api/drive';
+import sheetsRouter from './api/sheets';
+import { OAuth2Client } from 'google-auth-library';
+import { google } from 'googleapis';
+import displayNamesRouter from './routes/displayNames';
 
 // Get current directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -51,14 +54,20 @@ interface Listing {
 // Load environment variables first
 dotenv.config();
 
+console.log('Environment variables:', {
+  PORT: process.env.PORT,
+  NODE_ENV: process.env.NODE_ENV,
+  MONGO_URI: process.env.MONGO_URI
+});
+
 // Create Express app
 const app: Application = express();
-const PORT = process.env.PORT || 3001;
+const PORT = 3002; // Force port 3002
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/solanapoet';
 
 // Verify Google Sheets credentials are available
-if (!process.env.GOOGLE_SHEETS_CREDENTIALS) {
-  console.error('GOOGLE_SHEETS_CREDENTIALS environment variable is not set');
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  console.error('GOOGLE_APPLICATION_CREDENTIALS environment variable is not set');
   process.exit(1);
 }
 
@@ -70,9 +79,9 @@ if (!fs.existsSync(uploadsDir)) {
 
 // Middleware
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : 'http://localhost:5173',
+  origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : process.env.FRONTEND_URL,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 app.use(express.json());
@@ -82,14 +91,92 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
 // API routes
+console.log('Registering API routes...');
 app.use('/api/auth', authRoutes);
 app.use('/api/nft', nftRoutes);
 app.use('/api/collection', collectionRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/listing', listingRoutes);
 app.use('/api/transactions', transactionRoutes);
-app.use('/api/sheets', sheetsRouter);  // Register the sheets router
 app.use('/api/drive', driveRouter);
+app.use('/api/sheets', sheetsRouter);
+app.use('/api/display-names', displayNamesRouter);
+console.log('API routes registered');
+
+// Add catch-all route for debugging
+app.use((req: Request, res: Response, next) => {
+  console.log('Request received:', {
+    method: req.method,
+    url: req.url,
+    params: req.params,
+    query: req.query,
+    body: req.body
+  });
+  next();
+});
+
+// Google Sheets endpoint
+app.get('/api/sheets/:sheetName', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sheetName } = req.params;
+    const spreadsheetId = '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0';
+
+    console.log('Fetching Google Sheets data:', {
+      sheetName,
+      spreadsheetId,
+      hasCredentials: !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+    });
+
+    const auth = new google.auth.GoogleAuth({
+      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!A1:Z1004`,
+      });
+
+      console.log('Successfully fetched sheet data:', {
+        sheetName,
+        rowCount: response.data.values?.length || 0
+      });
+
+      res.json({
+        success: true,
+        data: response.data.values || []
+      });
+    } catch (error: any) {
+      // Handle rate limit errors
+      if (error.code === 429) {
+        const retryAfter = error.response?.headers?.['retry-after'] || 60;
+        res.setHeader('Retry-After', retryAfter);
+        res.status(429).json({
+          success: false,
+          error: 'Rate limit exceeded. Please try again later.',
+          retryAfter
+        });
+        return;
+      }
+
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error fetching sheet data:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      sheetName: req.params.sheetName
+    });
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
+});
 
 // Health check route
 app.get('/health', (req: Request, res: Response) => {
@@ -162,56 +249,38 @@ app.post('/check-seller', async (req: Request, res: Response) => {
   }
 });
 
-// Start server with fallback ports if primary is in use
-const startServer = (port: number | string) => {
+// Start server
+const startServer = async () => {
   try {
-    // Make sure port is a valid number and not too large
-    let numericPort: number;
-    if (typeof port === 'string') {
-      numericPort = parseInt(port, 10);
-    } else {
-      numericPort = port;
-    }
-    
-    // Check port range
-    if (numericPort >= 65536) {
-      console.error('Failed to start server: No available ports found in valid range');
-      return;
-    }
-    
-    console.log(`Attempting to start server on port ${numericPort}...`);
-    
-    const server = app.listen(numericPort, () => {
-      console.log(`Server running on port ${numericPort}`);
-      // Set an environment variable with the actual port
-      process.env.ACTIVE_SERVER_PORT = numericPort.toString();
-    });
-    
-    server.on('error', (error: NodeJS.ErrnoException) => {
-      if (error.code === 'EADDRINUSE') {
-        console.warn(`Port ${numericPort} is already in use, trying port ${numericPort + 10}`);
-        startServer(numericPort + 10);
+    // Connect to MongoDB
+    await mongoose.connect(MONGO_URI);
+    console.log('Connected to MongoDB successfully');
+
+    // Start the server
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server is running on port ${PORT}`);
+      console.log(`Server address: ${JSON.stringify(server.address())}`);
+    }).on('error', (err: any) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use. Please free up port ${PORT} or specify a different port.`);
+        process.exit(1);
       } else {
-        console.error('Server error:', error);
+        console.error('Failed to start server:', err);
+        process.exit(1);
       }
+    });
+
+    // Add error handler
+    server.on('error', (err: any) => {
+      console.error('Server error:', err);
     });
   } catch (error) {
     console.error('Failed to start server:', error);
+    process.exit(1);
   }
 };
 
-// Start the server with the configured port
-startServer(PORT);
-
-// Connect to MongoDB
-mongoose.connect(MONGO_URI)
-  .then(() => {
-    console.log('Connected to MongoDB');
-  })
-  .catch((error) => {
-    console.error('MongoDB connection error:', error);
-    console.warn('Server running without MongoDB connection. Some features may not work.');
-  });
+startServer();
 
 const collectionsFilePath = path.join(__dirname, 'collections.json');
 const listingsFilePath = path.join(__dirname, 'listings.json');

@@ -38,9 +38,34 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3002',
         changeOrigin: true,
         secure: false,
+        configure: (proxy, options) => {
+          proxy.on('error', (err, req, res) => {
+            console.error('Proxy error:', err);
+            if (!res.headersSent) {
+              res.writeHead(500, {
+                'Content-Type': 'application/json'
+              });
+              res.end(JSON.stringify({ error: 'Proxy error', details: err.message }));
+            }
+          });
+          proxy.on('proxyReq', (proxyReq, req, res) => {
+            console.log('Proxying request:', {
+              method: req.method,
+              url: req.url,
+              target: options.target + req.url
+            });
+          });
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            console.log('Proxy response:', {
+              method: req.method,
+              url: req.url,
+              status: proxyRes.statusCode
+            });
+          });
+        }
       },
     },
   },

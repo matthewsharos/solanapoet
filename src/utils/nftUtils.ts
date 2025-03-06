@@ -4,10 +4,17 @@ export interface NFTMetadata {
   name: string;
   image: string;
   description?: string;
+  mint: string;
 }
 
 export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NFTMetadata[]> => {
   try {
+    // Validate collection address
+    if (!collectionAddress) {
+      console.warn('No collection address provided to fetchCollectionNFTs');
+      return [];
+    }
+
     const response = await fetch('https://mainnet.helius-rpc.com/?api-key=' + import.meta.env.VITE_HELIUS_API_KEY, {
       method: 'POST',
       headers: {
@@ -33,9 +40,10 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
     }
 
     return data.result.items.map((item: any) => ({
-      name: item.content.metadata.name || 'Untitled',
-      image: item.content.files[0]?.uri || '',
-      description: item.content.metadata.description
+      mint: item.id,
+      name: item.content?.metadata?.name || 'Untitled',
+      image: item.content?.files?.[0]?.uri || item.content?.links?.image || '',
+      description: item.content?.metadata?.description || ''
     }));
   } catch (error) {
     console.error('Error fetching collection NFTs:', error);

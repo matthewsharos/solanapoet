@@ -1,4 +1,3 @@
-import { google } from 'googleapis';
 import { getOAuth2Client } from './googleAuth';
 
 // Configuration

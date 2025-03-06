@@ -22,6 +22,7 @@ export interface NFT {
   owner: string | NFTOwner;
   collection?: string;
   collectionName?: string;
+  collectionAddress?: string;
   listed?: boolean;
   price?: number;
   lister?: string;

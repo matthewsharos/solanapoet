@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
 import { uploadFileToDrive } from '../api/googleDrive';
-import { sheets, GOOGLE_SHEETS_CONFIG } from '../api/googleSheetsConfig';
+import axios from 'axios';
 import ImageCarousel from '../components/ImageCarousel';
 import SubmissionAnimation from '../components/SubmissionAnimation';
 
@@ -64,7 +64,7 @@ const Requests: React.FC = () => {
       // Upload image to Google Drive
       const imageUrl = await uploadFileToDrive(imageFile);
 
-      // Submit to Google Sheets
+      // Submit to Google Sheets through server endpoint
       const formData = {
         timestamp: new Date().toISOString(),
         requester_id: publicKey.toString(),
@@ -73,25 +73,22 @@ const Requests: React.FC = () => {
         comment: comment
       };
 
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-        range: GOOGLE_SHEETS_CONFIG.sheets.artRequests,
+      await axios.post(`/api/sheets/values/1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0/${encodeURIComponent('art_requests!A:E')}/append`, {
         valueInputOption: 'RAW',
-        requestBody: {
-          values: [[
-            formData.timestamp,
-            formData.requester_id,
-            formData.image_url,
-            formData.x_handle,
-            formData.comment
-          ]]
-        }
+        values: [[
+          formData.timestamp,
+          formData.requester_id,
+          formData.image_url,
+          formData.x_handle,
+          formData.comment
+        ]]
       });
       
       // Reset form
       setImageFile(null);
       setXHandle('');
       setComment('');
+      setSubmitStatus('success');
     } catch (error) {
       console.error('Error submitting form:', error);
       setShowAnimation(false);

@@ -76,32 +76,70 @@ async function initializeAuth() {
 // Initialize auth when the module loads
 initializeAuth().catch(console.error);
 
-// Get values from a sheet
+// Cache configuration
+const cache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 60000; // 1 minute cache TTL
+const MAX_RETRIES = 3;
+const BASE_DELAY = 1000; // 1 second
+
+interface GoogleSheetsError extends Error {
+  code?: number;
+}
+
+// Get values from a sheet with caching and exponential backoff
 export async function getSheetValues(spreadsheetId: string, range: string): Promise<SheetValues> {
-  try {
-    if (!auth) {
-      console.log('Auth not initialized, attempting to initialize...');
-      await initializeAuth();
+  const cacheKey = `${spreadsheetId}:${range}`;
+  const now = Date.now();
+  const cached = cache.get(cacheKey);
+
+  // Return cached data if still valid
+  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+    return cached.data;
+  }
+
+  let lastError: GoogleSheetsError = new Error('No error occurred yet');
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
       if (!auth) {
-        throw new Error('Failed to initialize Google Sheets authentication');
+        console.log('Auth not initialized, attempting to initialize...');
+        await initializeAuth();
+        if (!auth) {
+          throw new Error('Failed to initialize Google Sheets authentication');
+        }
+      }
+
+      console.log(`Making request to Google Sheets API (attempt ${attempt + 1}):`, { spreadsheetId, range });
+      const sheets = google.sheets({ 
+        version: 'v4', 
+        auth: auth as OAuth2Client
+      });
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+
+      // Cache the successful response
+      cache.set(cacheKey, {
+        data: response.data,
+        timestamp: now
+      });
+
+      console.log('Successfully retrieved sheet data');
+      return response.data;
+    } catch (error) {
+      lastError = error as GoogleSheetsError;
+      if (lastError.code === 429) { // Rate limit error
+        const delay = BASE_DELAY * Math.pow(2, attempt);
+        console.log(`Rate limit hit, waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error; // For other errors, throw immediately
       }
     }
-
-    console.log('Making request to Google Sheets API:', { spreadsheetId, range });
-    const sheets = google.sheets({ 
-      version: 'v4', 
-      auth: auth as OAuth2Client // Type assertion since we've checked auth is not null
-    });
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range,
-    });
-    console.log('Successfully retrieved sheet data:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Error getting sheet values:', error);
-    throw error;
   }
+
+  console.error('Error getting sheet values after retries:', lastError);
+  throw lastError;
 }
 
 // Append values to a sheet

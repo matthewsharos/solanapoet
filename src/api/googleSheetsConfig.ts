@@ -1,103 +1,148 @@
+import { sheets_v4 } from '@googleapis/sheets';
+import { google } from 'googleapis';
+import { API_BASE_URL } from './config';
+
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  // Google Sheet ID - this should be set from environment variable
-  spreadsheetId: import.meta.env?.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
-  // Sheet names
+  spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
   sheets: {
     collections: 'collections',
-    listings: 'listings',
+    ultimates: 'ultimates',
     displayNames: 'display_names',
-    artRequests: 'art_requests',
-    ultimates: 'ultimates'
+    artRequests: 'art_requests'
   }
 };
 
 // Log environment variables for debugging
 console.log('Google Sheets Config:', {
   spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-  apiKeyExists: !!import.meta.env.VITE_GOOGLE_API_KEY,
-  apiKeyLength: import.meta.env.VITE_GOOGLE_API_KEY?.length
+  apiKeyExists: !!process.env.GOOGLE_API_KEY,
+  apiKeyLength: process.env.GOOGLE_API_KEY?.length
 });
 
-// Create Google Sheets client for browser environment
-export const createSheetsClient = async () => {
-  // For browser environment, we'll use a backend proxy endpoint
-  const BASE_URL = '/api/sheets'; // This will be proxied to your backend
+// Response type for Google Sheets API
+export interface SheetResponse {
+  success: boolean;
+  data: any[];
+  error?: string;
+  retryAfter?: number;
+}
 
-  return {
-    spreadsheets: {
-      values: {
-        get: async ({ spreadsheetId, range }: { spreadsheetId: string, range: string }) => {
-          const url = `${BASE_URL}/values/${spreadsheetId}/${encodeURIComponent(range)}`;
-          console.log('Fetching from URL:', url);
-          
-          try {
-            const response = await fetch(url);
+// Define a type for the sheets client
+export interface SheetsClient {
+  spreadsheets: {
+    values: {
+      get: (params: {
+        spreadsheetId: string;
+        range: string;
+      }) => Promise<{
+        data: {
+          values: any[][];
+        };
+      }>;
+      append: (params: {
+        spreadsheetId: string;
+        range: string;
+        valueInputOption: string;
+        requestBody: {
+          values: any[][];
+        };
+      }) => Promise<any>;
+      update: (params: {
+        spreadsheetId: string;
+        range: string;
+        valueInputOption: string;
+        requestBody: {
+          values: any[][];
+        };
+      }) => Promise<any>;
+    };
+    batchUpdate: (params: {
+      spreadsheetId: string;
+      requestBody: any;
+    }) => Promise<any>;
+  };
+}
+
+let sheetsClient: SheetsClient | null = null;
+
+export const createSheetsClient = async (): Promise<SheetsClient> => {
+  if (!sheetsClient) {
+    sheetsClient = {
+      spreadsheets: {
+        values: {
+          get: async ({ spreadsheetId, range }) => {
+            const sheetName = range.split('!')[0];
+            const response = await fetch(`${API_BASE_URL}/api/sheets/${sheetName}`);
+            
             if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`Failed to fetch sheet data: ${response.status} ${response.statusText}\nResponse: ${errorText}`);
+              throw new Error(`HTTP error! status: ${response.status}`);
             }
+
+            const result = await response.json();
+            if (!result.success) {
+              throw new Error(result.error || 'Failed to fetch sheet data');
+            }
+
+            return { data: { values: result.data } };
+          },
+          append: async ({ spreadsheetId, range, valueInputOption, requestBody }) => {
+            const response = await fetch(`${API_BASE_URL}/api/sheets/${range.split('!')[0]}/append`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestBody),
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             return response.json();
-          } catch (error) {
-            console.error('Detailed fetch error:', error);
-            throw error;
-          }
+          },
+          update: async ({ spreadsheetId, range, valueInputOption, requestBody }) => {
+            const response = await fetch(`${API_BASE_URL}/api/sheets/${range.split('!')[0]}/update`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                range: range.split('!')[1],
+                values: requestBody.values,
+              }),
+            });
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            return response.json();
+          },
         },
-        append: async ({ spreadsheetId, range, valueInputOption, requestBody }: any) => {
-          const url = `${BASE_URL}/values/${spreadsheetId}/${encodeURIComponent(range)}/append`;
-          const response = await fetch(url, {
+        batchUpdate: async ({ spreadsheetId, requestBody }) => {
+          const response = await fetch(`${API_BASE_URL}/api/sheets/batch`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              valueInputOption,
-              values: requestBody.values
-            }),
+            body: JSON.stringify(requestBody),
           });
+          
           if (!response.ok) {
-            throw new Error(`Failed to append sheet data: ${response.statusText}`);
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
+          
           return response.json();
         },
-        update: async ({ spreadsheetId, range, valueInputOption, requestBody }: any) => {
-          const url = `${BASE_URL}/values/${spreadsheetId}/${encodeURIComponent(range)}`;
-          const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              valueInputOption,
-              values: requestBody.values
-            }),
-          });
-          if (!response.ok) {
-            throw new Error(`Failed to update sheet data: ${response.statusText}`);
-          }
-          return response.json();
-        }
       },
-      batchUpdate: async ({ spreadsheetId, requestBody }: any) => {
-        const url = `${BASE_URL}/batch/${spreadsheetId}`;
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(requestBody),
-        });
-        if (!response.ok) {
-          throw new Error(`Failed to batch update: ${response.statusText}`);
-        }
-        return response.json();
-      }
-    }
-  };
+    };
+  }
+  return sheetsClient;
 };
 
 // Export sheets client
-export let sheets: any = null;
+export let sheets: SheetsClient | null = null;
 
 // Initialize sheets client
 (async () => {
@@ -109,69 +154,68 @@ export let sheets: any = null;
   }
 })();
 
-// Helper function to get sheet range
-export const getSheetRange = (sheetName: string, range?: string) => {
-  return `${sheetName}${range ? '!' + range : ''}`;
+// Helper function to format sheet name for API request
+const getSheetRange = (sheetName: string) => {
+  return `${sheetName}!A1:Z1004`;
 };
 
-// Helper function to convert sheet data to objects
-export const convertSheetDataToObjects = (data: any[][], customHeaders?: string[]): any[] => {
-  if (!data || data.length < 2) return [];
-  
-  const headers = customHeaders || data[0];
-  return data.slice(1).map(row => {
-    const obj: any = {};
-    headers.forEach((header, index) => {
-      obj[header] = row[index];
-    });
-    return obj;
-  });
+/**
+ * Get data from Google Sheets with rate limit handling
+ */
+export const get = async (sheetName: string): Promise<SheetResponse> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/sheets/${sheetName}`);
+    
+    if (response.status === 429) {
+      const retryAfter = parseInt(response.headers.get('retry-after') || '60', 10);
+      console.log(`Rate limited, retry after ${retryAfter} seconds`);
+      return {
+        success: false,
+        data: [],
+        error: 'Rate limit exceeded',
+        retryAfter
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        data: [],
+        error: `HTTP error! status: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+      return {
+        success: false,
+        data: [],
+        error: result.error || 'Failed to fetch sheet data'
+      };
+    }
+
+    return {
+      success: true,
+      data: result.data || []
+    };
+  } catch (error) {
+    console.error('Error fetching from Google Sheets:', error);
+    return {
+      success: false,
+      data: [],
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 };
 
-// Helper function to convert objects to sheet data
-export const convertObjectsToSheetData = (objects: any[]): any[][] => {
-  if (!objects || objects.length === 0) return [[]];
-  
-  const headers = Object.keys(objects[0]);
-  const rows = objects.map(obj => headers.map(header => obj[header]));
-  
-  return [headers, ...rows];
-};
-
-// Test function to verify sheet access
+// Test function to verify Google Sheets API access
 export const testGoogleSheetsConnection = async () => {
   try {
-    console.log('Testing Google Sheets connection...');
-    const sheetsClient = await createSheetsClient();
-
-    // Test Collections sheet
-    console.log('Testing Collections sheet access...');
-    const collectionsResponse = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: getSheetRange(GOOGLE_SHEETS_CONFIG.sheets.collections),
-    });
-    
-    console.log('Collections data:', {
-      headers: collectionsResponse.values?.[0] || [],
-      rowCount: (collectionsResponse.values || []).length - 1
-    });
-
-    // Test Display_Names sheet
-    console.log('Testing Display_Names sheet access...');
-    const displayNamesResponse = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: getSheetRange(GOOGLE_SHEETS_CONFIG.sheets.displayNames),
-    });
-    
-    console.log('Display_Names data:', {
-      headers: displayNamesResponse.values?.[0] || [],
-      rowCount: (displayNamesResponse.values || []).length - 1
-    });
-
-    console.log('Google Sheets connection test completed successfully');
-    return true;
+    const collections = await get(GOOGLE_SHEETS_CONFIG.sheets.collections);
+    console.log('Test connection successful:', collections);
+    return collections.success;
   } catch (error) {
-    console.error('Google Sheets connection test failed:', error);
+    console.error('Test connection failed:', error);
     return false;
   }
 }; 

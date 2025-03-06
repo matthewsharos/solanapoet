@@ -72,39 +72,18 @@ const ensureConnection = (connection?: Connection): Connection => {
   if (connection) {
     return connection;
   }
-  const heliusMainnetRpcUrl = 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d';
+  const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`;
   return new Connection(heliusMainnetRpcUrl, 'confirmed');
 };
 
 const getApiBaseUrl = async (): Promise<string> => {
-  const ports = [3002, 3001, 3011, 3021, 3031, 3041];
-  
-  for (const port of ports) {
-    try {
-      const response = await fetch(`http://localhost:${port}/health`);
-      if (response.ok) {
-        try {
-          localStorage.setItem('active_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        return `http://localhost:${port}`;
-      }
-    } catch (error) {
-      console.log(`Server not available on port ${port}`);
-    }
+  // In development, use relative URLs that work with Vite proxy
+  if (process.env.NODE_ENV === 'development') {
+    return '';  // Empty string for relative URLs
   }
   
-  try {
-    const savedPort = localStorage.getItem('active_server_port');
-    if (savedPort) {
-      return `http://localhost:${parseInt(savedPort, 10)}`;
-    }
-  } catch (e) {
-    console.warn('Could not access localStorage:', e);
-  }
-  
-  return 'http://localhost:3002';
+  // In production, use the configured API URL
+  return process.env.REACT_APP_API_URL || '';
 };
 
 const isNFT = (obj: any): obj is NFT => {

@@ -1,35 +1,85 @@
-import { sheets, createSheetsClient, GOOGLE_SHEETS_CONFIG, getSheetRange, convertSheetDataToObjects, convertObjectsToSheetData } from './googleSheetsConfig';
+import { GOOGLE_SHEETS_CONFIG, get, sheets, createSheetsClient, SheetResponse } from './googleSheetsConfig';
 
 /**
  * Type definition for a collection
  */
-export type Collection = {
+export interface Collection {
   address: string;
   name: string;
   image?: string;
   description?: string;
   addedAt: number;
-  creationDate?: string; // ISO string date when the collection was first created on-chain
-  ultimates: string | boolean; // Can be 'TRUE', true, false, or undefined
-};
+  creationDate?: string;
+  ultimates?: boolean;
+}
 
 // Add new type for ultimate NFT entries
-export type UltimateNFT = {
-  collection_id: string;
+export interface UltimateNFT {
   nft_address: string;
-  name?: string;
-  owner?: string;
-};
+  name: string;
+  owner: string;
+  collection_id: string;
+}
 
 // Timeout for fetch requests in milliseconds
 const FETCH_TIMEOUT = 15000; // 15 seconds
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // 1 second delay between retries
+const BASE_RETRY_DELAY = 2000; // 2 seconds base delay
+
+// Cache for Google Sheets data
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+
+interface CacheEntry<T> {
+  data: T[];
+  timestamp: number;
+}
+
+type CacheType = {
+  collections?: CacheEntry<Collection>;
+  ultimates?: CacheEntry<UltimateNFT>;
+};
+
+const cache: CacheType = {};
+
+function isCacheValid<T>(cacheEntry: CacheEntry<T>): boolean {
+  return Date.now() - cacheEntry.timestamp < CACHE_DURATION;
+}
 
 /**
  * Sleep utility function
  */
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Local storage keys
+const LS_KEYS = {
+  COLLECTIONS: 'collections_cache',
+  ULTIMATES: 'ultimates_cache',
+  TIMESTAMP: 'cache_timestamp'
+};
+
+// Save to local storage with timestamp
+const saveToLocalStorage = <T>(key: string, data: T[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }));
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
+
+// Get from local storage with timestamp check
+const getFromLocalStorage = <T>(key: string): { data: T[], timestamp: number } | null => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return null;
+    return JSON.parse(stored);
+  } catch (error) {
+    console.error('Error reading from localStorage:', error);
+    return null;
+  }
+};
 
 /**
  * Get collections from localStorage
@@ -59,70 +109,141 @@ const ensureSheetsClient = async () => {
   return sheets;
 };
 
+// Helper function for exponential backoff
+const exponentialBackoff = async (attempt: number) => {
+  const delay = Math.min(
+    BASE_RETRY_DELAY * Math.pow(2, attempt),
+    60000 // Cap at 1 minute
+  );
+  await new Promise(resolve => setTimeout(resolve, delay));
+};
+
 /**
- * Fetch collections from Google Sheets with retry logic
+ * Fetch from Google Sheets with retry logic and rate limiting
  */
-const fetchFromGoogleSheets = async (retries = MAX_RETRIES): Promise<Collection[]> => {
+const fetchFromGoogleSheets = async <T extends Collection | UltimateNFT>(
+  sheetName: string,
+  retries = MAX_RETRIES
+): Promise<T[]> => {
   try {
-    console.log('Fetching collections from Google Sheets...');
-    
-    const sheetsClient = await ensureSheetsClient();
-    
-    const response = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: getSheetRange(GOOGLE_SHEETS_CONFIG.sheets.collections),
-    });
-
-    // Handle both wrapped and unwrapped response formats
-    const values = response.data?.values || response?.values || [];
-    const data = convertSheetDataToObjects(values);
-    console.log('Successfully fetched collections from Google Sheets:', data.length);
-
-    // Map the Google Sheets data to our Collection type
-    const collections = data.map(item => ({
-      address: item.address || '',
-      name: item.name || '',
-      image: item.image || '',
-      description: item.description || '',
-      addedAt: item.addedAt ? parseInt(item.addedAt) : Date.now(),
-      creationDate: item.creationDate || '',
-      ultimates: item.ultimates === 'TRUE'
-    }));
-
-    // Cache in localStorage as backup
-    try {
-      localStorage.setItem('collections', JSON.stringify(collections));
-      console.log('Cached collections in localStorage');
-    } catch (e) {
-      console.warn('Failed to cache collections in localStorage:', e);
+    // Check cache first
+    const cacheKey = sheetName as keyof CacheType;
+    const cacheEntry = cache[cacheKey] as CacheEntry<T> | undefined;
+    if (cacheEntry && isCacheValid(cacheEntry)) {
+      console.log(`Using cached data for ${sheetName}`);
+      return cacheEntry.data;
     }
 
-    return collections;
-  } catch (error) {
+    // If we're retrying, add exponential backoff
+    if (retries < MAX_RETRIES) {
+      await exponentialBackoff(MAX_RETRIES - retries);
+    }
+
+    const response = await get(sheetName);
+    
+    // Handle rate limiting
+    const retryAfter = response.retryAfter || 0;
+    if (!response.success && retryAfter > 0) {
+      console.log(`Rate limited, waiting ${retryAfter} seconds before retry...`);
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      return fetchFromGoogleSheets(sheetName, retries - 1);
+    }
+
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to fetch from Google Sheets');
+    }
+
+    // Update cache
+    const newCacheEntry: CacheEntry<T> = {
+      data: response.data as T[],
+      timestamp: Date.now()
+    };
+    
+    if (sheetName === GOOGLE_SHEETS_CONFIG.sheets.collections) {
+      cache.collections = newCacheEntry as CacheEntry<Collection>;
+    } else if (sheetName === GOOGLE_SHEETS_CONFIG.sheets.ultimates) {
+      cache.ultimates = newCacheEntry as CacheEntry<UltimateNFT>;
+    }
+
+    return response.data as T[];
+  } catch (error: any) {
     console.error('Error fetching from Google Sheets:', error);
-    if (retries > 0) {
-      console.log(`Retrying request, ${retries} attempts remaining...`);
-      await sleep(RETRY_DELAY);
-      return fetchFromGoogleSheets(retries - 1);
+    
+    // If we have cached data, return it even if expired
+    const cacheKey = sheetName as keyof CacheType;
+    const cacheEntry = cache[cacheKey] as CacheEntry<T> | undefined;
+    if (cacheEntry) {
+      console.log(`Using expired cache for ${sheetName} due to error`);
+      return cacheEntry.data;
     }
-    throw error;
+    
+    // If no cache and retries left, try again
+    if (retries > 0) {
+      console.log(`Retrying fetch for ${sheetName}, ${retries} attempts remaining`);
+      await exponentialBackoff(MAX_RETRIES - retries);
+      return fetchFromGoogleSheets(sheetName, retries - 1);
+    }
+    
+    return [];
   }
 };
 
 /**
- * Fetch collections from Google Sheets or localStorage
+ * Fetch all collections from Google Sheets with improved caching
  */
 export const fetchCollections = async (): Promise<Collection[]> => {
   try {
-    return await fetchFromGoogleSheets();
-  } catch (error) {
-    console.warn('Failed to fetch from Google Sheets, falling back to localStorage:', error);
-    const localCollections = getLocalStorageCollections();
-    if (localCollections.length > 0) {
-      console.log('Successfully retrieved collections from localStorage fallback');
-      return localCollections;
+    // Check memory cache first
+    if (cache.collections && isCacheValid(cache.collections)) {
+      return cache.collections.data;
     }
+
+    // Check local storage cache next
+    const localCache = getFromLocalStorage<Collection>(LS_KEYS.COLLECTIONS);
+    if (localCache && Date.now() - localCache.timestamp < CACHE_DURATION) {
+      // Update memory cache
+      cache.collections = {
+        data: localCache.data,
+        timestamp: localCache.timestamp
+      };
+      return localCache.data;
+    }
+
+    // Fetch from Google Sheets
+    const collections = await fetchFromGoogleSheets<Collection>(GOOGLE_SHEETS_CONFIG.sheets.collections);
+    
+    // Update both caches
+    const newCache = {
+      data: collections,
+      timestamp: Date.now()
+    };
+    cache.collections = newCache;
+    saveToLocalStorage(LS_KEYS.COLLECTIONS, collections);
+
+    return collections;
+  } catch (error) {
+    console.error('Error fetching collections:', error);
+    
+    // Try to return local storage cache even if expired
+    const localCache = getFromLocalStorage<Collection>(LS_KEYS.COLLECTIONS);
+    if (localCache) {
+      return localCache.data;
+    }
+    
     return [];
+  }
+};
+
+/**
+ * Get a specific collection by address
+ */
+export const getCollection = async (address: string): Promise<Collection | null> => {
+  try {
+    const collections = await fetchCollections();
+    return collections.find(collection => collection.address === address) || null;
+  } catch (error) {
+    console.error('Error getting collection:', error);
+    return null;
   }
 };
 
@@ -145,7 +266,7 @@ export const addCollection = async (collection: Collection): Promise<boolean> =>
 
     const sheetsClient = await ensureSheetsClient();
 
-    // Prepare the data to append
+    // Prepare the data to append in the correct column order
     const values = [[
       collection.address,
       collection.name,
@@ -335,40 +456,47 @@ export const updateCollectionUltimates = async (address: string, ultimates: stri
 };
 
 /**
- * Get ultimate NFTs for a specific collection from the ultimates sheet
+ * Get all ultimate NFTs with improved caching
  */
-export const getUltimateNFTs = async (collectionAddress: string): Promise<UltimateNFT[]> => {
+export const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
   try {
-    console.log(`[getUltimateNFTs] Fetching ultimate NFTs for collection: ${collectionAddress}`);
-    const sheetsClient = await ensureSheetsClient();
+    // Check memory cache first
+    if (cache.ultimates && isCacheValid(cache.ultimates)) {
+      return cache.ultimates.data;
+    }
+
+    // Check local storage cache next
+    const localCache = getFromLocalStorage<UltimateNFT>(LS_KEYS.ULTIMATES);
+    if (localCache && Date.now() - localCache.timestamp < CACHE_DURATION) {
+      // Update memory cache
+      cache.ultimates = {
+        data: localCache.data,
+        timestamp: localCache.timestamp
+      };
+      return localCache.data;
+    }
+
+    // Fetch from Google Sheets
+    const ultimates = await fetchFromGoogleSheets<UltimateNFT>(GOOGLE_SHEETS_CONFIG.sheets.ultimates);
     
-    // Get all ultimate NFTs
-    const response = await sheetsClient.spreadsheets.values.get({
-      spreadsheetId: GOOGLE_SHEETS_CONFIG.spreadsheetId,
-      range: getSheetRange(GOOGLE_SHEETS_CONFIG.sheets.ultimates),
-    });
+    // Update both caches
+    const newCache = {
+      data: ultimates,
+      timestamp: Date.now()
+    };
+    cache.ultimates = newCache;
+    saveToLocalStorage(LS_KEYS.ULTIMATES, ultimates);
 
-    console.log(`[getUltimateNFTs] Raw response from Google Sheets:`, response);
-    const values = response.data?.values || response?.values || [];
-    console.log(`[getUltimateNFTs] Values from Google Sheets:`, values);
-    const data = convertSheetDataToObjects(values);
-    console.log(`[getUltimateNFTs] Converted data:`, data);
-
-    // Filter for the requested collection
-    const filteredData = data.filter(item => item.collection_id === collectionAddress);
-    console.log(`[getUltimateNFTs] Filtered data for collection:`, filteredData);
-
-    const result = filteredData.map(item => ({
-      collection_id: item.collection_id,
-      nft_address: item['NFT Address'],
-      name: item.Name,
-      owner: item.Owner
-    }));
-
-    console.log(`[getUltimateNFTs] Final result:`, result);
-    return result;
+    return ultimates;
   } catch (error) {
-    console.error('[getUltimateNFTs] Error fetching ultimate NFTs:', error);
+    console.error('Error fetching ultimate NFTs:', error);
+    
+    // Try to return local storage cache even if expired
+    const localCache = getFromLocalStorage<UltimateNFT>(LS_KEYS.ULTIMATES);
+    if (localCache) {
+      return localCache.data;
+    }
+    
     return [];
   }
 };
@@ -381,7 +509,7 @@ export const addUltimateNFT = async (nft: UltimateNFT): Promise<boolean> => {
     const sheetsClient = await ensureSheetsClient();
 
     // Check if NFT already exists
-    const existingNFTs = await getUltimateNFTs(nft.collection_id);
+    const existingNFTs = await getUltimateNFTs();
     if (existingNFTs.some(existing => existing.nft_address === nft.nft_address)) {
       console.warn('NFT already exists in ultimates sheet');
       return false;
@@ -456,4 +584,9 @@ export const removeUltimateNFT = async (collectionAddress: string, nftAddress: s
     console.error('Error removing ultimate NFT:', error);
     return false;
   }
-}; 
+};
+
+/**
+ * Get the full range for a sheet
+ */
+const getSheetRange = (sheetName: string) => `${sheetName}!A:Z`; 

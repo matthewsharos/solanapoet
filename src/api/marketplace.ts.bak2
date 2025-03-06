@@ -60,55 +60,14 @@ const ensureConnection = (connection?: Connection): Connection => {
 };
 
 // Helper function to get the API base URL
-// This will try multiple ports if the first one fails
 const getApiBaseUrl = async (): Promise<string> => {
-  // Try ports in this order
-  const ports = [3002, 3001, 3011, 3021, 3031, 3041];
-  
-  console.log('Attempting to find active server port...');
-  
-  for (const port of ports) {
-    try {
-      console.log(`Trying port ${port}...`);
-      const response = await fetch(`http://localhost:${port}/health`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      if (response.ok) {
-        // Get more detailed information from the health endpoint
-        const healthData = await response.json();
-        console.log(`Server found on port ${port}`, healthData);
-        
-        // Store the port in localStorage for future use
-        try {
-          localStorage.setItem('active_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        
-        return `http://localhost:${port}`;
-      }
-    } catch (error) {
-      console.log(`Server not available on port ${port}`);
-    }
+  // In development, use relative URLs that work with Vite proxy
+  if (process.env.NODE_ENV === 'development') {
+    return '';  // Empty string for relative URLs
   }
   
-  // Try to get the last known port from localStorage
-  try {
-    const savedPort = localStorage.getItem('active_server_port');
-    if (savedPort) {
-      const port = parseInt(savedPort, 10);
-      console.log(`Using last known port from localStorage: ${port}`);
-      return `http://localhost:${port}`;
-    }
-  } catch (e) {
-    console.warn('Could not access localStorage:', e);
-  }
-  
-  // Default fallback
-  console.warn('Could not detect server port, using default 3002');
-  return 'http://localhost:3002';
+  // In production, use the configured API URL
+  return process.env.REACT_APP_API_URL || '';
 };
 
 // Add helper function to check if an object is a regular NFT

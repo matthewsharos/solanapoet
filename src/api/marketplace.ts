@@ -1,4 +1,3 @@
-import { NFT, NFTOwner } from '../types/nft';
 import { 
   Connection, 
   Transaction, 
@@ -27,6 +26,7 @@ import { sendTransactionWithFallback } from './transactionHelpers';
 import bs58 from 'bs58';
 import { callPurchaseSuccessPopupCallback } from './purchaseCallbacks';
 import { createSheetsClient, GOOGLE_SHEETS_CONFIG } from './googleSheetsConfig';
+import { NFT, NFTOwner } from '../types/nft';
 
 // Types and Interfaces
 interface TransactionOptions {
@@ -75,7 +75,7 @@ const ensureConnection = (connection?: Connection): Connection => {
   if (connection) {
     return connection;
   }
-  const heliusMainnetRpcUrl = 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d';
+  const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`;
   return new Connection(heliusMainnetRpcUrl, 'confirmed');
 };
 
@@ -89,128 +89,13 @@ export const resetApiBaseUrlCache = (): void => {
 };
 
 export const getApiBaseUrl = async (): Promise<string> => {
-  // Return cached URL if available
-  if (cachedApiBaseUrl) {
-    return cachedApiBaseUrl;
+  // In development, use relative URLs that work with Vite proxy
+  if (process.env.NODE_ENV === 'development') {
+    return '';  // Empty string for relative URLs
   }
   
-  // Reset any saved port to force a fresh check
-  try {
-    localStorage.removeItem('active_server_port');
-  } catch (e) {
-    console.warn('Could not access localStorage:', e);
-  }
-  
-  // First, try port 3002 directly since that's where our server should be running
-  try {
-    console.log('First trying port 3002 directly...');
-    const response = await fetch('http://localhost:3002/health', {
-      // Add a timeout to avoid hanging
-      signal: AbortSignal.timeout(2000)
-    });
-    
-    if (response.ok) {
-      console.log('Successfully connected to server on port 3002');
-      cachedApiBaseUrl = 'http://localhost:3002';
-      try {
-        localStorage.setItem('active_server_port', '3002');
-      } catch (e) {
-        console.warn('Could not store port in localStorage:', e);
-      }
-      return cachedApiBaseUrl;
-    }
-  } catch (error) {
-    console.log('Server not available on port 3002, trying others...');
-  }
-  
-  // Try a wide range of ports
-  // Start with common ports, then scan a range
-  const commonPorts = [3002, 3001, 3012, 3011, 3021, 3031, 3041, 3051, 3061];
-  const portRanges = [
-    { start: 3000, end: 3020 },  // Check 3000-3020
-    { start: 3050, end: 3070 },  // Check 3050-3070
-    { start: 8000, end: 8020 }   // Check 8000-8020
-  ];
-  
-  // Try common ports first
-  for (const port of commonPorts) {
-    try {
-      console.log(`Trying to connect to server on port ${port}...`);
-      const response = await fetch(`http://localhost:${port}/health`, {
-        // Add a timeout to avoid hanging
-        signal: AbortSignal.timeout(1000)
-      });
-      if (response.ok) {
-        try {
-          localStorage.setItem('active_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        console.log(`Successfully connected to server on port ${port}`);
-        cachedApiBaseUrl = `http://localhost:${port}`;
-        return cachedApiBaseUrl;
-      }
-    } catch (error) {
-      console.log(`Server not available on port ${port}`);
-    }
-  }
-  
-  // Then try port ranges
-  for (const range of portRanges) {
-    for (let port = range.start; port <= range.end; port++) {
-      // Skip ports we already tried
-      if (commonPorts.includes(port)) continue;
-      
-      try {
-        console.log(`Scanning port ${port}...`);
-        const response = await fetch(`http://localhost:${port}/health`, {
-          // Add a timeout to avoid hanging
-          signal: AbortSignal.timeout(500)
-        });
-        
-        if (response.ok) {
-          try {
-            localStorage.setItem('active_server_port', port.toString());
-          } catch (e) {
-            console.warn('Could not store port in localStorage:', e);
-          }
-          console.log(`Found server on port ${port}`);
-          cachedApiBaseUrl = `http://localhost:${port}`;
-          return cachedApiBaseUrl;
-        }
-      } catch (error) {
-        // Just continue to the next port
-      }
-    }
-  }
-  
-  // If we still haven't found a server, try a more aggressive approach
-  // Try to find any server running on ports 3000-4000
-  console.log('Trying more aggressive port scanning...');
-  for (let port = 3000; port <= 4000; port += 5) {
-    try {
-      const response = await fetch(`http://localhost:${port}/health`, {
-        signal: AbortSignal.timeout(300)
-      });
-      
-      if (response.ok) {
-        try {
-          localStorage.setItem('active_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        console.log(`Found server on port ${port} during aggressive scan`);
-        cachedApiBaseUrl = `http://localhost:${port}`;
-        return cachedApiBaseUrl;
-      }
-    } catch (error) {
-      // Just continue to the next port
-    }
-  }
-  
-  // Default fallback - use 3002 as it's where the escrow server is running
-  console.warn('Could not detect server port, using default 3002');
-  return 'http://localhost:3002';
+  // In production, use the configured API URL
+  return process.env.REACT_APP_API_URL || '';
 };
 
 const isNFT = (obj: any): obj is NFT => {
@@ -1471,10 +1356,10 @@ export const fetchMetaplexListingData = async <T extends NFT>(
   const attemptFetch = async (): Promise<T[]> => {
     try {
       const apiBaseUrl = await getApiBaseUrl();
-      console.log(`Attempting to fetch listings from ${apiBaseUrl}/api/market/listings (attempt ${retryCount + 1})`);
+      console.log(`Attempting to fetch listings from /api/market/listings (attempt ${retryCount + 1})`);
       const nftAddresses = nfts.map(nft => nft.mint);
       
-      const response = await fetch(`${apiBaseUrl}/api/market/listings`, {
+      const response = await fetch(`/api/market/listings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nftAddresses }),
@@ -1485,53 +1370,18 @@ export const fetchMetaplexListingData = async <T extends NFT>(
       if (!response.ok) {
         console.error(`Error fetching listing data: ${response.statusText} (status: ${response.status})`);
         
-        // If we get a 404 or connection error, the server might be running on a different port
+        // If we get a 404 or connection error, retry
         if ((response.status === 404 || response.status === 0) && retryCount < maxRetries) {
           retryCount++;
           resetApiBaseUrlCache(); // Reset the cached URL to force a new lookup
-          console.log(`Retrying with new port detection (attempt ${retryCount})`);
+          console.log(`Retrying (attempt ${retryCount})`);
           
           // Add a small delay before retrying
           await new Promise(resolve => setTimeout(resolve, 500));
           return await attemptFetch();
         }
         
-        // Try a direct request to the listings endpoint on port 3002 as a fallback
-        if (retryCount === maxRetries) {
-          console.log('Trying direct request to port 3002...');
-          try {
-            const directResponse = await fetch('http://localhost:3002/api/market/listings', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ nftAddresses: nfts.map(nft => nft.mint) })
-            });
-            
-            if (directResponse.ok) {
-              console.log('Direct request to port 3002 succeeded!');
-              // Store this port for future use
-              try {
-                localStorage.setItem('active_server_port', '3002');
-                cachedApiBaseUrl = 'http://localhost:3002';
-              } catch (e) {
-                console.warn('Could not store port in localStorage:', e);
-              }
-              
-              const directListings = await directResponse.json();
-              return nfts.map(nft => {
-                const listing = directListings[nft.mint];
-                return {
-                  ...nft,
-                  listing: listing || null,
-                  listed: !!listing,
-                  price: listing?.price || null
-                };
-              });
-            }
-          } catch (directError) {
-            console.error('Direct request to port 3002 failed:', directError);
-          }
-        }
-        
+        // If all retries failed, return empty listings
         return nfts.map(nft => ({
           ...nft,
           listing: null,
@@ -1555,17 +1405,16 @@ export const fetchMetaplexListingData = async <T extends NFT>(
     } catch (error) {
       console.error('Error fetching listing data:', error);
       
-      // If there's a connection error, retry with a different port
+      // If we have retries left, try again
       if (retryCount < maxRetries) {
         retryCount++;
-        resetApiBaseUrlCache(); // Reset the cached URL to force a new lookup
-        console.log(`Retrying with new port detection (attempt ${retryCount})`);
-        
-        // Add a small delay before retrying
-        await new Promise(resolve => setTimeout(resolve, 500));
+        resetApiBaseUrlCache();
+        console.log(`Retrying after error (attempt ${retryCount})`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
         return await attemptFetch();
       }
       
+      // If all retries failed, return empty listings
       return nfts.map(nft => ({
         ...nft,
         listing: null,
@@ -1575,7 +1424,7 @@ export const fetchMetaplexListingData = async <T extends NFT>(
     }
   };
   
-  return attemptFetch();
+  return await attemptFetch();
 };
 
 export const initializeMarketplace = async (): Promise<void> => {

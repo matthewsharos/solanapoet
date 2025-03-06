@@ -305,7 +305,7 @@ const CollectionManager: React.FC = () => {
         // Try to fetch collection data from Helius DAS API
         try {
           // First, try to get the asset directly (most reliable for collection metadata)
-          const assetResponse = await axios.post('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
+          const assetResponse = await axios.post(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
             jsonrpc: '2.0',
             id: 'my-id',
             method: 'getAsset',
@@ -380,7 +380,7 @@ const CollectionManager: React.FC = () => {
           
           // If we couldn't get direct asset info, try to get assets by group
           if (!fetchedFromAPI) {
-            const response = await axios.post('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
+            const response = await axios.post(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
               jsonrpc: '2.0',
               id: 'my-id',
               method: 'getAssetsByGroup',

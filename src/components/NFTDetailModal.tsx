@@ -20,8 +20,8 @@ import DownloadIcon from '@mui/icons-material/KeyboardReturn';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { NFT } from '../types/nft';
-import { getDisplayNameForWallet } from '../utils/displayNames';
-import { formatWalletAddress } from '../utils/helpers';
+import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
+import { getCollection } from '../api/collections';
 
 // Gallery-inspired styled components
 const DetailDialog = styled(Dialog)(({ theme }) => ({
@@ -44,7 +44,7 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d8cbb3' fill-opacity='0.1'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z' fill='%23ddd6c2' fill-opacity='0.1'/%3E%3C/g%3E%3C/svg%3E")`,
+      backgroundImage: `url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d8cbb3' fill-opacity='0.1'%3E%3Cpath d='M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23-11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 22c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-0.895 2-2s-0.895-2-2-2-2 0.895-2 2 0.895 2 2 2zM60 91c1.105 0 2-0.895 2-2s-0.895-2-2-2-2 0.895-2 2 0.895 2 2 2zM35 41c1.105 0 2-0.895 2-2s-0.895-2-2-2-2 0.895-2 2 0.895 2 2 2zM12 60c1.105 0 2-0.895 2-2s-0.895-2-2-2-2 0.895-2 2 0.895 2 2 2z' fill='%23ddd6c2' fill-opacity='0.1'/%3E%3C/g%3E%3C/svg%3E")`,
       pointerEvents: 'none',
       opacity: 0.5,
       zIndex: 0,
@@ -549,9 +549,10 @@ interface NFTDetailModalProps {
     imageHeight?: number;
     lastSoldPrice?: number;
   };
+  displayName?: string;
 }
 
-const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) => {
+const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [originalDimensions, setOriginalDimensions] = React.useState<{width: number, height: number} | null>(null);
@@ -560,8 +561,70 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
   const [isLoadingDisplayName, setIsLoadingDisplayName] = React.useState(false);
   const [creationDate, setCreationDate] = React.useState<string>('Loading...');
   const [isLoadingCreationDate, setIsLoadingCreationDate] = React.useState(false);
+  const [collectionName, setCollectionName] = React.useState<string>('');
+  const [isLoadingCollection, setIsLoadingCollection] = React.useState(false);
 
-  if (!nft) return null;
+  // Safely determine the owner address
+  const ownerAddress = React.useMemo(() => {
+    if (!nft.owner) return '';
+    return typeof nft.owner === 'string' 
+      ? nft.owner 
+      : nft.owner.publicKey || '';
+  }, [nft.owner]);
+
+  // Effect to handle display name updates
+  React.useEffect(() => {
+    const updateOwnerDisplay = async () => {
+      if (!ownerAddress) return;
+      
+      setIsLoadingDisplayName(true);
+      try {
+        // First try to use the passed displayName prop
+        if (displayName) {
+          setOwnerDisplayName(displayName);
+          return;
+        }
+
+        // Then try to use the owner's displayName if it exists
+        if (typeof nft.owner !== 'string' && nft.owner?.displayName) {
+          setOwnerDisplayName(nft.owner.displayName);
+          return;
+        }
+
+        // Force a fresh sync from Google Sheets and get display name
+        await syncDisplayNamesFromSheets(true);
+        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
+        
+        if (freshDisplayName) {
+          console.log('Found fresh display name:', freshDisplayName, 'for address:', ownerAddress);
+          setOwnerDisplayName(freshDisplayName);
+        } else {
+          // Show complete wallet address when no display name exists
+          console.log('No display name found for address:', ownerAddress);
+          setOwnerDisplayName(ownerAddress);
+        }
+      } catch (error) {
+        console.error('Error setting owner display name:', error);
+        setOwnerDisplayName(ownerAddress);
+      } finally {
+        setIsLoadingDisplayName(false);
+      }
+    };
+
+    if (open) {
+      updateOwnerDisplay();
+    }
+
+    // Listen for display name updates
+    const handleDisplayNameUpdate = () => {
+      updateOwnerDisplay();
+    };
+
+    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate);
+    return () => {
+      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate);
+    };
+  }, [open, ownerAddress, displayName, nft.owner]);
 
   // Update the fetchCreationDate function
   React.useEffect(() => {
@@ -571,7 +634,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
       setIsLoadingCreationDate(true);
       try {
         // First get the asset to determine if it's compressed
-        const assetResponse = await fetch('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
+        const assetResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -599,7 +662,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
 
         if (isCompressed) {
           // For compressed NFTs, get the mint transaction
-          const signaturesResponse = await fetch('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
+          const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -731,42 +794,6 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
     };
   };
 
-  // Effect to handle display name updates
-  React.useEffect(() => {
-    const updateOwnerDisplay = async () => {
-      if (!nft.owner) return;
-
-      setIsLoadingDisplayName(true);
-      try {
-        const ownerAddress = typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey;
-        // Try to get display name from Google Sheets
-        const displayName = await getDisplayNameForWallet(ownerAddress);
-        setOwnerDisplayName(displayName || ownerAddress);
-      } catch (error) {
-        console.error('Error fetching owner display name:', error);
-        const ownerAddress = typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey;
-        setOwnerDisplayName(ownerAddress);
-      } finally {
-        setIsLoadingDisplayName(false);
-      }
-    };
-
-    // Update display name when modal opens or owner changes
-    if (open) {
-      updateOwnerDisplay();
-    }
-
-    // Listen for display name updates
-    const handleDisplayNameUpdate = () => {
-      updateOwnerDisplay();
-    };
-
-    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate);
-    return () => {
-      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate);
-    };
-  }, [open, nft.owner]);
-
   // Load and determine the original image dimensions when the modal opens
   React.useEffect(() => {
     if (open && nft && nft.image) {
@@ -849,12 +876,36 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
   // Add this function inside the NFTDetailModal component before the return statement
   const handleCopyOwnerAddress = async () => {
     try {
-      const ownerAddress = typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey;
       await navigator.clipboard.writeText(ownerAddress);
     } catch (error) {
       console.error('Failed to copy owner address:', error);
     }
   };
+
+  // Effect to handle collection name updates
+  React.useEffect(() => {
+    const updateCollectionName = async () => {
+      if (!nft.collection) {
+        setCollectionName(nft.collectionName || "Unknown Collection");
+        return;
+      }
+
+      setIsLoadingCollection(true);
+      try {
+        const collection = await getCollection(nft.collection);
+        setCollectionName(collection?.name || nft.collectionName || "Unknown Collection");
+      } catch (error) {
+        console.error('Error fetching collection name:', error);
+        setCollectionName(nft.collectionName || "Unknown Collection");
+      } finally {
+        setIsLoadingCollection(false);
+      }
+    };
+
+    if (open) {
+      updateCollectionName();
+    }
+  }, [open, nft.collection, nft.collectionName]);
 
   return (
     <DetailDialog
@@ -874,7 +925,13 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
       <GalleryBackground />
       <AmbientGlow />
       <GalleryDust />
-      <GalleryCloseButton onClick={onClose} aria-label="close">
+      <GalleryCloseButton 
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }} 
+        aria-label="close"
+      >
         <CloseIcon />
       </GalleryCloseButton>
 
@@ -942,17 +999,25 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
         {/* Owner section */}
         <OwnerSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
           <MetadataLabel>Owner</MetadataLabel>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Typography variant="h6" sx={{ 
-              fontFamily: '"Arial", sans-serif',
-              fontWeight: 500,
-              color: '#333',
-              display: 'flex',
-              alignItems: 'center',
-              wordBreak: 'break-all',
-              fontSize: '0.9rem',
-              flex: 1
-            }}>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'flex-start',
+            gap: 1
+          }}>
+            <Typography 
+              variant="h6" 
+              component="div"
+              sx={{ 
+                fontFamily: '"Arial", sans-serif',
+                fontWeight: 500,
+                color: '#333',
+                fontSize: '0.9rem',
+                flex: 1,
+                maxWidth: 'calc(100% - 40px)',
+                whiteSpace: 'normal',
+                overflowWrap: 'break-word'
+              }}
+            >
               {isLoadingDisplayName ? (
                 <CircularProgress size={20} sx={{ mr: 1 }} />
               ) : ownerDisplayName}
@@ -971,7 +1036,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <CollectionIconBadge>★</CollectionIconBadge>
             <CollectionName variant="h6">
-              {nft.collectionName || "Solana Poet Collection"}
+              {isLoadingCollection ? (
+                <CircularProgress size={16} sx={{ mr: 1 }} />
+              ) : collectionName}
             </CollectionName>
           </Box>
         </CollectionSection>
@@ -988,9 +1055,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
           
           <MetadataLabel>Traits</MetadataLabel>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', mb: 2 }}>
-            {nft.attributes?.map((attr, index) => (
+            {nft.attributes?.map((attr) => (
               <TraitChip 
-                key={index} 
+                key={`${attr.trait_type}-${attr.value}`}
                 label={`${attr.trait_type}: ${attr.value}`} 
                 variant="outlined"
               />
@@ -1023,7 +1090,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft }) =
                   display: 'inline-block'
                 }}
               >
-                {isMobile ? formatWalletAddress(nft.mint, 6) : nft.mint}
+                {nft.mint}
               </Link>
               <Link 
                 href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`} 

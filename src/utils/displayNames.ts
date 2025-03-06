@@ -5,62 +5,80 @@
 
 const STORAGE_KEY = 'wallet_display_names';
 let syncInProgress = false;
-let syncTimeout: NodeJS.Timeout | null = null;
+let syncPromise: Promise<void> | null = null;
+let lastSyncTime = 0;
+const SYNC_COOLDOWN = 5000; // 5 seconds cooldown between syncs
+
+// Event name constant to ensure consistency
+const DISPLAY_NAMES_UPDATED_EVENT = 'displayNamesUpdated';
 
 /**
- * Normalize a wallet address to ensure consistent matching
- * @param address The wallet address to normalize
- * @returns The normalized address (lowercase)
+ * Dispatch display name update event
+ * @param names Updated display names map
  */
-export const normalizeAddress = (address: string): string => {
-  return address.toLowerCase();
+const dispatchDisplayNamesUpdate = (names: Record<string, string>) => {
+  window.dispatchEvent(new CustomEvent(DISPLAY_NAMES_UPDATED_EVENT, {
+    detail: { displayNames: names }
+  }));
 };
 
 /**
  * Sync display names from Google Sheets to localStorage
+ * @param force If true, bypass the cooldown check
  * @returns A promise that resolves when the sync is complete
  */
-export const syncDisplayNamesFromSheets = async (): Promise<void> => {
-  // Prevent multiple syncs from running simultaneously
-  if (syncInProgress) {
-    console.log('Display names sync already in progress, skipping...');
+export const syncDisplayNamesFromSheets = async (force: boolean = false): Promise<void> => {
+  const now = Date.now();
+  
+  // If a sync is already in progress, return the existing promise
+  if (syncPromise) {
+    return syncPromise;
+  }
+
+  // If we recently synced and not forcing, don't sync again
+  if (!force && now - lastSyncTime < SYNC_COOLDOWN) {
+    console.log('Recent sync detected, using cached data...');
     return;
   }
 
-  // Clear any pending sync
-  if (syncTimeout) {
-    clearTimeout(syncTimeout);
-  }
-
-  // Debounce the sync operation
-  syncTimeout = setTimeout(async () => {
-    try {
-      console.log('Starting display names sync from Google Sheets...');
-      syncInProgress = true;
+  try {
+    console.log('Starting display names sync from Google Sheets...');
+    syncInProgress = true;
+    
+    // Create a new sync promise
+    syncPromise = (async () => {
       const { getDisplayNames } = await import('../api/displayNames');
-      const displayNames = await getDisplayNames();
+      const displayNames = await getDisplayNames(true); // Always get fresh data
       
-      console.log('Fetched display names:', displayNames);
+      // Convert to a map for easier lookup, maintaining case sensitivity
+      const namesMap: Record<string, string> = {};
+      displayNames.forEach(entry => {
+        if (entry && entry.wallet_address && entry.display_name) {
+          // Store with original case
+          namesMap[entry.wallet_address] = entry.display_name;
+        }
+      });
       
-      // Compare with existing names to avoid unnecessary updates
-      const existingNames = localStorage.getItem(STORAGE_KEY);
-      const existingMap = existingNames ? JSON.parse(existingNames) : {};
+      // Store the new display names
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(namesMap));
       
-      // Only update if the names have changed
-      if (JSON.stringify(displayNames) !== JSON.stringify(existingMap)) {
-        console.log('Display names changed, updating localStorage...');
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(displayNames));
-        window.dispatchEvent(new CustomEvent('displayNamesUpdated'));
-      } else {
-        console.log('Display names unchanged, no update needed');
-      }
-    } catch (error) {
-      console.error('Error syncing display names from Google Sheets:', error);
-    } finally {
-      syncInProgress = false;
-      syncTimeout = null;
-    }
-  }, 100); // Reduced from 500ms to 100ms for faster updates
+      // Update last sync time
+      lastSyncTime = now;
+      
+      // Dispatch event with the updated names
+      dispatchDisplayNamesUpdate(namesMap);
+      
+      console.log('Display names synced from Google Sheets:', namesMap);
+    })();
+
+    await syncPromise;
+  } catch (error) {
+    console.error('Error syncing display names from Google Sheets:', error);
+    throw error;
+  } finally {
+    syncInProgress = false;
+    syncPromise = null;
+  }
 };
 
 /**
@@ -70,23 +88,25 @@ export const syncDisplayNamesFromSheets = async (): Promise<void> => {
  */
 export const getDisplayNameForWallet = async (walletAddress: string): Promise<string | undefined> => {
   try {
-    // First try to get from localStorage
+    // First check localStorage
     const storedNames = localStorage.getItem(STORAGE_KEY);
-    const namesMap = storedNames ? JSON.parse(storedNames) : {};
-    const normalizedAddress = normalizeAddress(walletAddress);
-    
-    // If we have a cached name, return it
-    if (namesMap[normalizedAddress]) {
-      return namesMap[normalizedAddress];
+    if (storedNames) {
+      const namesMap = JSON.parse(storedNames);
+      // Use exact case-sensitive match
+      if (namesMap[walletAddress]) {
+        return namesMap[walletAddress];
+      }
     }
     
-    // If not found in localStorage, sync with Google Sheets and try again
-    await syncDisplayNamesFromSheets();
+    // If not found in cache, sync with sheets (respecting cooldown)
+    await syncDisplayNamesFromSheets(false);
     
     // Check localStorage again after sync
     const updatedNames = localStorage.getItem(STORAGE_KEY);
-    const updatedMap = updatedNames ? JSON.parse(updatedNames) : {};
-    return updatedMap[normalizedAddress];
+    const namesMap = updatedNames ? JSON.parse(updatedNames) : {};
+    
+    // Use exact case-sensitive match
+    return namesMap[walletAddress];
   } catch (error) {
     console.error('Error getting display name for wallet:', error);
     return undefined;
@@ -108,25 +128,23 @@ export const setDisplayNameForWallet = async (walletAddress: string, displayName
       throw new Error('Failed to update display name in Google Sheets');
     }
 
-    // After successful Google Sheets update, update localStorage
-    const storedNames = localStorage.getItem(STORAGE_KEY) || '{}';
-    const namesMap = JSON.parse(storedNames);
-    const normalizedAddress = normalizeAddress(walletAddress);
-    namesMap[normalizedAddress] = displayName;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(namesMap));
+    // Force sync from sheets to ensure we have the latest data
+    await syncDisplayNamesFromSheets(true);
     
-    // Dispatch event to notify components to update
-    window.dispatchEvent(new CustomEvent('displayNamesUpdated', {
-      detail: {
-        walletAddress: normalizedAddress,
-        displayName: displayName
-      }
-    }));
+    // Double check the update was successful
+    const storedNames = localStorage.getItem(STORAGE_KEY);
+    const namesMap = storedNames ? JSON.parse(storedNames) : {};
+    
+    if (namesMap[walletAddress] !== displayName) {
+      console.warn('Display name mismatch after update, retrying sync...');
+      await syncDisplayNamesFromSheets(true);
+    }
+    
   } catch (error) {
     console.error('Error setting display name for wallet:', error);
     // On error, sync from sheets to ensure consistency
-    await syncDisplayNamesFromSheets();
-    throw error; // Re-throw to let the UI handle the error
+    await syncDisplayNamesFromSheets(true);
+    throw error;
   }
 };
 
@@ -154,15 +172,12 @@ export const clearDisplayNameForWallet = (walletAddress: string): void => {
     if (!storedNames) return;
     
     const namesMap = JSON.parse(storedNames);
-    const normalizedAddress = normalizeAddress(walletAddress);
-    if (namesMap[normalizedAddress]) {
-      delete namesMap[normalizedAddress];
+    if (namesMap[walletAddress]) {
+      delete namesMap[walletAddress];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(namesMap));
       
       // Dispatch event to notify other components
-      window.dispatchEvent(new CustomEvent('wallet-display-name-changed', {
-        detail: { walletAddress: normalizedAddress, displayName: undefined }
-      }));
+      dispatchDisplayNamesUpdate(namesMap);
     }
   } catch (error) {
     console.error('Error clearing display name for wallet:', error);

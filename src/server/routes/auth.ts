@@ -1,10 +1,10 @@
-import express from 'express';
-import { Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
+import { getOAuth2Client } from '../utils/google';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const router = express.Router();
+const router = Router();
 
 // Get the authorized minter address from environment variables
 const AUTHORIZED_MINTER = process.env.AUTHORIZED_MINTER || '';
@@ -38,6 +38,14 @@ router.get('/check-minter/:walletAddress', async (req: Request, res: Response) =
       success: false,
       message: 'Server error while checking authorization'
     });
+  }
+});
+
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    // ... existing code ...
+  } catch (error) {
+    res.status(500).json({ error: 'Authentication failed' });
   }
 });
 

@@ -1,14 +1,31 @@
-import { 
-  Metaplex, 
-  walletAdapterIdentity, 
-  WRAPPED_SOL_MINT, 
-  lamports,
-  toPublicKey,
-  CreateAuctionHouseInput
-} from '@metaplex-foundation/js';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { WalletAdapter } from '@solana/wallet-adapter-base';
+import { WalletContextState } from '@solana/wallet-adapter-react';
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { mplTokenMetadata } from '@metaplex-foundation/mpl-token-metadata';
+import { mplCandyMachine } from '@metaplex-foundation/mpl-candy-machine';
+import { mplToolbox, transferSol } from '@metaplex-foundation/mpl-toolbox';
+import { walletAdapterIdentity } from '@metaplex-foundation/umi-signer-wallet-adapters';
+import { base58 } from '@metaplex-foundation/umi/serializers';
+import { Umi, publicKey } from '@metaplex-foundation/umi';
+import { sol, lamports } from '@metaplex-foundation/umi-bundle-defaults';
 import { NFT } from '../types/nft';
+
+// Constants
+const WRAPPED_SOL_MINT = new PublicKey('So11111111111111111111111111111111111111112');
+
+// Types
+export type ExtendedWalletAdapter = WalletContextState & {
+  signTransaction: (transaction: any) => Promise<any>;
+  signAllTransactions: (transactions: any[]) => Promise<any[]>;
+  signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
+}
+
+export interface Listing {
+  nft: NFT;
+  price: number;
+  seller: PublicKey;
+  tokenSize: number;
+}
 
 // Define fallback test auction houses for different networks
 const NETWORK_AUCTION_HOUSES = {
@@ -58,13 +75,29 @@ try {
 }
 
 /**
- * Initializes a Metaplex instance with the wallet and connection
+ * Initializes a Umi instance with the wallet and connection
  * @param wallet The connected wallet adapter
  * @param connection The Solana connection instance
- * @returns A configured Metaplex instance
+ * @returns A configured Umi instance
  */
-function getMetaplex(wallet: WalletAdapter, connection: Connection) {
-  return Metaplex.make(connection).use(walletAdapterIdentity(wallet));
+function getUmi(wallet: ExtendedWalletAdapter, connection: Connection): Umi {
+  const umi = createUmi(connection.rpcEndpoint)
+    .use(mplTokenMetadata())
+    .use(mplCandyMachine())
+    .use(mplToolbox())
+    .use(walletAdapterIdentity(wallet));
+  
+  return umi;
+}
+
+// Helper function to convert lamports to SOL
+function lamportsToSol(amount: number): number {
+  return amount / LAMPORTS_PER_SOL;
+}
+
+// Helper function to convert SOL to lamports
+function solToLamports(solAmount: number): number {
+  return solAmount * LAMPORTS_PER_SOL;
 }
 
 /**
@@ -75,7 +108,7 @@ function getMetaplex(wallet: WalletAdapter, connection: Connection) {
  * @returns The newly created auction house address
  */
 export async function createAuctionHouse(
-  wallet: WalletAdapter, 
+  wallet: WalletContextState, 
   connection: Connection,
   params: {
     sellerFeeBasisPoints?: number;
@@ -88,7 +121,7 @@ export async function createAuctionHouse(
     throw new Error("Wallet not connected");
   }
   
-  const metaplex = getMetaplex(wallet, connection);
+  const umi = getUmi(wallet as ExtendedWalletAdapter, connection);
   
   // Default parameters for auction house
   const {
@@ -105,7 +138,7 @@ export async function createAuctionHouse(
   console.log('- Treasury mint:', treasuryMint.toString());
   
   try {
-    const { auctionHouse } = await metaplex.auctionHouse().create({
+    const { auctionHouse } = await umi.auctionHouse().create({
       sellerFeeBasisPoints,
       requiresSignOff,
       canChangeSalePrice,
@@ -198,8 +231,8 @@ export async function verifyAuctionHouse(connection: Connection): Promise<boolea
   }
 
   try {
-    // Create a non-authenticated Metaplex instance for verification
-    const metaplex = Metaplex.make(connection);
+    // Create a non-authenticated Umi instance for verification
+    const umi = createUmi(connection.rpcEndpoint);
     
     // If we have a cached auction house and network hasn't changed, use it
     if (AUCTION_HOUSE_CACHE && LAST_VERIFIED_NETWORK === currentNetwork) {
@@ -217,7 +250,7 @@ export async function verifyAuctionHouse(connection: Connection): Promise<boolea
     }
     
     // Try to fetch the auction house - this will throw if it doesn't exist or isn't valid
-    const auctionHouse = await metaplex.auctionHouse().findByAddress({ 
+    const auctionHouse = await umi.auctionHouse().findByAddress({ 
       address: auctionHouseAddress 
     });
     
@@ -255,7 +288,7 @@ export async function verifyAuctionHouse(connection: Connection): Promise<boolea
 export async function listNFTForSaleMetaplex(
   nft: NFT, 
   price: number, 
-  wallet: WalletAdapter, 
+  wallet: WalletContextState, 
   connection: Connection
 ) {
   try {
@@ -287,8 +320,8 @@ export async function listNFTForSaleMetaplex(
       throw new Error('You are using the default Metaplex auction house address, not your custom one. Please check your configuration.');
     }
     
-    const metaplex = getMetaplex(wallet, confirmedConnection);
-    const auctionHouse = await metaplex.auctionHouse().findByAddress({ address: AUCTION_HOUSE_ADDRESS });
+    const umi = getUmi(wallet as ExtendedWalletAdapter, confirmedConnection);
+    const auctionHouse = await umi.auctionHouse().findByAddress({ address: AUCTION_HOUSE_ADDRESS });
     
     // Convert price from SOL to lamports
     const priceInLamports = lamports(price * 1_000_000_000);
@@ -312,7 +345,7 @@ export async function listNFTForSaleMetaplex(
     console.log("Checking for existing listings...");
     try {
       // Find listings for this NFT by this seller on our auction house
-      const listings = await metaplex.auctionHouse().findListings({
+      const listings = await umi.auctionHouse().findListings({
         auctionHouse,
         seller: wallet.publicKey,
         mint: mintAddress
@@ -325,7 +358,7 @@ export async function listNFTForSaleMetaplex(
         for (const listing of listings) {
           try {
             console.log(`Cancelling listing with price ${listing.price.basisPoints.toNumber() / 1_000_000_000} SOL`);
-            await metaplex.auctionHouse().cancelListing({
+            await umi.auctionHouse().cancelListing({
               auctionHouse,
               listing: listing as any // Type assertion to fix the linter error
             });
@@ -340,16 +373,16 @@ export async function listNFTForSaleMetaplex(
       // Now also check if this NFT is listed on the default Metaplex auction house
       // This is important to catch the case where the NFT is listed on the default auction house
       try {
-        // Create a Metaplex instance for checking the default auction house
+        // Create a Umi instance for checking the default auction house
         const defaultAuctionHouseAddress = new PublicKey("hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk");
         console.log("Checking if NFT is listed on default Metaplex auction house:", defaultAuctionHouseAddress.toString());
         
-        const defaultAuctionHouse = await metaplex.auctionHouse().findByAddress({ 
+        const defaultAuctionHouse = await umi.auctionHouse().findByAddress({ 
           address: defaultAuctionHouseAddress 
         });
         
         // Check for listings on the default auction house
-        const defaultListings = await metaplex.auctionHouse().findListings({
+        const defaultListings = await umi.auctionHouse().findListings({
           auctionHouse: defaultAuctionHouse,
           seller: wallet.publicKey,
           mint: mintAddress
@@ -397,7 +430,7 @@ export async function listNFTForSaleMetaplex(
     // Now attempt to list the NFT with improved error handling
     try {
       console.log("Submitting listing transaction...");
-      const result = await metaplex.auctionHouse().list({
+      const result = await umi.auctionHouse().list({
         auctionHouse,
         mintAccount: mintAddress,
         price: priceInLamports
@@ -425,7 +458,7 @@ export async function listNFTForSaleMetaplex(
               await new Promise(resolve => setTimeout(resolve, delayMs));
             }
             
-            verificationListings = await metaplex.auctionHouse().findListings({
+            verificationListings = await umi.auctionHouse().findListings({
               auctionHouse,
               seller: wallet.publicKey,
               mint: mintAddress
@@ -480,11 +513,11 @@ export async function listNFTForSaleMetaplex(
             // First try to get the listing details from the default auction house
             try {
               const defaultAuctionHouseAddress = new PublicKey("hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk");
-              const defaultAuctionHouse = await metaplex.auctionHouse().findByAddress({ 
+              const defaultAuctionHouse = await umi.auctionHouse().findByAddress({ 
                 address: defaultAuctionHouseAddress 
               });
               
-              const defaultListings = await metaplex.auctionHouse().findListings({
+              const defaultListings = await umi.auctionHouse().findListings({
                 auctionHouse: defaultAuctionHouse,
                 seller: wallet.publicKey,
                 mint: mintAddress
@@ -521,7 +554,7 @@ export async function listNFTForSaleMetaplex(
         // Try to fetch from our configured auction house
         try {
           console.log("Attempting to fetch existing listing from our auction house:", AUCTION_HOUSE_ADDRESS.toString());
-          const existingListings = await metaplex.auctionHouse().findListings({
+          const existingListings = await umi.auctionHouse().findListings({
             auctionHouse,
             seller: wallet.publicKey,
             mint: mintAddress
@@ -579,7 +612,7 @@ export async function listNFTForSaleMetaplex(
  */
 export async function unlistNFTMetaplex(
   nft: NFT, 
-  wallet: WalletAdapter, 
+  wallet: WalletContextState, 
   connection: Connection
 ) {
   try {
@@ -591,8 +624,8 @@ export async function unlistNFTMetaplex(
       throw new Error("Auction house not configured");
     }
     
-    const metaplex = getMetaplex(wallet, connection);
-    const auctionHouse = await metaplex.auctionHouse().findByAddress({ address: AUCTION_HOUSE_ADDRESS });
+    const umi = getUmi(wallet as ExtendedWalletAdapter, connection);
+    const auctionHouse = await umi.auctionHouse().findByAddress({ address: AUCTION_HOUSE_ADDRESS });
     
     // Fetch the NFT data from chain
     const mintAddress = new PublicKey(nft.mint);
@@ -601,7 +634,7 @@ export async function unlistNFTMetaplex(
     let listings: any[] = [];
     try {
       // Try with mint parameter first (newer SDK versions)
-      listings = await metaplex.auctionHouse().findListings({
+      listings = await umi.auctionHouse().findListings({
         auctionHouse,
         seller: wallet.publicKey,
         mint: mintAddress
@@ -618,7 +651,7 @@ export async function unlistNFTMetaplex(
     
     // Cancel the first listing found
     const listing = listings[0];
-    await metaplex.auctionHouse().cancelListing({
+    await umi.auctionHouse().cancelListing({
       auctionHouse,
       listing
     });
@@ -638,9 +671,9 @@ export async function unlistNFTMetaplex(
  */
 export async function purchaseNFTMetaplex(
   nft: NFT, 
-  wallet: WalletAdapter, 
+  wallet: WalletContextState, 
   connection: Connection
-) {
+): Promise<void> {
   try {
     if (!wallet.publicKey) {
       throw new Error("Wallet not connected");
@@ -656,11 +689,14 @@ export async function purchaseNFTMetaplex(
       { commitment: 'confirmed', confirmTransactionInitialTimeout: 60000 }
     );
     
-    // Create Metaplex instance
-    const metaplex = getMetaplex(wallet, confirmedConnection);
+    // Create Umi instance
+    const umi = getUmi(wallet as ExtendedWalletAdapter, confirmedConnection);
     
     // Fetch the NFT data from chain
     const mintAddress = new PublicKey(nft.mint);
+    
+    // Convert price from SOL to lamports
+    const solPrice = nft.price * LAMPORTS_PER_SOL;
     
     // Check if nft has auctionHouse property (added by fetchMetaplexListingData)
     let auctionHouseAddress: PublicKey;
@@ -683,13 +719,13 @@ export async function purchaseNFTMetaplex(
     }
     
     // Get the auction house
-    const auctionHouse = await metaplex.auctionHouse().findByAddress({ 
+    const auctionHouse = await umi.auctionHouse().findByAddress({ 
       address: auctionHouseAddress 
     });
     
     // Find listings for this NFT on the specified auction house
     console.log(`Searching for listings of NFT ${nft.mint} on auction house ${auctionHouseAddress.toString()}`);
-    const listings = await metaplex.auctionHouse().findListings({
+    const listings = await umi.auctionHouse().findListings({
       auctionHouse,
       mint: mintAddress
     });
@@ -702,7 +738,7 @@ export async function purchaseNFTMetaplex(
     
     // Find the listing with the price that matches our NFT's price
     // Note: Price might be slightly different due to rounding, so we'll use approximate matching
-    const priceInLamports = nft.price * 1_000_000_000;
+    const priceInLamports = solPrice * 1_000_000_000;
     const listing = listings.find(l => {
       const listingPrice = l.price.basisPoints.toNumber();
       const priceDiff = Math.abs(listingPrice - priceInLamports);
@@ -721,7 +757,7 @@ export async function purchaseNFTMetaplex(
     // Execute the purchase with better error handling
     try {
       console.log(`Submitting purchase transaction...`);
-      const result = await metaplex.auctionHouse().buy({
+      const result = await umi.auctionHouse().buy({
         auctionHouse,
         listing: listing as any // Type assertion to fix the incompatible types issue
       });
@@ -1004,4 +1040,13 @@ export async function fetchMetaplexListingData<T extends { mint: string }>(
       listed: false
     }));
   }
+}
+
+export async function handleListings(listing: Listing): Promise<void> {
+  // Implementation
+}
+
+export async function filterListings(l: Listing): Promise<boolean> {
+  // Implementation
+  return true;
 } 

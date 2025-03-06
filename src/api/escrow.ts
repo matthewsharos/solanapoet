@@ -4,123 +4,13 @@
 
 // Get the API base URL with the port detection logic
 const getEscrowServer = async (): Promise<string> => {
-  // Try to get the last known port from localStorage first
-  try {
-    const savedPort = localStorage.getItem('escrow_server_port');
-    if (savedPort) {
-      const port = parseInt(savedPort, 10);
-      console.log(`Trying last known escrow port from localStorage: ${port}`);
-      try {
-        const response = await fetch(`http://localhost:${port}/health`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(1000)
-        });
-        
-        if (response.ok) {
-          console.log(`Successfully connected to escrow server on port ${port}`);
-          return `http://localhost:${port}`;
-        }
-      } catch (error) {
-        console.log(`Last known escrow port ${port} is not available`);
-      }
-    }
-  } catch (e) {
-    console.warn('Could not access localStorage:', e);
+  // In development, use relative URLs that work with Vite proxy
+  if (process.env.NODE_ENV === 'development') {
+    return '';  // Empty string for relative URLs
   }
   
-  // Try a wide range of ports
-  // Start with common ports, then scan a range
-  // Put port 3002 first since that's where the escrow server is running
-  const commonPorts = [3002, 3001, 3012, 3011, 3021, 3031, 3041, 3051, 3061];
-  const portRanges = [
-    { start: 3000, end: 3020 },  // Check 3000-3020
-    { start: 3050, end: 3070 },  // Check 3050-3070
-    { start: 8000, end: 8020 }   // Check 8000-8020
-  ];
-  
-  // Try common ports first
-  for (const port of commonPorts) {
-    try {
-      console.log(`Trying to connect to escrow server on port ${port}...`);
-      const response = await fetch(`http://localhost:${port}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(1000)
-      });
-      
-      if (response.ok) {
-        // Store the port in localStorage for future use
-        try {
-          localStorage.setItem('escrow_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        
-        console.log(`Found escrow server on port ${port}`);
-        return `http://localhost:${port}`;
-      }
-    } catch (error) {
-      console.log(`Server not available on port ${port}`);
-    }
-  }
-  
-  // Then try port ranges
-  for (const range of portRanges) {
-    for (let port = range.start; port <= range.end; port++) {
-      // Skip ports we already tried
-      if (commonPorts.includes(port)) continue;
-      
-      try {
-        console.log(`Scanning port ${port} for escrow server...`);
-        const response = await fetch(`http://localhost:${port}/health`, {
-          method: 'GET',
-          // Add a timeout to avoid hanging
-          signal: AbortSignal.timeout(500)
-        });
-        
-        if (response.ok) {
-          // Store the port in localStorage for future use
-          try {
-            localStorage.setItem('escrow_server_port', port.toString());
-          } catch (e) {
-            console.warn('Could not store port in localStorage:', e);
-          }
-          
-          console.log(`Found escrow server on port ${port}`);
-          return `http://localhost:${port}`;
-        }
-      } catch (error) {
-        // Just continue to the next port
-      }
-    }
-  }
-  
-  // If we still haven't found a server, try a more aggressive approach
-  // Try to find any server running on ports 3000-4000
-  console.log('Trying more aggressive port scanning for escrow server...');
-  for (let port = 3000; port <= 4000; port += 5) {
-    try {
-      const response = await fetch(`http://localhost:${port}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(300)
-      });
-      
-      if (response.ok) {
-        try {
-          localStorage.setItem('escrow_server_port', port.toString());
-        } catch (e) {
-          console.warn('Could not store port in localStorage:', e);
-        }
-        console.log(`Found escrow server on port ${port} during aggressive scan`);
-        return `http://localhost:${port}`;
-      }
-    } catch (error) {
-      // Just continue to the next port
-    }
-  }
-  
-  // Default fallback - use 3002 as it's where the escrow server is running
-  console.warn('Could not detect escrow server port, using default 3002');
-  return 'http://localhost:3002';
+  // In production, use the configured API URL
+  return process.env.REACT_APP_API_URL || '';
 };
 
 // Reset the cached server URL to force a new lookup

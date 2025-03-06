@@ -11,8 +11,8 @@ import {
   CircularProgress
 } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
-import { getDisplayNameForWallet, setDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
-import { getDisplayNames } from '../api/displayNames';
+import { getDisplayNameForWallet, setDisplayNameForWallet } from '../utils/displayNames';
+import { formatWalletAddress } from '../utils/helpers';
 
 interface DisplayNameEditorProps {
   open: boolean;
@@ -22,6 +22,7 @@ interface DisplayNameEditorProps {
 const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) => {
   const { publicKey } = useWalletContext();
   const [displayName, setDisplayName] = useState('');
+  const [currentDisplayName, setCurrentDisplayName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,6 +31,12 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
   useEffect(() => {
     if (open && publicKey) {
       loadExistingDisplayName();
+    } else {
+      // Reset state when dialog closes
+      setDisplayName('');
+      setCurrentDisplayName(null);
+      setError(null);
+      setSuccess(false);
     }
   }, [open, publicKey]);
 
@@ -39,16 +46,25 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
     
     setLoading(true);
     try {
-      const existingName = await getDisplayNameForWallet(publicKey.toString());
+      const walletAddress = publicKey.toString();
+      console.log('Fetching display name for wallet:', walletAddress);
+      
+      const { getDisplayName } = await import('../api/displayNames');
+      const existingName = await getDisplayName(walletAddress);
+      
+      console.log('Fetched display name result:', existingName);
+      
       if (existingName) {
         setDisplayName(existingName);
+        setCurrentDisplayName(existingName);
       } else {
-        // Default to shortened wallet address if no display name exists
-        setDisplayName(publicKey.toString());
+        // If no display name exists, leave the input empty but show formatted address as current
+        setDisplayName('');
+        setCurrentDisplayName(null);
       }
     } catch (e) {
       console.error('Error loading display name:', e);
-      setDisplayName(publicKey.toString());
+      setError('Failed to load display name. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -75,10 +91,12 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
     setLoading(true);
     try {
       const walletAddress = publicKey.toString();
-      await setDisplayNameForWallet(walletAddress, displayName.trim());
+      const { updateDisplayName } = await import('../api/displayNames');
+      await updateDisplayName(walletAddress, displayName.trim());
       
       setSuccess(true);
       setError(null);
+      setCurrentDisplayName(displayName.trim());
       
       // Close after success
       setTimeout(() => {
@@ -123,33 +141,39 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
               Your display name will be shown instead of your wallet address when displaying NFTs you own.
             </Typography>
             
-            {loading ? (
-              <Box display="flex" justifyContent="center" my={3}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <TextField
-                autoFocus
-                margin="dense"
-                label="Display Name"
-                fullWidth
-                variant="outlined"
-                value={displayName}
-                onChange={handleNameChange}
-                error={!!error}
-                helperText={error}
-                InputProps={{
-                  sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
-                }}
-                InputLabelProps={{
-                  sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
-                }}
-              />
-            )}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: '#666' }}>
+                Current Display Name:
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                {loading ? (
+                  <CircularProgress size={16} sx={{ mr: 1 }} />
+                ) : currentDisplayName || formatWalletAddress(publicKey.toString())}
+              </Typography>
+            </Box>
+            
+            <TextField
+              autoFocus
+              margin="dense"
+              label="New Display Name"
+              fullWidth
+              variant="outlined"
+              value={displayName}
+              onChange={handleNameChange}
+              error={!!error}
+              helperText={error}
+              disabled={loading}
+              InputProps={{
+                sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
+              }}
+              InputLabelProps={{
+                sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
+              }}
+            />
             
             <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
               <Typography variant="caption" sx={{ color: '#666' }}>
-                Your wallet: {publicKey.toString().substring(0, 4)}...{publicKey.toString().substring(publicKey.toString().length - 4)}
+                Your wallet: {formatWalletAddress(publicKey.toString())}
               </Typography>
             </Box>
             
@@ -169,7 +193,7 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
         <Button 
           onClick={handleSave} 
           variant="contained" 
-          disabled={!publicKey || loading}
+          disabled={!publicKey || loading || (displayName === currentDisplayName)}
           sx={{
             backgroundColor: '#d4af37',
             '&:hover': {

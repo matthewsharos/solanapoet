@@ -23,23 +23,18 @@ const MARKETPLACE_PROGRAM_ID = new PublicKey(
   '11111111111111111111111111111111' // Default to System Program as fallback
 );
 
-// API base URL configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+// API base URL configuration - use relative URL for Vite proxy in development
+const API_BASE_URL = process.env.NODE_ENV === 'development' ? '' : process.env.NEXT_PUBLIC_API_URL || '';
 
 // Helper function to get API base URL with retry
 const getApiBaseUrl = async (): Promise<string> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/health`);
-    if (response.ok) {
-      console.log(`Server found at ${API_BASE_URL}`);
-      return API_BASE_URL;
-    }
-  } catch (error) {
-    console.log(`Server not available at ${API_BASE_URL}, error:`, error);
+  // In development, use relative URLs that work with Vite proxy
+  if (process.env.NODE_ENV === 'development') {
+    return '';  // Empty string for relative URLs
   }
   
-  console.log(`Defaulting to ${API_BASE_URL}`);
-  return API_BASE_URL;
+  // In production, use the configured API URL
+  return process.env.REACT_APP_API_URL || '';
 };
 
 /**
@@ -281,7 +276,7 @@ export const listNFTForSale = async (
   if (!connection) {
     // Create a default connection if none is provided
     connection = new Connection(
-      process.env.SOLANA_RPC_URL || 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d',
+      process.env.SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`,
       'confirmed'
     );
   }

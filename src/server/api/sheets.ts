@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, RequestHandler } from 'express';
 import { getSheetValues, appendSheetValues, updateSheetValues, batchUpdate } from '../sheets';
 
 interface SheetError {
@@ -15,7 +15,7 @@ interface SheetError {
 const router = Router();
 
 // Get values from a sheet
-router.get('/values/:spreadsheetId/:range', async (req: Request, res: Response) => {
+const getSheetValuesHandler: RequestHandler = async (req, res) => {
   try {
     const { spreadsheetId, range } = req.params;
     const decodedRange = decodeURIComponent(range);
@@ -23,10 +23,11 @@ router.get('/values/:spreadsheetId/:range', async (req: Request, res: Response) 
     
     if (!spreadsheetId || !range) {
       console.error('Missing required parameters');
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Missing required parameters',
         details: { spreadsheetId, range }
       });
+      return;
     }
 
     const sheetData = await getSheetValues(spreadsheetId, decodedRange);
@@ -34,14 +35,15 @@ router.get('/values/:spreadsheetId/:range', async (req: Request, res: Response) 
     
     if (!sheetData) {
       console.error('No data returned from Google Sheets');
-      return res.status(404).json({
+      res.status(404).json({
         error: 'No data found',
         details: { spreadsheetId, range }
       });
+      return;
     }
     
     // Wrap the response in a data property to match frontend expectations
-    return res.json({ data: sheetData });
+    res.json({ data: sheetData });
   } catch (error) {
     const err = error as SheetError;
     console.error('Detailed error in GET /values:', {
@@ -54,20 +56,32 @@ router.get('/values/:spreadsheetId/:range', async (req: Request, res: Response) 
     
     // Send appropriate error response
     const status = err.code === 404 ? 404 : err.code === 403 ? 403 : 500;
-    return res.status(status).json({
+    res.status(status).json({
       error: err.message,
       details: err.details || err.response?.data,
       code: err.code
     });
   }
-});
+};
 
 // Append values to a sheet
-router.post('/values/:spreadsheetId/:range/append', async (req: Request, res: Response) => {
+const appendSheetValuesHandler: RequestHandler = async (req, res) => {
   try {
     const { spreadsheetId, range } = req.params;
     const { valueInputOption, values } = req.body;
     const decodedRange = decodeURIComponent(range);
+    
+    // Validate required fields for art_requests
+    if (decodedRange.includes('art_requests')) {
+      if (!values?.[0]?.[0] || !values[0][1] || !values[0][2]) {
+        res.status(400).json({
+          error: 'Missing required fields for art request',
+          details: 'Timestamp, requester ID, and image URL are required'
+        });
+        return;
+      }
+    }
+    
     console.log('Appending sheet values:', { spreadsheetId, range: decodedRange, valueInputOption });
     
     const data = await appendSheetValues(
@@ -96,7 +110,11 @@ router.post('/values/:spreadsheetId/:range/append', async (req: Request, res: Re
       code: err.code
     });
   }
-});
+};
+
+// Register routes
+router.get('/values/:spreadsheetId/:range', getSheetValuesHandler);
+router.post('/values/:spreadsheetId/:range/append', appendSheetValuesHandler);
 
 // Update values in a sheet
 router.put('/values/:spreadsheetId/:range', async (req: Request, res: Response) => {
