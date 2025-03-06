@@ -50,5 +50,9 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ]
+  ],
+  "env": {
+    "GOOGLE_CREDENTIALS_JSON": "@google_credentials_json",
+    "GOOGLE_SHEETS_SPREADSHEET_ID": "@google_sheets_spreadsheet_id"
+  }
 } 

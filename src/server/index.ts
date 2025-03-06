@@ -135,8 +135,11 @@ app.get('/api/config', (req, res) => {
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
       console.error('GOOGLE_CREDENTIALS_JSON is not set');
       return res.status(500).json({ 
-        error: 'Configuration error',
-        message: 'Google credentials not configured',
+        error: {
+          code: '500',
+          message: 'Google credentials not configured',
+          details: 'GOOGLE_CREDENTIALS_JSON environment variable is missing'
+        },
         hasGoogleCredentials: false,
         isConfigured: false
       });
@@ -145,8 +148,11 @@ app.get('/api/config', (req, res) => {
     if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
       console.error('GOOGLE_SHEETS_SPREADSHEET_ID is not set');
       return res.status(500).json({ 
-        error: 'Configuration error',
-        message: 'Spreadsheet ID not configured',
+        error: {
+          code: '500',
+          message: 'Spreadsheet ID not configured',
+          details: 'GOOGLE_SHEETS_SPREADSHEET_ID environment variable is missing'
+        },
         hasGoogleCredentials: true,
         isConfigured: false
       });
@@ -172,8 +178,11 @@ app.get('/api/config', (req, res) => {
       if (!credentials.client_email || !credentials.private_key) {
         console.error('Invalid credentials format - missing required fields');
         return res.status(500).json({
-          error: 'Configuration error',
-          message: 'Invalid Google credentials format: missing required fields',
+          error: {
+            code: '500',
+            message: 'Invalid Google credentials format',
+            details: 'Missing required fields in credentials (client_email or private_key)'
+          },
           hasGoogleCredentials: false,
           isConfigured: false
         });
@@ -181,13 +190,23 @@ app.get('/api/config', (req, res) => {
     } catch (parseError) {
       console.error('Failed to parse Google credentials:', parseError);
       return res.status(500).json({
-        error: 'Configuration error',
-        message: 'Invalid Google credentials JSON format',
+        error: {
+          code: '500',
+          message: 'Invalid Google credentials JSON format',
+          details: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+        },
         hasGoogleCredentials: false,
         isConfigured: false
       });
     }
 
+    // Test Google Sheets API connection
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+
+    // Return successful configuration
     const config = {
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       hasGoogleCredentials: true,
@@ -206,8 +225,11 @@ app.get('/api/config', (req, res) => {
   } catch (error) {
     console.error('Unexpected error in /api/config endpoint:', error);
     res.status(500).json({ 
-      error: 'Configuration error',
-      message: 'An unexpected error occurred',
+      error: {
+        code: '500',
+        message: 'An unexpected error occurred',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       hasGoogleCredentials: false,
       isConfigured: false
     });
