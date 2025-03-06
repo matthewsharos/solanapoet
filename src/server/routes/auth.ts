@@ -19,15 +19,35 @@ type CheckMinterParams = {
 
 // Check if a wallet is authorized to mint NFTs
 router.get<CheckMinterParams>('/check-minter/:walletAddress', (req: Request<CheckMinterParams>, res: Response): void => {
-  const { walletAddress } = req.params;
-  
-  if (!walletAddress) {
-    res.status(400).json({ error: 'Wallet address is required' });
-    return;
-  }
+  try {
+    const { walletAddress } = req.params;
+    
+    if (!walletAddress) {
+      res.status(400).json({ 
+        success: false, 
+        error: 'Wallet address is required',
+        isAuthorized: false 
+      });
+      return;
+    }
 
-  const isAuthorized = walletAddress.toLowerCase() === AUTHORIZED_MINTER.toLowerCase();
-  res.json({ isAuthorized });
+    console.log('Checking minter authorization for:', walletAddress);
+    console.log('Authorized minter:', AUTHORIZED_MINTER);
+
+    const isAuthorized = walletAddress === AUTHORIZED_MINTER;
+    res.json({ 
+      success: true,
+      isAuthorized,
+      walletAddress 
+    });
+  } catch (error) {
+    console.error('Error in check-minter endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error',
+      isAuthorized: false 
+    });
+  }
 });
 
 router.post('/google', async (req: Request, res: Response) => {

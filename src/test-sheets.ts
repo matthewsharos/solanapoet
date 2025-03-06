@@ -11,7 +11,7 @@ interface GoogleSheetsConfig {
     displayNames: string;
     artRequests: string;
   };
-  credentialsPath: string;
+  credentialsPath?: string;
   scopes: string[];
 }
 

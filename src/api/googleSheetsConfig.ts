@@ -7,10 +7,13 @@ export const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: false,
   hasGoogleCredentials: false,
   spreadsheetId: '',
+  credentialsPath: '',
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',
     displayNames: 'display_names',
+    artRequests: 'art_requests'
   },
 };
 
