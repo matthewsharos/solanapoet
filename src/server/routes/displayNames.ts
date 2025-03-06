@@ -60,9 +60,9 @@ router.post('/update', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Initialize Google Sheets
+    // Initialize Google Sheets with credentials from environment variable
     const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
 
@@ -131,7 +131,7 @@ router.post('/update', async (req: Request, res: Response): Promise<void> => {
 router.post('/refresh', async (_req: Request, res: Response): Promise<void> => {
   try {
     const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
@@ -159,7 +159,7 @@ router.post('/refresh', async (_req: Request, res: Response): Promise<void> => {
 router.get('/debug', async (_req: Request, res: Response): Promise<void> => {
   try {
     const auth = new google.auth.GoogleAuth({
-      keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
@@ -181,6 +181,36 @@ router.get('/debug', async (_req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error('Error fetching raw display names:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
+});
+
+// Add GET endpoint to fetch all display names
+router.get('/', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    console.log('GET /display_names endpoint called');
+    
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON || '{}'),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    
+    const displayNames = await getAllDisplayNames(sheets);
+    console.log('Fetched display names:', displayNames);
+
+    res.json({
+      success: true,
+      message: 'Display names fetched successfully',
+      data: displayNames
+    });
+  } catch (error) {
+    console.error('Error fetching display names:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'

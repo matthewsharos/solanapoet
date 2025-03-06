@@ -86,8 +86,16 @@ if (missingEnvVars.length > 0) {
 }
 
 // Verify Google Sheets credentials are available
-if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-  console.error('GOOGLE_APPLICATION_CREDENTIALS environment variable is not set');
+if (!process.env.GOOGLE_CREDENTIALS_JSON) {
+  console.error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+  process.exit(1);
+}
+
+// Verify Google credentials are valid JSON
+try {
+  JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+} catch (error) {
+  console.error('GOOGLE_CREDENTIALS_JSON is not valid JSON:', error);
   process.exit(1);
 }
 

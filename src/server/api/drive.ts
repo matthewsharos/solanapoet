@@ -9,6 +9,26 @@ import { OAuth2Client } from 'google-auth-library';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
+// Initialize Google Drive auth
+const getGoogleAuth = async () => {
+  try {
+    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
+      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+    }
+
+    console.log('Initializing auth using credentials from GOOGLE_CREDENTIALS_JSON');
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
+      scopes: ['https://www.googleapis.com/auth/drive.file']
+    });
+
+    return auth;
+  } catch (error) {
+    console.error('Error initializing Google auth:', error);
+    throw error;
+  }
+};
+
 // Create a Google Drive instance using service account
 const getDriveInstance = async (): Promise<drive_v3.Drive> => {
   try {

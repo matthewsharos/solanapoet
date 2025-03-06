@@ -40,6 +40,26 @@ interface BatchUpdateResponse {
 // Initialize Google Sheets API
 let auth: OAuth2Client | null = null;
 
+// Initialize Google Sheets auth
+const getGoogleAuth = async () => {
+  try {
+    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
+      throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
+    }
+
+    console.log('Initializing auth using credentials from GOOGLE_CREDENTIALS_JSON');
+    const auth = new google.auth.GoogleAuth({
+      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+
+    return auth;
+  } catch (error) {
+    console.error('Error initializing Google auth:', error);
+    throw error;
+  }
+};
+
 async function initializeAuth() {
   try {
     // First try using direct credentials from env
