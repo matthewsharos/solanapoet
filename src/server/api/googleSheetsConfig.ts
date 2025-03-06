@@ -83,10 +83,17 @@ export const createSheetsClient = async () => {
     if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
       console.log('Creating sheets client using GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
       
+      // Process private key to handle possible missing actual newlines
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
       const auth = new google.auth.GoogleAuth({
         credentials: {
           client_email: process.env.GOOGLE_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_PRIVATE_KEY
+          private_key: privateKey
         },
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });

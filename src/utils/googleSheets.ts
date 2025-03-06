@@ -30,10 +30,17 @@ async function getAuthClient(): Promise<JWT> {
     if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
       console.log('Using credentials from GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
       
+      // Process private key to handle possible missing actual newlines
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
       return new google.auth.JWT(
         process.env.GOOGLE_CLIENT_EMAIL,
         undefined,
-        process.env.GOOGLE_PRIVATE_KEY, // The private key already has newlines in the env var
+        privateKey, // Use the processed private key
         SCOPES
       );
     }

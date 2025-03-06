@@ -49,11 +49,18 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
       console.log('Using separate GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
       console.log('Initializing Google Sheets auth with client email:', process.env.GOOGLE_CLIENT_EMAIL);
       
+      // Process private key to handle possible missing actual newlines
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+      
       // Create auth client with individual credentials
       const auth = new google.auth.GoogleAuth({
         credentials: {
           client_email: process.env.GOOGLE_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_PRIVATE_KEY
+          private_key: privateKey
         },
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
       });
@@ -386,6 +393,23 @@ router.get('/test-connection', async (req, res) => {
   try {
     console.log('Testing Google Sheets connection...');
     
+    // Log environment variables (excluding sensitive parts)
+    console.log('Environment variables check:', {
+      GOOGLE_CLIENT_EMAIL_exists: !!process.env.GOOGLE_CLIENT_EMAIL,
+      GOOGLE_CLIENT_EMAIL_length: process.env.GOOGLE_CLIENT_EMAIL?.length,
+      GOOGLE_PRIVATE_KEY_exists: !!process.env.GOOGLE_PRIVATE_KEY,
+      GOOGLE_PRIVATE_KEY_length: process.env.GOOGLE_PRIVATE_KEY?.length,
+      GOOGLE_PRIVATE_KEY_starts: process.env.GOOGLE_PRIVATE_KEY?.substring(0, 27),
+      GOOGLE_PRIVATE_KEY_has_newlines: process.env.GOOGLE_PRIVATE_KEY?.includes('\\n'),
+      GOOGLE_SHEETS_SPREADSHEET_ID_exists: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    });
+    
+    // Process private key to handle possible missing actual newlines
+    if (process.env.GOOGLE_PRIVATE_KEY && !process.env.GOOGLE_PRIVATE_KEY.includes('\n') && process.env.GOOGLE_PRIVATE_KEY.includes('\\n')) {
+      console.log('Converting escaped newlines in private key to actual newlines');
+      process.env.GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    }
+    
     // Get auth client
     const authClient = await getGoogleAuth();
     console.log('Successfully got auth client');
@@ -413,7 +437,8 @@ router.get('/test-connection', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Google Sheets connection failed',
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

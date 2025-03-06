@@ -1,5 +1,5 @@
 // Test script to verify Google Sheets connection on Vercel deployment
-const https = require('https');
+import { request } from 'https';
 
 const VERCEL_URL = 'https://solanapoet.vercel.app';
 
@@ -17,7 +17,7 @@ function testGoogleSheetsConnection() {
       }
     };
 
-    const req = https.request(options, (res) => {
+    const req = request(options, (res) => {
       let data = '';
       
       res.on('data', (chunk) => {
@@ -26,22 +26,25 @@ function testGoogleSheetsConnection() {
       
       res.on('end', () => {
         console.log(`Status Code: ${res.statusCode}`);
+        console.log('Response Headers:', JSON.stringify(res.headers, null, 2));
         
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            const result = JSON.parse(data);
+        try {
+          const result = data ? JSON.parse(data) : null;
+          
+          if (res.statusCode >= 200 && res.statusCode < 300) {
             console.log('SUCCESS: Google Sheets connection test succeeded!');
             console.log('Response:', JSON.stringify(result, null, 2));
             resolve(result);
-          } catch (error) {
-            console.error('ERROR: Failed to parse response data');
-            console.error(error);
-            reject(error);
+          } else {
+            console.error(`ERROR: Request failed with status code ${res.statusCode}`);
+            console.error('Response:', result || data);
+            reject(new Error(`Request failed with status code ${res.statusCode}: ${result?.error?.message || 'Unknown error'}`));
           }
-        } else {
-          console.error(`ERROR: Request failed with status code ${res.statusCode}`);
-          console.error('Response:', data);
-          reject(new Error(`Request failed with status code ${res.statusCode}`));
+        } catch (error) {
+          console.error('ERROR: Failed to parse response data');
+          console.error('Raw response:', data);
+          console.error(error);
+          reject(error);
         }
       });
     });
@@ -49,6 +52,13 @@ function testGoogleSheetsConnection() {
     req.on('error', (error) => {
       console.error('ERROR: Request error:', error);
       reject(error);
+    });
+    
+    // Set timeout to 30 seconds
+    req.setTimeout(30000, () => {
+      console.error('ERROR: Request timed out');
+      req.destroy();
+      reject(new Error('Request timed out after 30 seconds'));
     });
     
     req.end();
