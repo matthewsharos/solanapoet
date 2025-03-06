@@ -65,6 +65,12 @@ console.log('Server starting with environment:', {
   hasSolanaRpcUrl: !!process.env.VITE_SOLANA_RPC_URL
 });
 
+// Process environment variables before server startup
+if (process.env.GOOGLE_PRIVATE_KEY && !process.env.GOOGLE_PRIVATE_KEY.includes('\n') && process.env.GOOGLE_PRIVATE_KEY.includes('\\n')) {
+  console.log('Converting escaped newlines in private key to actual newlines');
+  process.env.GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+}
+
 // Create Express app
 const app: Application = express();
 const PORT = process.env.PORT || 3002;
