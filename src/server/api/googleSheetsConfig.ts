@@ -12,7 +12,13 @@ console.log('Initializing Google Sheets Config:', {
 
 // Configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Fallback to default ID
+  hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  scopes: [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file',
+  ],
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',

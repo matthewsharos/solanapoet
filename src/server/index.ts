@@ -57,8 +57,8 @@ console.log('Environment variables:', {
   PORT: process.env.PORT,
   NODE_ENV: process.env.NODE_ENV,
   MONGO_URI: process.env.MONGO_URI,
-  VITE_GOOGLE_DRIVE_FOLDER_ID: process.env.VITE_GOOGLE_DRIVE_FOLDER_ID,
-  VITE_GOOGLE_SHEETS_SPREADSHEET_ID: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
+  GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
+  GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   hasHeliusApiKey: !!process.env.VITE_HELIUS_API_KEY,
   hasSolanaRpcUrl: !!process.env.VITE_SOLANA_RPC_URL
 });
@@ -92,6 +92,14 @@ app.use('/api/display-names', displayNamesRouter);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/drive', driveRoutes);
 console.log('API routes registered');
+
+// Pass environment variables to the client
+app.get('/api/config', (req, res) => {
+  res.json({
+    GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID,
+  });
+});
 
 // Add catch-all route for debugging
 app.use((req: Request, res: Response, next) => {

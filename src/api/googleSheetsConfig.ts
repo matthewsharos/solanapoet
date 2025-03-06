@@ -2,16 +2,28 @@ import { sheets_v4 } from '@googleapis/sheets';
 import { google } from 'googleapis';
 import { API_BASE_URL } from './config';
 
-// Configuration
+// Frontend Google Sheets configuration
 export const GOOGLE_SHEETS_CONFIG = {
-  spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Use hardcoded ID for now
+  hasSpreadsheetId: false,
+  hasGoogleCredentials: false,
+  spreadsheetId: '',
   sheets: {
     collections: 'collections',
     ultimates: 'ultimates',
     displayNames: 'display_names',
-    artRequests: 'art_requests'
-  }
+  },
 };
+
+// Initialize config from API
+fetch('/api/config')
+  .then(response => response.json())
+  .then(config => {
+    GOOGLE_SHEETS_CONFIG.spreadsheetId = config.GOOGLE_SHEETS_SPREADSHEET_ID;
+    GOOGLE_SHEETS_CONFIG.hasSpreadsheetId = !!config.GOOGLE_SHEETS_SPREADSHEET_ID;
+  })
+  .catch(error => {
+    console.error('Failed to load config:', error);
+  });
 
 // Log environment variables for debugging
 console.log('Google Sheets Config:', {

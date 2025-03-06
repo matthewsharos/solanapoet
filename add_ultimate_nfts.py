@@ -41,7 +41,7 @@ def add_ultimates_from_json():
         service = build('sheets', 'v4', credentials=creds)
         
         # The ID of your spreadsheet
-        SPREADSHEET_ID = os.getenv('VITE_GOOGLE_SHEETS_SPREADSHEET_ID')
+        SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
         
         # Prepare the values to append
         values = []

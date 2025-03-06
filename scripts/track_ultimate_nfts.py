@@ -8,6 +8,10 @@ from googleapiclient.errors import HttpError
 from dotenv import load_dotenv
 import time
 from datetime import datetime
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+import pickle
 
 # Load environment variables
 load_dotenv()
@@ -19,23 +23,19 @@ HELIUS_API_URL = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
 
 # Google Sheets configuration
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-SPREADSHEET_ID = os.getenv('VITE_GOOGLE_SHEETS_SPREADSHEET_ID')
+SPREADSHEET_ID = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
 RANGE_NAME = 'ultimates!A2:C'  # Starting from A2 to leave room for headers
 
 # Checkpoint file
 CHECKPOINT_FILE = 'checkpoint.json'
 
 def get_google_sheets_service():
-    """Get Google Sheets service using service account credentials."""
-    try:
-        credentials = service_account.Credentials.from_service_account_file(
-            'credentials.json',
-            scopes=SCOPES
-        )
-        return build('sheets', 'v4', credentials=credentials)
-    except Exception as e:
-        print(f"Error getting Google Sheets service: {e}")
-        return None
+    creds = None
+    # Load credentials from environment variable
+    if os.getenv('GOOGLE_CREDENTIALS_JSON'):
+        creds_dict = json.loads(os.getenv('GOOGLE_CREDENTIALS_JSON'))
+        creds = Credentials.from_authorized_user_info(creds_dict, SCOPES)
+    return build('sheets', 'v4', credentials=creds)
 
 def save_checkpoint(page, last_date):
     """Save the current progress to a checkpoint file."""
