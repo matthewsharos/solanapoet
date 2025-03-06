@@ -443,6 +443,38 @@ router.get('/test-connection', async (req, res) => {
   }
 });
 
+// Add a debug endpoint to check environment variables
+router.get('/debug-env', async (req, res) => {
+  try {
+    console.log('Debugging environment variables...');
+    
+    const envInfo = {
+      GOOGLE_CLIENT_EMAIL_exists: !!process.env.GOOGLE_CLIENT_EMAIL,
+      GOOGLE_CLIENT_EMAIL_length: process.env.GOOGLE_CLIENT_EMAIL?.length,
+      GOOGLE_PRIVATE_KEY_exists: !!process.env.GOOGLE_PRIVATE_KEY,
+      GOOGLE_PRIVATE_KEY_length: process.env.GOOGLE_PRIVATE_KEY?.length,
+      GOOGLE_PRIVATE_KEY_starts: process.env.GOOGLE_PRIVATE_KEY?.substring(0, 27),
+      GOOGLE_PRIVATE_KEY_has_newlines: process.env.GOOGLE_PRIVATE_KEY?.includes('\\n'),
+      GOOGLE_PRIVATE_KEY_has_real_newlines: process.env.GOOGLE_PRIVATE_KEY?.includes('\n'),
+      GOOGLE_SHEETS_SPREADSHEET_ID_exists: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'Not set',
+      NODE_ENV: process.env.NODE_ENV || 'Not set'
+    };
+    
+    return res.status(200).json({
+      success: true,
+      environment: envInfo
+    });
+  } catch (error: any) {
+    console.error('Debug environment failed:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Debug environment failed',
+      error: error.message
+    });
+  }
+});
+
 // Add error logging middleware
 router.use((err: any, req: Request, res: Response, next: any) => {
   console.error('Server error:', {
