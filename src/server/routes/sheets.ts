@@ -1,7 +1,7 @@
 import express, { Request, Response, RequestHandler } from 'express';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { GOOGLE_SHEETS_CONFIG } from '../../api/googleSheetsConfig';
+import { GOOGLE_SHEETS_CONFIG } from '../api/googleSheetsConfig';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -146,7 +146,12 @@ const updateDisplayNameHandler: RequestHandler = async (req, res) => {
 const getSheetDataHandler: RequestHandler = async (req, res) => {
   try {
     const sheetName = req.params.sheetName;
-    console.log('Fetching sheet data for:', sheetName);
+    console.log('Fetching sheet data for:', sheetName, {
+      hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+      spreadsheetId: process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID,
+      environment: process.env.NODE_ENV,
+      configSheets: GOOGLE_SHEETS_CONFIG.sheets
+    });
     
     if (!GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets]) {
       console.error('Invalid sheet name requested:', sheetName);
@@ -163,18 +168,22 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
     console.log('Creating sheets client...');
     const sheets = google.sheets({ version: 'v4', auth });
 
-    const spreadsheetId = GOOGLE_SHEETS_CONFIG.spreadsheetId;
+    const spreadsheetId = process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID || GOOGLE_SHEETS_CONFIG.spreadsheetId;
     console.log('Using spreadsheet ID:', spreadsheetId);
 
     // Get sheet data
-    console.log('Fetching data from sheet...');
+    console.log('Fetching data from sheet...', {
+      spreadsheetId,
+      range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets]
+    });
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: GOOGLE_SHEETS_CONFIG.sheets[sheetName as keyof typeof GOOGLE_SHEETS_CONFIG.sheets],
     });
 
     console.log('Data fetched successfully:', {
-      rowCount: response.data.values?.length || 0
+      rowCount: response.data.values?.length || 0,
+      hasValues: !!response.data.values
     });
 
     res.json({
@@ -182,7 +191,11 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
       data: response.data.values || []
     });
   } catch (error) {
-    console.error('Error in getSheetDataHandler:', error);
+    console.error('Error in getSheetDataHandler:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      type: error instanceof Error ? error.constructor.name : typeof error
+    });
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to fetch sheet data',
