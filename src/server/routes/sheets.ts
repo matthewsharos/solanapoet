@@ -308,6 +308,32 @@ router.get('/test-config', async (req, res) => {
   }
 });
 
+// Add error logging middleware
+router.use((err: any, req: Request, res: Response, next: any) => {
+  console.error('Server error:', {
+    error: err,
+    message: err.message,
+    stack: err.stack,
+    path: req.path
+  });
+  res.status(500).json({
+    error: 'Server error',
+    message: err.message,
+    path: req.path
+  });
+});
+
+// Add basic logging middleware
+router.use((req: Request, res: Response, next: any) => {
+  console.log('Request received:', {
+    path: req.path,
+    method: req.method,
+    query: req.query,
+    body: req.body
+  });
+  next();
+});
+
 router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
