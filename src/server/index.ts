@@ -8,7 +8,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
-import { getGoogleAuth } from './sheets';
+import { getGoogleAuth } from './routes/sheets.js';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -16,7 +16,7 @@ import nftRoutes from './routes/nft';
 import collectionRoutes from './routes/collection';
 import marketRoutes from './routes/market';
 import displayNamesRouter from './routes/displayNames';
-import sheetsRoutes from './routes/sheets';
+import sheetsRoutes from './routes/sheets.js';
 import driveRoutes from './routes/drive';
 // @ts-ignore
 import listingRoutes from './routes/listing-routes';
@@ -141,68 +141,6 @@ app.use((req: Request, res: Response, next) => {
     body: req.body
   });
   next();
-});
-
-// Google Sheets endpoint
-app.get('/api/sheets/:sheetName', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { sheetName } = req.params;
-    const spreadsheetId = process.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID;
-
-    if (!spreadsheetId) {
-      throw new Error('VITE_GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not set');
-    }
-
-    console.log('Fetching Google Sheets data:', {
-      sheetName,
-      spreadsheetId,
-      hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON
-    });
-
-    const auth = await getGoogleAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    
-    try {
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `${sheetName}!A1:Z1004`,
-      });
-
-      console.log('Successfully fetched sheet data:', {
-        sheetName,
-        rowCount: response.data.values?.length || 0
-      });
-
-      res.json({
-        success: true,
-        data: response.data.values || []
-      });
-    } catch (error: any) {
-      // Handle rate limit errors
-      if (error.code === 429) {
-        const retryAfter = error.response?.headers?.['retry-after'] || 60;
-        res.setHeader('Retry-After', retryAfter);
-        res.status(429).json({
-          success: false,
-          error: 'Rate limit exceeded. Please try again later.',
-          retryAfter
-        });
-        return;
-      }
-
-      throw error;
-    }
-  } catch (error) {
-    console.error('Error fetching sheet data:', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined,
-      sheetName: req.params.sheetName
-    });
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred'
-    });
-  }
 });
 
 // Health check route

@@ -14,47 +14,21 @@ interface UpdateDisplayNameRequest {
 }
 
 // Helper function to get Google Sheets auth
-export const getGoogleAuth = async (): Promise<OAuth2Client> => {
+const getGoogleAuth = async (): Promise<OAuth2Client> => {
   try {
-    let credentials;
-    
     if (!process.env.GOOGLE_CREDENTIALS_JSON) {
       throw new Error('GOOGLE_CREDENTIALS_JSON environment variable is not set');
     }
 
-    try {
-      console.log('Parsing Google credentials from environment variable...');
-      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-      console.log('Credentials parsed successfully:', {
-        type: credentials.type,
-        project_id: credentials.project_id,
-        client_email: credentials.client_email
-      });
-    } catch (parseError) {
-      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', parseError);
-      throw new Error('Invalid GOOGLE_CREDENTIALS_JSON format');
-    }
-    
-    if (!credentials.client_email || !credentials.private_key) {
-      console.error('Missing required credential fields:', {
-        hasClientEmail: !!credentials.client_email,
-        hasPrivateKey: !!credentials.private_key
-      });
-      throw new Error('Invalid credentials: missing client_email or private_key');
-    }
-    
-    console.log('Creating Google auth client...');
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
     const auth = new google.auth.GoogleAuth({
       credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
-    
-    console.log('Getting auth client...');
-    const client = await auth.getClient() as OAuth2Client;
-    console.log('Google auth client created successfully');
-    return client;
+
+    return await auth.getClient() as OAuth2Client;
   } catch (error) {
-    console.error('Error in getGoogleAuth:', error);
+    console.error('Error getting Google auth:', error);
     throw error;
   }
 };
@@ -209,4 +183,5 @@ router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
 
+export { getGoogleAuth };
 export default router; 
