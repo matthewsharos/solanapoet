@@ -1,10 +1,26 @@
 import express, { Request, Response, RequestHandler } from 'express';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { GOOGLE_SHEETS_CONFIG } from '../api/googleSheetsConfig';
 import * as fs from 'fs';
 import * as path from 'path';
 import { sheets_v4 } from '@googleapis/sheets';
+
+// Google Sheets configuration
+const GOOGLE_SHEETS_CONFIG = {
+  hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+  scopes: [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive.file',
+  ],
+  sheets: {
+    collections: 'collections',
+    ultimates: 'ultimates',
+    displayNames: 'display_names',
+    artRequests: 'art_requests'
+  }
+};
 
 const router = express.Router();
 
