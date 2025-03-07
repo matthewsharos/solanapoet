@@ -174,31 +174,40 @@ app.get('/api/config', (req: Request, res: Response) => {
     });
 
     // Check if required environment variables are present
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-      console.error('Google authentication credentials are not set');
-      return res.status(500).json({
+    const hasGoogleCredentials = !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY;
+    const hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const isConfigured = hasGoogleCredentials && hasSpreadsheetId;
+
+    if (!isConfigured) {
+      let errorMessage = '';
+      let errorCode = '';
+
+      if (!hasGoogleCredentials) {
+        errorMessage = 'Google authentication credentials are not set';
+        errorCode = 'MISSING_GOOGLE_CREDENTIALS';
+        console.error(errorMessage);
+      } else if (!hasSpreadsheetId) {
+        errorMessage = 'Google Sheets spreadsheet ID is not set';
+        errorCode = 'MISSING_SPREADSHEET_ID';
+        console.error(errorMessage);
+      }
+
+      // Return partial config with error information
+      return res.json({
+        hasGoogleCredentials,
+        hasSpreadsheetId,
+        isConfigured,
         error: {
-          code: 'MISSING_GOOGLE_CREDENTIALS',
-          message: 'Google authentication credentials are not set'
+          code: errorCode,
+          message: errorMessage
         }
       });
     }
 
-    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
-      console.error('Google Sheets spreadsheet ID is not set');
-      return res.status(500).json({
-        error: {
-          code: 'MISSING_SPREADSHEET_ID',
-          message: 'Google Sheets spreadsheet ID is not set'
-        }
-      });
-    }
-
-    // Check for GOOGLE_CLIENT_EMAIL
+    // Convert escaped newlines to actual newlines if necessary
     const client_email = process.env.GOOGLE_CLIENT_EMAIL;
     let private_key = process.env.GOOGLE_PRIVATE_KEY;
 
-    // Convert escaped newlines to actual newlines if necessary
     if (private_key?.includes('\\n')) {
       console.log('Converting escaped newlines in private key to actual newlines');
       private_key = private_key.replace(/\\n/g, '\n');
@@ -213,25 +222,20 @@ app.get('/api/config', (req: Request, res: Response) => {
       scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'],
     });
 
-    const sheetConfig = {
-      auth,
-      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
-    };
-
-    // Return a success response
+    // Return a success response with the format expected by the frontend
     res.json({
-      success: true,
-      config: {
-        googleSheets: {
-          configured: true,
-          spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
-        },
-        environment: process.env.NODE_ENV || 'development'
-      }
+      hasGoogleCredentials: true,
+      hasSpreadsheetId: true,
+      isConfigured: true,
+      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
     console.error('Error in /api/config:', error);
     res.status(500).json({
+      hasGoogleCredentials: false,
+      hasSpreadsheetId: false,
+      isConfigured: false,
       error: {
         code: 'CONFIG_ERROR',
         message: error instanceof Error ? error.message : 'Error retrieving configuration'
