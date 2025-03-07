@@ -62,6 +62,10 @@ const parseFormData = async (req) => {
       multiples: false,
       allowEmptyFiles: false,
       uploadDir: tmpDir,
+      filename: (name, ext, part) => {
+        // Generate safe filename
+        return `upload_${Date.now()}${ext}`;
+      }
     });
     
     console.log('[serverless] Starting form parsing...');
@@ -79,10 +83,11 @@ const parseFormData = async (req) => {
       }
       
       console.log('[serverless] Form parsed successfully');
-      console.log('[serverless] Fields:', fields);
-      console.log('[serverless] Files:', Object.keys(files).length ? 'Found' : 'None');
+      console.log('[serverless] Fields:', Object.keys(fields));
+      console.log('[serverless] Files keys:', Object.keys(files));
       
       if (Object.keys(files).length === 0) {
+        console.error('[serverless] No files found in the request');
         reject(new Error('No file uploaded'));
         return;
       }
@@ -149,12 +154,11 @@ export default async function handler(req, res) {
     
     // Get the uploaded file
     const uploadedFile = files[fileKey];
-    console.log('[serverless] Got file object:', {
-      fieldName: fileKey,
+    console.log('[serverless] Got file object with key:', fileKey, {
+      originalFilename: uploadedFile.originalFilename || 'unnamed',
       filepath: uploadedFile.filepath ? "exists" : "missing",
-      originalFilename: uploadedFile.originalFilename,
-      size: uploadedFile.size,
-      mimetype: uploadedFile.mimetype
+      size: uploadedFile.size || 0,
+      mimetype: uploadedFile.mimetype || 'unknown'
     });
     
     if (!uploadedFile || !uploadedFile.filepath) {
@@ -175,8 +179,17 @@ export default async function handler(req, res) {
     try {
       // Read file
       console.log(`[serverless] Reading file from: ${uploadedFile.filepath}`);
-      const fileBuffer = fs.readFileSync(uploadedFile.filepath);
-      console.log(`[serverless] Successfully read ${fileBuffer.length} bytes from file`);
+      let fileBuffer;
+      try {
+        fileBuffer = fs.readFileSync(uploadedFile.filepath);
+        console.log(`[serverless] Successfully read ${fileBuffer.length} bytes from file`);
+      } catch (readError) {
+        console.error('[serverless] Error reading file:', readError);
+        return res.status(500).json({
+          success: false,
+          message: `Error reading uploaded file: ${readError.message}`
+        });
+      }
       
       // Create a readable stream from the buffer
       const fileStream = new Readable();
@@ -194,14 +207,23 @@ export default async function handler(req, res) {
       console.log(`[serverless] Uploading "${fileName}" to Google Drive folder: ${googleDriveClient.folderId}`);
       
       // Upload file to Google Drive
-      const uploadResponse = await googleDriveClient.drive.files.create({
-        requestBody: fileMetadata,
-        media: {
-          mimeType: uploadedFile.mimetype || 'application/octet-stream',
-          body: fileStream,
-        },
-        fields: 'id,name,webViewLink,webContentLink',
-      });
+      let uploadResponse;
+      try {
+        uploadResponse = await googleDriveClient.drive.files.create({
+          requestBody: fileMetadata,
+          media: {
+            mimeType: uploadedFile.mimetype || 'application/octet-stream',
+            body: fileStream,
+          },
+          fields: 'id,name,webViewLink,webContentLink',
+        });
+      } catch (driveError) {
+        console.error('[serverless] Google Drive upload error:', driveError);
+        return res.status(500).json({
+          success: false,
+          message: `Error uploading to Google Drive: ${driveError.message}`
+        });
+      }
       
       if (!uploadResponse.data || !uploadResponse.data.id) {
         throw new Error('Upload response missing file ID');
@@ -210,13 +232,19 @@ export default async function handler(req, res) {
       console.log('[serverless] File uploaded to Google Drive, ID:', uploadResponse.data.id);
       
       // Make the file publicly readable
-      await googleDriveClient.drive.permissions.create({
-        fileId: uploadResponse.data.id,
-        requestBody: {
-          role: 'reader',
-          type: 'anyone',
-        },
-      });
+      try {
+        await googleDriveClient.drive.permissions.create({
+          fileId: uploadResponse.data.id,
+          requestBody: {
+            role: 'reader',
+            type: 'anyone',
+          },
+        });
+        console.log('[serverless] File permissions set to public');
+      } catch (permissionsError) {
+        console.error('[serverless] Error setting file permissions:', permissionsError);
+        // Continue anyway, since the file was uploaded
+      }
       
       // Get direct link URL
       const fileLink = uploadResponse.data.webContentLink || uploadResponse.data.webViewLink;

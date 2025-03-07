@@ -20,7 +20,13 @@ import SubmissionAnimation from '../components/SubmissionAnimation';
 // Helper function to upload file to Google Drive
 const uploadFileToDrive = async (file: File) => {
   try {
-    console.log('Uploading file to Google Drive:', file.name, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
+    // Add timestamp to file name to make it unique
+    const timestamp = Date.now();
+    const fileNameParts = file.name.split('.');
+    const fileExt = fileNameParts.pop();
+    const fileName = `${fileNameParts.join('.')}_${timestamp}.${fileExt}`;
+    
+    console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
     // Check file size client-side (4MB limit for Vercel)
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
@@ -28,9 +34,12 @@ const uploadFileToDrive = async (file: File) => {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
     }
     
+    // Create a File object with the new name
+    const renamedFile = new File([file], fileName, { type: file.type });
+    
     // Create form data with explicit key name
     const formData = new FormData();
-    formData.append('upload', file, file.name);
+    formData.append('upload', renamedFile);
     
     // Add some debug info
     console.log('FormData created with file under key "upload"');
@@ -41,7 +50,7 @@ const uploadFileToDrive = async (file: File) => {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 30000, // 30 seconds timeout
+      timeout: 60000, // 60 seconds timeout
     });
 
     console.log('Google Drive upload response received:', response.status);
