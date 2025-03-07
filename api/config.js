@@ -36,6 +36,38 @@ module.exports = async (req, res) => {
       VERCEL_ENV: process.env.VERCEL_ENV || 'unknown'
     };
 
+    // Log environment variable status (safely)
+    console.log('[serverless] Environment variable status:', {
+      hasHeliusKey: !!envVars.HELIUS_API_KEY,
+      hasSolanaRpcUrl: !!envVars.SOLANA_RPC_URL,
+      hasGoogleDriveFolderId: !!envVars.GOOGLE_DRIVE_FOLDER_ID,
+      hasSpreadsheetId: !!envVars.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasGooglePrivateKey: !!envVars.GOOGLE_PRIVATE_KEY,
+      hasGoogleClientEmail: !!envVars.GOOGLE_CLIENT_EMAIL,
+      nodeEnv: envVars.NODE_ENV,
+      vercelEnv: envVars.VERCEL_ENV
+    });
+
+    // Check for missing required variables
+    const missingVars = [];
+    if (!envVars.HELIUS_API_KEY) missingVars.push('HELIUS_API_KEY');
+    if (!envVars.GOOGLE_PRIVATE_KEY) missingVars.push('GOOGLE_PRIVATE_KEY');
+    if (!envVars.GOOGLE_CLIENT_EMAIL) missingVars.push('GOOGLE_CLIENT_EMAIL');
+    if (!envVars.GOOGLE_SHEETS_SPREADSHEET_ID) missingVars.push('GOOGLE_SHEETS_SPREADSHEET_ID');
+
+    if (missingVars.length > 0) {
+      console.error('[serverless] Missing required environment variables:', missingVars);
+      return res.status(500).json({
+        success: false,
+        message: 'Missing required environment variables',
+        missingVariables: missingVars,
+        debug: {
+          nodeEnv: envVars.NODE_ENV,
+          vercelEnv: envVars.VERCEL_ENV
+        }
+      });
+    }
+
     console.log('[serverless] Environment variables loaded');
     
     // Check for presence of required variables

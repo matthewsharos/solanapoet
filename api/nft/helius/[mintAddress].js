@@ -45,19 +45,29 @@ module.exports = async (req, res) => {
     
     if (!HELIUS_API_KEY) {
       console.error('[serverless] Helius API key not found');
-      return res.status(200).json({
+      return res.status(500).json({
         success: false,
         message: 'Helius API key not configured',
         debug: {
           hasHeliusKey: false,
           environment: process.env.NODE_ENV,
-          vercelEnv: process.env.VERCEL_ENV
+          vercelEnv: process.env.VERCEL_ENV,
+          envKeys: Object.keys(process.env)
         }
       });
     }
 
     // Construct Helius RPC API URL
     const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+
+    // Log request details (safely)
+    console.log('[serverless] Request details:', {
+      mintAddress,
+      hasHeliusKey: true,
+      heliusKeyLength: HELIUS_API_KEY.length,
+      environment: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV
+    });
 
     // Prepare RPC request body
     const requestBody = {
@@ -71,11 +81,12 @@ module.exports = async (req, res) => {
 
     console.log('[serverless] Making request to Helius RPC API...');
     
-    // Make request to Helius API using axios
+    // Make request to Helius API using axios with timeout
     const response = await axios.post(HELIUS_RPC_URL, requestBody, {
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 10000 // 10 second timeout
     });
 
     const data = response.data;
@@ -126,17 +137,30 @@ module.exports = async (req, res) => {
   } catch (error) {
     console.error('[serverless] Error in NFT endpoint:', error);
     
-    return res.status(200).json({
+    // Determine appropriate status code based on error type
+    let statusCode = 500;
+    if (error.response) {
+      statusCode = error.response.status;
+    } else if (error.code === 'ECONNABORTED') {
+      statusCode = 504; // Gateway Timeout
+    }
+    
+    return res.status(statusCode).json({
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
       error: {
+        type: error.name,
+        code: error.code,
+        status: error.response?.status,
         stack: error instanceof Error ? error.stack : null,
         vercelEnv: process.env.VERCEL_ENV || 'unknown',
         nodeVersion: process.version,
         platform: process.platform,
         mintAddress: req.query?.mintAddress,
         hasHeliusKey: !!process.env.HELIUS_API_KEY,
-        response: error.response?.data
+        heliusKeyLength: process.env.HELIUS_API_KEY?.length,
+        response: error.response?.data,
+        envKeys: Object.keys(process.env)
       }
     });
   }
