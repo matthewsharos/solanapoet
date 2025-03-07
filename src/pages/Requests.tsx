@@ -20,7 +20,7 @@ import SubmissionAnimation from '../components/SubmissionAnimation';
 // Helper function to upload file to Google Drive
 const uploadFileToDrive = async (file: File) => {
   try {
-    console.log('Uploading file to Google Drive:', file.name);
+    console.log('Uploading file to Google Drive:', file.name, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
     // Check file size client-side (4MB limit for Vercel)
     const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
@@ -28,11 +28,15 @@ const uploadFileToDrive = async (file: File) => {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
     }
     
-    // Create form data
+    // Create form data with explicit key name
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('upload', file, file.name);
+    
+    // Add some debug info
+    console.log('FormData created with file under key "upload"');
     
     // Send the request with timeout and proper error handling
+    console.log('Sending POST request to /api/drive/upload...');
     const response = await axios.post('/api/drive/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -40,7 +44,12 @@ const uploadFileToDrive = async (file: File) => {
       timeout: 30000, // 30 seconds timeout
     });
 
-    console.log('Google Drive upload response:', response.data);
+    console.log('Google Drive upload response received:', response.status);
+    
+    if (!response.data) {
+      console.error('Upload failed: Empty response data');
+      throw new Error('Empty response data');
+    }
     
     if (!response.data.success) {
       console.error('Upload failed:', response.data.message || 'Unknown error');
@@ -48,9 +57,11 @@ const uploadFileToDrive = async (file: File) => {
     }
 
     if (!response.data.fileUrl) {
+      console.error('Upload succeeded but no file URL returned');
       throw new Error('No file URL returned from server');
     }
 
+    console.log('File successfully uploaded, URL:', response.data.fileUrl);
     return response.data.fileUrl;
   } catch (error: any) {
     console.error('Error in uploadFileToDrive:', error);
@@ -58,10 +69,15 @@ const uploadFileToDrive = async (file: File) => {
     // More descriptive error messages
     if (error.response) {
       // Server responded with an error status code
-      const serverError = error.response.data?.message || 'Server error';
+      console.error('Server response error:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+      const serverError = error.response.data?.message || `Server error (${error.response.status})`;
       throw new Error(`Upload failed: ${serverError}`);
     } else if (error.request) {
       // Request was made but no response received
+      console.error('No response received from server');
       throw new Error('Upload timed out or server did not respond');
     } else {
       // Something else happened while setting up the request
