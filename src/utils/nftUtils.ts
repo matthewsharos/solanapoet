@@ -75,6 +75,14 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
       console.log('Using server-provided Helius API key');
     }
     
+    // Use hardcoded key as last resort
+    if (!heliusApiKey) {
+      heliusApiKey = '1aac55c4-5c9d-411a-bd46-37479a165e6d';
+      console.log('Using hardcoded fallback Helius API key');
+    }
+    
+    console.log('Helius API key available:', !!heliusApiKey);
+    
     if (!heliusApiKey) {
       console.error('No Helius API key available');
       return [];

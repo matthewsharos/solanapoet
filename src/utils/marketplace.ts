@@ -423,11 +423,45 @@ export const listNFTForSale = async (
   }
 };
 
-// Update the RPC URL configuration
-export const getRpcUrl = () => {
-  const rpcUrl = process.env.VITE_SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${process.env.VITE_HELIUS_API_KEY}`;
-  if (!rpcUrl) {
-    throw new Error('No RPC URL available. Please set VITE_SOLANA_RPC_URL or VITE_HELIUS_API_KEY');
+// Get connection with proper fallbacks
+export const getConnection = () => {
+  try {
+    // Try to get RPC URL from various sources
+    let rpcUrl = '';
+    
+    // 1. Try process.env.VITE_SOLANA_RPC_URL
+    if (process.env.VITE_SOLANA_RPC_URL) {
+      let url = process.env.VITE_SOLANA_RPC_URL;
+      // Remove @ prefix if present
+      if (url.startsWith('@')) {
+        url = url.substring(1);
+      }
+      rpcUrl = url;
+    } 
+    // 2. Try import.meta.env.VITE_SOLANA_RPC_URL
+    else if (import.meta.env.VITE_SOLANA_RPC_URL) {
+      let url = import.meta.env.VITE_SOLANA_RPC_URL;
+      // Remove @ prefix if present
+      if (url.startsWith('@')) {
+        url = url.substring(1);
+      }
+      rpcUrl = url;
+    } 
+    // 3. Build URL with Helius API key
+    else if (import.meta.env.VITE_HELIUS_API_KEY) {
+      rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`;
+    }
+    // 4. Hardcoded fallback
+    else {
+      rpcUrl = 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d';
+    }
+    
+    console.log('Using RPC URL:', rpcUrl ? 'Available' : 'Not available');
+    return new Connection(rpcUrl, 'confirmed');
+  } catch (error) {
+    console.error('Error creating connection:', error);
+    // Final fallback - hardcoded URL
+    console.log('Using hardcoded fallback RPC URL');
+    return new Connection('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', 'confirmed');
   }
-  return rpcUrl;
 }; 

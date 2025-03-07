@@ -61,9 +61,32 @@ console.log('Server starting with environment:', {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
   hasDriveFolderId: !!process.env.GOOGLE_DRIVE_FOLDER_ID,
   hasFrontendUrl: !!process.env.FRONTEND_URL,
-  hasHeliusApiKey: !!process.env.VITE_HELIUS_API_KEY,
-  hasSolanaRpcUrl: !!process.env.VITE_SOLANA_RPC_URL
+  hasHeliusApiKey: !!process.env.HELIUS_API_KEY,
+  hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL
 });
+
+// Ensure consistent environment variables
+// Copy Vite environment variables to standard environment variables if needed
+if (!process.env.HELIUS_API_KEY && process.env.VITE_HELIUS_API_KEY) {
+  console.log('Using VITE_HELIUS_API_KEY as HELIUS_API_KEY');
+  process.env.HELIUS_API_KEY = process.env.VITE_HELIUS_API_KEY;
+}
+
+if (!process.env.SOLANA_RPC_URL && process.env.VITE_SOLANA_RPC_URL) {
+  // Remove '@' prefix if present
+  let rpcUrl = process.env.VITE_SOLANA_RPC_URL;
+  if (rpcUrl.startsWith('@')) {
+    rpcUrl = rpcUrl.substring(1);
+  }
+  console.log('Using VITE_SOLANA_RPC_URL as SOLANA_RPC_URL');
+  process.env.SOLANA_RPC_URL = rpcUrl;
+}
+
+// Hardcode API key as fallback if not set
+if (!process.env.HELIUS_API_KEY) {
+  console.log('Using hardcoded HELIUS_API_KEY as fallback');
+  process.env.HELIUS_API_KEY = '1aac55c4-5c9d-411a-bd46-37479a165e6d';
+}
 
 // Process environment variables before server startup
 if (process.env.GOOGLE_PRIVATE_KEY && !process.env.GOOGLE_PRIVATE_KEY.includes('\n') && process.env.GOOGLE_PRIVATE_KEY.includes('\\n')) {
@@ -189,13 +212,16 @@ app.get('/api/config', (req: Request, res: Response) => {
       hasSpreadsheetIdEnv: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
       hasHeliusApiKey: !!process.env.HELIUS_API_KEY,
-      hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL
+      hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL,
+      heliusApiKey: process.env.HELIUS_API_KEY ? `${process.env.HELIUS_API_KEY.substring(0, 4)}...` : 'not set',
+      solanaRpcUrl: !!process.env.SOLANA_RPC_URL ? 'set' : 'not set'
     });
 
     // Check if required environment variables are present
     const hasGoogleCredentials = !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY;
     const hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     const hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
+    const hasSolanaRpcUrl = !!process.env.SOLANA_RPC_URL;
     const isConfigured = hasGoogleCredentials && hasSpreadsheetId;
 
     if (!isConfigured) {
@@ -217,6 +243,7 @@ app.get('/api/config', (req: Request, res: Response) => {
         hasGoogleCredentials,
         hasSpreadsheetId,
         hasHeliusApiKey,
+        hasSolanaRpcUrl,
         isConfigured,
         error: {
           code: errorCode,
@@ -248,9 +275,11 @@ app.get('/api/config', (req: Request, res: Response) => {
       hasGoogleCredentials: true,
       hasSpreadsheetId: true,
       hasHeliusApiKey: hasHeliusApiKey,
+      hasSolanaRpcUrl: hasSolanaRpcUrl,
       isConfigured: true,
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      HELIUS_API_KEY: hasHeliusApiKey ? process.env.HELIUS_API_KEY : null, 
+      HELIUS_API_KEY: hasHeliusApiKey ? process.env.HELIUS_API_KEY : null,
+      SOLANA_RPC_URL: hasSolanaRpcUrl ? process.env.SOLANA_RPC_URL : null,
       environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
@@ -259,6 +288,7 @@ app.get('/api/config', (req: Request, res: Response) => {
       hasGoogleCredentials: false,
       hasSpreadsheetId: false,
       hasHeliusApiKey: false,
+      hasSolanaRpcUrl: false,
       isConfigured: false,
       error: {
         code: 'CONFIG_ERROR',
