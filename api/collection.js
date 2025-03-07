@@ -144,7 +144,7 @@ async function getAllCollections(req, res) {
     // Check cache first
     const cachedCollections = getCachedData('collections');
     if (cachedCollections) {
-      console.log('Returning collections from cache');
+      console.log('Returning collections from cache, count:', cachedCollections.length);
       return res.status(200).json({
         success: true,
         length: cachedCollections.length,
@@ -189,13 +189,25 @@ async function getAllCollections(req, res) {
       // Log the header row to verify column order
       if (rawData.length > 0) {
         console.log('Header row:', rawData[0]);
+      } else {
+        console.error('No data received from Google Sheets, not even headers!');
+        throw new Error('No data received from Google Sheets');
       }
       
       // Skip header row
       const rows = rawData.slice(1);
-      console.log('Raw rows before processing:', rows);
+      console.log('Raw rows before processing:', rows.length);
+      
+      // Debug: Log a few rows to see what we're getting
+      if (rows.length > 0) {
+        console.log('Sample row 1:', rows[0]);
+        if (rows.length > 1) console.log('Sample row 2:', rows[1]);
+      }
       
       collections = rows.map(row => {
+        // Debug: Log the raw row
+        console.log('Processing row:', row);
+        
         const collection = {
           address: row[0] || '',
           name: row[1] || '',
@@ -466,4 +478,4 @@ async function updateCollectionUltimates(req, res, address) {
       error: error.message
     });
   }
-} 
+}

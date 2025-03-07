@@ -175,8 +175,14 @@ const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
 const fetchCollections = async (): Promise<Collection[]> => {
   try {
     console.log('Fetching collections from API...');
-    const response = await axios.get<CollectionApiResponse>('/api/collection');
+    
+    // Add a timestamp to prevent caching
+    const timestamp = new Date().getTime();
+    const response = await axios.get<CollectionApiResponse>(`/api/collection?t=${timestamp}`);
+    
     console.log('Raw API response:', response.data);
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
     
     if (!response.data.success) {
       console.error('API request failed:', response.data);
@@ -186,6 +192,8 @@ const fetchCollections = async (): Promise<Collection[]> => {
     // Get collections directly from the response
     const collections = response.data.collections || [];
     console.log('Collections from API (raw):', collections);
+    console.log('Collections type:', typeof collections);
+    console.log('Is array:', Array.isArray(collections));
     
     if (collections.length === 0) {
       console.warn('No collections received from API');
@@ -198,7 +206,8 @@ const fetchCollections = async (): Promise<Collection[]> => {
     console.log('Collections breakdown (raw):', { total: collections.length, ultimates, regular });
     
     // Validate each collection and log any issues
-    const validatedCollections = collections.map((c: any) => {
+    const validatedCollections = collections.map((c: any, index: number) => {
+      console.log(`Validating collection ${index}:`, c);
       const validated = validateCollection(c);
       if (!validated) {
         console.warn('Collection failed validation:', c);
@@ -418,16 +427,24 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
 
 // Helper function to validate collection objects
 const validateCollection = (collection: any): Collection | null => {
+  console.log('Validating collection input:', collection);
+  
   if (!collection || typeof collection !== 'object') {
     console.log('Invalid collection (not an object):', collection);
     return null;
   }
+  
   if (!collection.address || !collection.name) {
-    console.log('Invalid collection (missing address or name):', collection);
+    console.log('Invalid collection (missing address or name):', {
+      hasAddress: !!collection.address,
+      hasName: !!collection.name,
+      address: collection.address,
+      name: collection.name
+    });
     return null;
   }
   
-  return {
+  const result = {
     address: collection.address,
     name: collection.name,
     image: collection.image || '',
@@ -437,6 +454,9 @@ const validateCollection = (collection: any): Collection | null => {
     ultimates: collection.ultimates || false,
     collectionId: collection.collectionId || collection.address
   };
+  
+  console.log('Validated collection:', result);
+  return result;
 };
 
 // Fix testFetch function to use a valid Collection object
