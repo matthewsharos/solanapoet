@@ -34,12 +34,16 @@ const uploadFileToDrive = async (file: File) => {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
     }
     
-    // Create a File object with the new name
-    const renamedFile = new File([file], fileName, { type: file.type });
-    
     // Create FormData object
     const formData = new FormData();
-    formData.append('file', renamedFile); // Key must be 'file' to match server expectation
+    formData.append('file', file); // Use original file, server will handle renaming
+    
+    // Add metadata as a separate field
+    const metadata = {
+      name: fileName,
+      mimeType: file.type
+    };
+    formData.append('metadata', JSON.stringify(metadata));
     
     console.log('Preparing upload to Google Drive...');
     
@@ -61,22 +65,20 @@ const uploadFileToDrive = async (file: File) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Server response error:', response.status, errorText);
-      throw new Error(`Upload failed with status ${response.status}`);
+      throw new Error(`Upload failed with status ${response.status}: ${errorText}`);
     }
     
     const data = await response.json();
     console.log('Upload response data:', data);
     
-    if (!data.success) {
-      throw new Error(data.message || 'Upload failed');
-    }
-    
-    if (!data.fileUrl) {
+    // Check for webViewLink or webContentLink
+    const fileUrl = data.webViewLink || data.webContentLink;
+    if (!fileUrl) {
       throw new Error('No file URL returned from server');
     }
     
-    console.log('File successfully uploaded, URL:', data.fileUrl);
-    return data.fileUrl;
+    console.log('File successfully uploaded, URL:', fileUrl);
+    return fileUrl;
   } catch (error: any) {
     console.error('Error in uploadFileToDrive:', error);
     throw error;
