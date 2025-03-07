@@ -46,9 +46,11 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     console.log(`Fetching NFT data for address: ${nftAddress}`);
     const response = await axios.get(`/api/nft/helius/${nftAddress}`);
     if (!response.data.success) {
+      console.error('Failed to fetch NFT data:', response.data);
       throw new Error(response.data.message || 'Failed to fetch NFT data');
     }
     const nftData = response.data.nft;
+    console.log('Received NFT data:', nftData);
 
     // Find collection name and image if this is an ultimate NFT
     let collectionName = '';
@@ -274,15 +276,26 @@ const Market: React.FC = () => {
       console.log('Ultimates data received:', {
         success: !!ultimateNFTs,
         length: Array.isArray(ultimateNFTs) ? ultimateNFTs.length : 0,
-        sample: ultimateNFTs?.[0]
+        sample: ultimateNFTs?.[0],
+        fullData: ultimateNFTs
       });
 
       // Filter out invalid NFT addresses
       const validNftAddresses = ultimateNFTs
-        .filter(nft => nft && nft.nft_address && typeof nft.nft_address === 'string' && nft.nft_address.length > 0)
-        .map(nft => nft.nft_address);
+        .filter(nft => {
+          const isValid = nft && 
+            nft.nft_address && 
+            typeof nft.nft_address === 'string' && 
+            nft.nft_address.trim().length > 0;
+          
+          if (!isValid) {
+            console.warn('Invalid NFT data:', nft);
+          }
+          return isValid;
+        })
+        .map(nft => nft.nft_address.trim());
 
-      console.log(`Found ${validNftAddresses.length} valid NFT addresses`);
+      console.log(`Found ${validNftAddresses.length} valid NFT addresses:`, validNftAddresses);
 
       if (validNftAddresses.length === 0) {
         console.warn('No valid NFT addresses found in ultimates data');
@@ -294,16 +307,22 @@ const Market: React.FC = () => {
       const batches = chunk(validNftAddresses, BATCH_SIZE);
 
       for (const [batchIndex, batch] of batches.entries()) {
-        console.log(`Processing batch ${batchIndex + 1}/${batches.length}...`);
+        console.log(`Processing batch ${batchIndex + 1}/${batches.length}:`, batch);
         
         const batchPromises = batch.map(async (nftAddress) => {
           const ultimate = ultimateNFTs.find(u => u.nft_address === nftAddress) || null;
+          console.log(`Fetching NFT ${nftAddress} with ultimate data:`, ultimate);
           return fetchNFTWithRetries(nftAddress, ultimate, validCollections);
         });
 
         const batchResults = await Promise.all(batchPromises);
         const validNFTs = batchResults.filter((nft): nft is NFT => nft !== null);
         
+        console.log(`Batch ${batchIndex + 1} results:`, {
+          total: validNFTs.length,
+          nfts: validNFTs
+        });
+
         // Update state with new NFTs
         validNFTs.forEach(updateNFTs);
 
