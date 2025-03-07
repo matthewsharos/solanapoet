@@ -658,11 +658,17 @@ const Market: React.FC = () => {
       for (const collection of regularCollections) {
         try {
           console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
-          const collectionNFTs = await fetchCollectionNFTsWithRetry(collection, 1);
+          // Use fetchCollectionNFTs which properly maps the data instead of fetchCollectionNFTsWithRetry directly
+          const collectionNFTs = await fetchCollectionNFTs(collection);
           
           if (collectionNFTs.length > 0) {
-            console.log(`Found ${collectionNFTs.length} NFTs for collection ${collection.name}`);
-            collectionNFTs.forEach(nft => updateNFTs(nft));
+            console.log(`Found ${collectionNFTs.length} mapped NFTs for collection ${collection.name}`);
+            
+            // Add mapped NFTs to state one by one
+            collectionNFTs.forEach(nft => {
+              console.log(`Adding regular collection NFT: ${nft.name} (${nft.mint})`);
+              updateNFTs(nft);
+            });
           } else {
             console.log(`No NFTs found for collection ${collection.name}`);
           }
