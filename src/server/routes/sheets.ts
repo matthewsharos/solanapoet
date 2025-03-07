@@ -8,7 +8,7 @@ import { sheets_v4 } from '@googleapis/sheets';
 // Google Sheets configuration
 const GOOGLE_SHEETS_CONFIG = {
   hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-  hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
+  hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
   spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0', // Default to the provided spreadsheet ID
   scopes: [
     'https://www.googleapis.com/auth/spreadsheets',
@@ -28,7 +28,7 @@ const GOOGLE_SHEETS_CONFIG = {
     console.warn('GOOGLE_SHEETS_SPREADSHEET_ID not set, using default');
   }
   if (!GOOGLE_SHEETS_CONFIG.hasGoogleCredentials) {
-    console.error('GOOGLE_CREDENTIALS_JSON not set');
+    console.error('Google credentials not set (GOOGLE_CLIENT_EMAIL or GOOGLE_PRIVATE_KEY)');
   }
 })();
 
@@ -70,15 +70,14 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
     }
     
     // Fall back to JSON credentials
-    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      console.error('Neither GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY nor GOOGLE_CREDENTIALS_JSON environment variables are set');
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      console.error('Neither GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY environment variables are set');
       throw new Error('Google credentials not configured');
     }
 
     console.log('Attempting to parse Google credentials...');
     let credentials;
     try {
-      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
       
       // Fix private key format if needed
       if (credentials.private_key) {
@@ -87,10 +86,8 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
       
       console.log('Successfully parsed Google credentials with fields:', Object.keys(credentials));
     } catch (parseError) {
-      console.error('Failed to parse GOOGLE_CREDENTIALS_JSON:', {
+      console.error('Failed to parse Google credentials:', {
         error: parseError,
-        credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON.length,
-        credentialsStart: process.env.GOOGLE_CREDENTIALS_JSON.substring(0, 50) + '...'
       });
       throw new Error('Invalid Google credentials format: ' + (parseError instanceof Error ? parseError.message : String(parseError)));
     }
@@ -221,8 +218,8 @@ const getSheetDataHandler: RequestHandler = async (req, res) => {
       });
     }
 
-    if (!process.env.GOOGLE_CREDENTIALS_JSON) {
-      console.error('GOOGLE_CREDENTIALS_JSON not configured');
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      console.error('Google credentials not configured');
       return res.status(500).json({
         success: false,
         error: 'Google credentials not configured'
@@ -290,46 +287,32 @@ router.get('/test-config', async (req, res) => {
   try {
     // First, just log the raw environment variables
     console.log('Raw environment variables:', {
-      hasGoogleCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
-      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
+      hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
+      clientEmailLength: process.env.GOOGLE_CLIENT_EMAIL?.length || 0,
+      privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0,
       hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
     });
 
     const results = {
       envVarsPresent: {
-        GOOGLE_CREDENTIALS_JSON: !!process.env.GOOGLE_CREDENTIALS_JSON,
+        GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
+        GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
         GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
       },
       credentialsValid: false,
-      authClientCreated: false,
-      sheetsApiConnected: false,
-      canReadSpreadsheet: false,
-      error: null as string | null,
-      diagnostics: {
-        spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
-        credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0,
-        credentialsFirstChar: process.env.GOOGLE_CREDENTIALS_JSON ? 
-          process.env.GOOGLE_CREDENTIALS_JSON[0] : 'not set',
-        credentialsLastChar: process.env.GOOGLE_CREDENTIALS_JSON ? 
-          process.env.GOOGLE_CREDENTIALS_JSON[process.env.GOOGLE_CREDENTIALS_JSON.length - 1] : 'not set',
-        parseError: null as string | null
-      }
+      authResult: null
     };
 
     // Attempt to parse credentials if present
-    if (process.env.GOOGLE_CREDENTIALS_JSON) {
       try {
-        const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
         results.credentialsValid = !!(credentials.client_email && credentials.private_key);
-        results.diagnostics.parseError = null;
+        results.authResult = 'success';
       } catch (parseError) {
-        results.diagnostics.parseError = parseError instanceof Error ? 
-          `JSON Parse Error: ${parseError.message}` : 'Unknown parse error';
-        results.error = `Failed to parse credentials: ${results.diagnostics.parseError}`;
+        results.authResult = 'failed';
+        results.error = parseError instanceof Error ? parseError.message : String(parseError);
       }
     } else {
-      results.error = 'GOOGLE_CREDENTIALS_JSON is not set';
     }
 
     // Always return a response
@@ -351,8 +334,7 @@ router.get('/test', async (req: Request, res: Response) => {
     const envStatus = {
       hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
       spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON,
-      credentialsLength: process.env.GOOGLE_CREDENTIALS_JSON?.length || 0
+      hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
     };
 
     console.log('Testing Google Sheets configuration:', envStatus);
@@ -382,7 +364,7 @@ router.get('/test', async (req: Request, res: Response) => {
       error: error instanceof Error ? error.message : 'Unknown error',
       envStatus: {
         hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-        hasCredentials: !!process.env.GOOGLE_CREDENTIALS_JSON
+        hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY
       }
     });
   }
@@ -521,6 +503,183 @@ router.use((req: Request, res: Response, next: any) => {
 router.get('/display_names', getDisplayNamesHandler);
 router.post('/display_names/update', updateDisplayNameHandler);
 router.get('/:sheetName', getSheetDataHandler);
+
+// Test /api/sheets/info endpoint
+router.get('/info', async (req: Request, res: Response) => {
+  try {
+    const results: any = {
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
+      clientEmailLength: process.env.GOOGLE_CLIENT_EMAIL?.length || 0,
+      privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0,
+      privateKeyPrefix: process.env.GOOGLE_PRIVATE_KEY?.substring(0, 27) || '',
+      privateKeyHasNewlines: (process.env.GOOGLE_PRIVATE_KEY?.includes('\n') || false) ? 'yes' : 'no',
+      privateKeyHasEscapedNewlines: (process.env.GOOGLE_PRIVATE_KEY?.includes('\\n') || false) ? 'yes' : 'no',
+      status: 'unknown'
+    };
+
+    try {
+      // Process private key to handle escaped newlines
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines for test');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+
+      const auth = new google.auth.GoogleAuth({
+        credentials: {
+          client_email: process.env.GOOGLE_CLIENT_EMAIL,
+          private_key: privateKey
+        },
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      });
+
+      const client = await auth.getClient();
+      results.authStatus = 'success';
+      results.status = 'configured';
+    } catch (authError) {
+      console.error('Failed to initialize Google auth:', authError);
+      results.authStatus = 'failed';
+      results.authError = authError instanceof Error ? authError.message : String(authError);
+      results.status = 'error';
+      results.error = 'Google authentication failed';
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error('Error handling info request:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Debugging route for Google Sheets configuration
+router.get('/config', async (req: Request, res: Response) => {
+  try {
+    res.json({
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
+      clientEmailExists: !!process.env.GOOGLE_CLIENT_EMAIL,
+      privateKeyExists: !!process.env.GOOGLE_PRIVATE_KEY,
+      privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0,
+      privateKeyStartsWith: process.env.GOOGLE_PRIVATE_KEY?.substring(0, 27) || '',
+      privateKeyEndsWith: process.env.GOOGLE_PRIVATE_KEY ? process.env.GOOGLE_PRIVATE_KEY.substring(process.env.GOOGLE_PRIVATE_KEY.length - 5) : '',
+      environmentVariables: {
+        NODE_ENV: process.env.NODE_ENV,
+        GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
+        GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
+        GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      },
+      sheets: GOOGLE_SHEETS_CONFIG.sheets
+    });
+  } catch (error) {
+    console.error('Error handling config request:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : String(error),
+      hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY
+    });
+  }
+});
+
+// Test endpoint to check if spreadsheets API is working
+router.get('/check', async (req: Request, res: Response) => {
+  try {
+    return res.json({
+      message: 'Google Sheets API check endpoint',
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
+      clientEmailLength: process.env.GOOGLE_CLIENT_EMAIL?.length || 0,
+      privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0
+    });
+  } catch (error) {
+    console.error('Error checking Google Sheets:', error);
+    return res.status(500).json({
+      error: 'Failed to check Google Sheets',
+      message: error instanceof Error ? error.message : String(error),
+      envStatus: {
+        hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+        hasCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY
+      }
+    });
+  }
+});
+
+// Test /api/sheets/test-credentials endpoint
+router.get('/test-credentials', async (req: Request, res: Response) => {
+  try {
+    // First, just log the raw environment variables
+    console.log('Raw environment variables:', {
+      hasGoogleCredentials: !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY,
+      clientEmailLength: process.env.GOOGLE_CLIENT_EMAIL?.length || 0,
+      privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+    });
+
+    // Create a response object
+    const results: {
+      envVarsPresent: {
+        GOOGLE_CLIENT_EMAIL: boolean;
+        GOOGLE_PRIVATE_KEY: boolean;
+        GOOGLE_SHEETS_SPREADSHEET_ID: boolean;
+      };
+      credentialsValid: boolean;
+      authResult: string | null;
+      error?: string;
+    } = {
+      envVarsPresent: {
+        GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
+        GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
+        GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
+      },
+      credentialsValid: false,
+      authResult: null
+    };
+
+    // Process private key to handle escaped newlines
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+        console.log('Converting escaped newlines in private key to actual newlines');
+        privateKey = privateKey.replace(/\\n/g, '\n');
+      }
+
+      try {
+        // Try to create auth client
+        const auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: process.env.GOOGLE_CLIENT_EMAIL,
+            private_key: privateKey
+          },
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+
+        const client = await auth.getClient();
+        results.credentialsValid = true;
+        results.authResult = 'success';
+      } catch (authError) {
+        results.authResult = 'failed';
+        results.error = authError instanceof Error ? authError.message : String(authError);
+      }
+    } else {
+      results.error = 'Google credentials not configured';
+    }
+
+    res.json(results);
+  } catch (error) {
+    console.error('Error handling test-credentials request:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
 
 export { getGoogleAuth };
 export default router; 

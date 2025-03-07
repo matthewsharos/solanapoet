@@ -74,8 +74,27 @@ const ensureConnection = (connection?: Connection): Connection => {
   if (connection) {
     return connection;
   }
-  const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`;
-  return new Connection(heliusMainnetRpcUrl, 'confirmed');
+
+  // Get the Helius API key
+  const heliusApiKey = import.meta.env.VITE_HELIUS_API_KEY;
+  if (!heliusApiKey) {
+    console.error('Helius API key not configured in client environment');
+    throw new Error('Helius API key not configured');
+  }
+
+  console.log('Creating new Helius RPC connection...');
+  const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+  
+  try {
+    return new Connection(heliusMainnetRpcUrl, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 60000, // 60 seconds
+      wsEndpoint: `wss://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
+    });
+  } catch (error) {
+    console.error('Failed to create Helius RPC connection:', error);
+    throw error;
+  }
 };
 
 // Cache the API base URL to avoid multiple lookups
