@@ -126,6 +126,15 @@ export default async function handler(req, res) {
 // Get all collections
 async function getAllCollections(req, res) {
   try {
+    // Debug logging for environment variables
+    console.log('[serverless] Environment variables check:', {
+      hasHeliusKey: !!process.env.HELIUS_API_KEY,
+      hasGoogleClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
+      hasGooglePrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      vercelEnv: process.env.VERCEL_ENV || 'unknown'
+    });
+
     const heliusApiKey = process.env.HELIUS_API_KEY;
     if (!heliusApiKey) {
       console.error('Helius API key not configured');
@@ -199,26 +208,20 @@ async function getAllCollections(req, res) {
       // Cache the collections
       setCachedData('collections', collections);
       
-    } catch (sheetError) {
-      console.error('Error fetching collections from Google Sheets:', sheetError);
-      console.error('Stack trace:', sheetError.stack);
-      // Continue execution to try fetching from Helius as fallback
-      return await getHeliusCollections(req, res, heliusApiKey);
-    }
-    
-    // If we got collections from Google Sheets, return them
-    if (collections.length > 0) {
+      // Return the collections from Google Sheets
       return res.status(200).json({
         success: true,
         length: collections.length,
         sample: collections[0] || null,
         collections: collections
       });
+      
+    } catch (sheetError) {
+      console.error('Error fetching collections from Google Sheets:', sheetError);
+      console.error('Stack trace:', sheetError.stack);
+      // Continue execution to try fetching from Helius as fallback
+      return await getHeliusCollections(req, res, heliusApiKey);
     }
-    
-    // If we get here, try Helius as fallback
-    return await getHeliusCollections(req, res, heliusApiKey);
-
   } catch (error) {
     console.error('Collections endpoint error:', error);
     console.error('Stack trace:', error.stack);
