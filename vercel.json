@@ -9,6 +9,18 @@
         { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
         { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
       ]
+    },
+    {
+      "source": "^/assets/images/(.*)",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "source": "^/images/(.*)",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
+    },
+    {
+      "source": "\\.(jpg|jpeg|png|gif|ico|svg|webp)$",
+      "headers": { "cache-control": "public, max-age=31536000, immutable" }
     }
   ],
   "builds": [
@@ -32,66 +44,14 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "routes": [
-    {
-      "src": "/api/nft/helius/([^/]+)",
-      "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/nft/helius/collection",
-      "dest": "/api/nft/helius/collection.js",
-      "methods": ["POST", "OPTIONS"]
-    },
-    {
-      "src": "/api/config",
-      "dest": "/api/config.js",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/debug",
-      "dest": "/api/debug.js",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/diagnosis",
-      "dest": "/api/diagnosis.js",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/sheets/([^/]+)",
-      "dest": "/api/sheets.js?sheet=$1",
-      "methods": ["GET", "OPTIONS"]
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/nft-helius.js"
-    },
-    {
-      "src": "^/assets/images/(.*)",
-      "dest": "/assets/images/$1",
-      "headers": { "cache-control": "public, max-age=31536000, immutable" }
-    },
-    {
-      "src": "^/images/(.*)",
-      "dest": "/assets/images/$1",
-      "headers": { "cache-control": "public, max-age=31536000, immutable" }
-    },
-    {
-      "src": "\\.(jpg|jpeg|png|gif|ico|svg|webp)$",
-      "dest": "/assets/images/$1",
-      "headers": { "cache-control": "public, max-age=31536000, immutable" }
-    },
-    {
-      "src": "^/favicon.ico",
-      "dest": "/favicon.ico"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/"
-    }
+  "rewrites": [
+    { "source": "/api/nft/helius/collection", "destination": "/api/nft/helius/collection.js" },
+    { "source": "/api/nft/helius/:mintAddress", "destination": "/api/nft/helius/[mintAddress].js" },
+    { "source": "/api/config", "destination": "/api/config.js" },
+    { "source": "/api/debug", "destination": "/api/debug.js" },
+    { "source": "/api/diagnosis", "destination": "/api/diagnosis.js" },
+    { "source": "/api/sheets/:sheet", "destination": "/api/sheets.js" },
+    { "source": "/api/(.*)", "destination": "/api/nft-helius.js" },
+    { "source": "/(.*)", "destination": "/" }
   ]
 } 
