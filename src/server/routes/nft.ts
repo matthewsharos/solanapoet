@@ -621,12 +621,12 @@ router.get('/helius/:mintAddress', async (req: Request, res: Response) => {
 
     const nftResponse: HeliusNFTData = {
       id: mintAddress,
+      mint: mintAddress,
       content: {
         metadata: {
           name: metadata.name || ultimateData?.name || 'Unknown NFT',
           symbol: metadata.symbol || '',
           description: metadata.description || '',
-          files: files.map(f => ({ uri: f.uri, type: f.type })),
           attributes: metadata.attributes || []
         },
         files,
