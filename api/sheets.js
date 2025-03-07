@@ -3,36 +3,35 @@ import { google } from 'googleapis';
 // Helper function to initialize Google Sheets client
 async function getGoogleSheetsClient() {
   try {
-    console.log('[serverless] Initializing Google Sheets client...');
+    console.log('[serverless] Initializing Google Sheets client for Vercel environment...');
     
-    // Check for different authentication methods
-    let auth;
+    // For Vercel production, we should always use environment variables
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      console.error('[serverless] Missing required Google credentials environment variables');
+      throw new Error('Missing Google API credentials: GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY must be set in Vercel environment variables');
+    }
     
-    // Method 1: Direct environment variables (GOOGLE_CLIENT_EMAIL & GOOGLE_PRIVATE_KEY)
-    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-      console.log('[serverless] Using direct environment variables for authentication');
-      auth = new google.auth.GoogleAuth({
-        credentials: {
-          client_email: process.env.GOOGLE_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        },
-        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-      });
-    } 
-    // Method 2: GOOGLE_APPLICATION_CREDENTIALS file path
-    else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      console.log('[serverless] Using credentials file:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
-      auth = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-      });
-    }
-    // No valid authentication method
-    else {
-      throw new Error('No Google authentication method available. Set GOOGLE_CLIENT_EMAIL & GOOGLE_PRIVATE_KEY or GOOGLE_APPLICATION_CREDENTIALS');
-    }
+    // Ensure private key is properly formatted
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    
+    // Log masked values for debugging
+    console.log('[serverless] Using Google credentials from environment variables:', {
+      clientEmail: process.env.GOOGLE_CLIENT_EMAIL.substring(0, 5) + '...',
+      privateKeyLength: privateKey.length,
+      privateKeyStart: privateKey.substring(0, 15) + '...'
+    });
+    
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey,
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
 
+    console.log('[serverless] Google Auth client initialized');
     const sheets = google.sheets({ version: 'v4', auth });
+    console.log('[serverless] Google Sheets client created successfully');
     return sheets;
   } catch (error) {
     console.error('[serverless] Error initializing Google Sheets client:', error);
@@ -46,22 +45,50 @@ async function getSheetData(sheets, sheetName) {
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     
     if (!spreadsheetId) {
-      throw new Error('Spreadsheet ID not configured');
+      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
     }
 
-    console.log(`[serverless] Fetching sheet ${sheetName} from spreadsheet ${spreadsheetId.substring(0, 4)}...`);
+    console.log(`[serverless] Fetching sheet ${sheetName} from spreadsheet ${spreadsheetId.substring(0, 5)}...`);
+    
+    // Try with different sheet range formats
     const range = `${sheetName}!A:Z`; // Get all columns
     
-    const response = await sheets.spreadsheets.values.get({
+    console.log(`[serverless] Requesting range: ${range}`);
+    
+    // Use a promise with timeout to prevent hanging
+    const timeoutMs = 10000; // 10 seconds
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Request timeout after ${timeoutMs}ms`)), timeoutMs);
+    });
+    
+    const fetchPromise = sheets.spreadsheets.values.get({
       spreadsheetId,
       range,
     });
-
+    
+    // Race the fetch against the timeout
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    
+    if (!response.data || !response.data.values) {
+      console.warn(`[serverless] No data found in sheet ${sheetName}`);
+      return [];
+    }
+    
     // Log success and row count
-    console.log(`[serverless] Successfully fetched ${response.data.values?.length || 0} rows from ${sheetName}`);
-    return response.data.values || [];
+    console.log(`[serverless] Successfully fetched ${response.data.values.length} rows from ${sheetName}`);
+    return response.data.values;
   } catch (error) {
     console.error(`[serverless] Error fetching sheet ${sheetName}:`, error);
+    
+    // Try to provide more context on the error
+    if (error.response) {
+      console.error(`[serverless] Google Sheets API error response:`, {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
+    }
+    
     throw error;
   }
 }
@@ -101,25 +128,23 @@ export default async function handler(req, res) {
       });
     }
 
-    // Verify environment variables first
-    const envCheck = {
-      hasGoogleCredentials: !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) || !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    // Verify required environment variables for Vercel
+    const requiredEnvVars = {
+      GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
+      GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
+      GOOGLE_SHEETS_SPREADSHEET_ID: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID
     };
-
-    if (!envCheck.hasGoogleCredentials || !envCheck.hasSpreadsheetId) {
-      console.error('[serverless] Missing required environment variables:', {
-        hasGoogleCredentials: envCheck.hasGoogleCredentials,
-        hasSpreadsheetId: envCheck.hasSpreadsheetId
-      });
-      
+    
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([_, exists]) => !exists)
+      .map(([name]) => name);
+    
+    if (missingVars.length > 0) {
+      console.error(`[serverless] Missing required environment variables: ${missingVars.join(', ')}`);
       return res.status(500).json({
         success: false,
         message: 'Server configuration error: Missing required environment variables',
-        details: {
-          hasGoogleCredentials: envCheck.hasGoogleCredentials,
-          hasSpreadsheetId: envCheck.hasSpreadsheetId
-        },
+        missingVars,
         timestamp: new Date().toISOString()
       });
     }
@@ -131,15 +156,6 @@ export default async function handler(req, res) {
     // Get sheet data
     console.log(`[serverless] Fetching data from sheet: ${sheetName}`);
     const rawData = await getSheetData(sheets, sheetName);
-    
-    if (!rawData || !Array.isArray(rawData)) {
-      console.error(`[serverless] Invalid data received from sheet ${sheetName}:`, rawData);
-      return res.status(500).json({
-        success: false,
-        message: `Invalid data format from sheet ${sheetName}`,
-        timestamp: new Date().toISOString()
-      });
-    }
     
     // Process the data - first row should be headers
     console.log(`[serverless] Processing ${rawData.length} rows from ${sheetName}`);
@@ -173,16 +189,17 @@ export default async function handler(req, res) {
       success: false,
       message: 'Error fetching sheet data',
       error: {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        type: error.name,
-        stack: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : null) : null
+        message: error.message || 'Unknown error',
+        type: error.name || 'Error'
       },
       timestamp: new Date().toISOString(),
       debug: {
-        hasGoogleCredentials: !!(process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) || !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
+        vercelEnv: process.env.VERCEL_ENV || 'unknown',
         hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-        environment: process.env.NODE_ENV,
-        vercelEnv: process.env.VERCEL_ENV
+        hasGoogleClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
+        hasGooglePrivateKey: !!process.env.GOOGLE_PRIVATE_KEY 
+          ? `${process.env.GOOGLE_PRIVATE_KEY.length} chars` 
+          : 'missing'
       }
     });
   }
