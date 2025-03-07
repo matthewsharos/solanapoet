@@ -21,7 +21,7 @@ import driveRoutes from './routes/drive.js';
 import listingRoutes from './routes/listing-routes.js';
 // @ts-ignore
 import transactionRoutes from './routes/transaction-routes.js';
-import debugRoutes from './routes/debug';
+import debugRoutes from './routes/debug.js';
 
 // Get current directory name
 const __filename = fileURLToPath(import.meta.url);
