@@ -24,32 +24,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('Fetching collection NFTs:', {
       collectionId,
       page,
-      limit
+      limit,
+      hasApiKey: !!heliusApiKey
     });
 
     // Try getAssetsByGroup first as it's more reliable for collections
     try {
+      const requestPayload = {
+        jsonrpc: '2.0',
+        id: 'collection-nfts',
+        method: 'getAssetsByGroup',
+        params: {
+          groupKey: 'collection',
+          groupValue: collectionId,
+          page: Number(page),
+          limit: Number(limit),
+          displayOptions: {
+            showCollectionMetadata: true,
+            showUnverifiedCollections: true
+          },
+          sortBy: {
+            sortBy: 'created',
+            sortDirection: 'desc'
+          }
+        }
+      };
+
+      console.log('Making Helius API request:', {
+        url: 'https://mainnet.helius-rpc.com',
+        method: 'POST',
+        payload: requestPayload
+      });
+
       const response = await axios.post(
         `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        {
-          jsonrpc: '2.0',
-          id: 'collection-nfts',
-          method: 'getAssetsByGroup',
-          params: {
-            groupKey: 'collection',
-            groupValue: collectionId,
-            page: Number(page),
-            limit: Number(limit),
-            displayOptions: {
-              showCollectionMetadata: true,
-              showUnverifiedCollections: true
-            },
-            sortBy: {
-              sortBy: 'created',
-              sortDirection: 'desc'
-            }
-          }
-        },
+        requestPayload,
         {
           headers: {
             'Content-Type': 'application/json',
@@ -57,6 +66,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timeout: 30000
         }
       );
+
+      console.log('Raw Helius response:', {
+        status: response.status,
+        statusText: response.statusText,
+        hasData: !!response.data,
+        hasResult: !!response.data?.result,
+        resultType: response.data?.result ? typeof response.data.result : 'undefined',
+        isArray: Array.isArray(response.data?.result),
+        hasItems: !!response.data?.result?.items,
+        error: response.data?.error
+      });
 
       if (response.data?.result) {
         const normalizedResponse = {
@@ -69,39 +89,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         };
 
-        console.log('Helius response received (getAssetsByGroup):', {
-          status: response.status,
+        console.log('Normalized response:', {
           itemCount: normalizedResponse.result.items.length,
           total: normalizedResponse.result.total,
-          page: normalizedResponse.result.page
+          page: normalizedResponse.result.page,
+          sampleItem: normalizedResponse.result.items[0] ? {
+            id: normalizedResponse.result.items[0].id,
+            hasContent: !!normalizedResponse.result.items[0].content,
+            hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
+          } : null
         });
 
         return res.status(200).json(normalizedResponse);
       }
-    } catch (error: unknown) {
-      console.error('Error using getAssetsByGroup:', error instanceof Error ? error.message : 'Unknown error');
+
+      console.log('No result in response, falling through to searchAssets');
+    } catch (error: any) {
+      console.error('Error using getAssetsByGroup:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        stack: error.stack
+      });
       // Fall through to searchAssets
     }
 
     // Fallback to searchAssets if getAssetsByGroup fails
     try {
+      const searchPayload = {
+        jsonrpc: '2.0',
+        id: 'collection-search',
+        method: 'searchAssets',
+        params: {
+          ownerAddress: null,
+          grouping: ['collection', collectionId],
+          page: Number(page),
+          limit: Number(limit),
+          displayOptions: {
+            showCollectionMetadata: true,
+            showUnverifiedCollections: true
+          }
+        }
+      };
+
+      console.log('Trying searchAssets fallback:', {
+        url: 'https://mainnet.helius-rpc.com',
+        method: 'POST',
+        payload: searchPayload
+      });
+
       const searchResponse = await axios.post(
         `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        {
-          jsonrpc: '2.0',
-          id: 'collection-search',
-          method: 'searchAssets',
-          params: {
-            ownerAddress: null,
-            grouping: ['collection', collectionId],
-            page: Number(page),
-            limit: Number(limit),
-            displayOptions: {
-              showCollectionMetadata: true,
-              showUnverifiedCollections: true
-            }
-          }
-        },
+        searchPayload,
         {
           headers: {
             'Content-Type': 'application/json',
@@ -109,6 +149,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timeout: 30000
         }
       );
+
+      console.log('Raw searchAssets response:', {
+        status: searchResponse.status,
+        statusText: searchResponse.statusText,
+        hasData: !!searchResponse.data,
+        hasResult: !!searchResponse.data?.result,
+        resultType: searchResponse.data?.result ? typeof searchResponse.data.result : 'undefined',
+        error: searchResponse.data?.error
+      });
 
       if (searchResponse.data?.result) {
         const normalizedResponse = {
@@ -121,20 +170,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         };
 
-        console.log('Helius response received (searchAssets):', {
-          status: searchResponse.status,
+        console.log('Normalized searchAssets response:', {
           itemCount: normalizedResponse.result.items.length,
           total: normalizedResponse.result.total,
-          page: normalizedResponse.result.page
+          page: normalizedResponse.result.page,
+          sampleItem: normalizedResponse.result.items[0] ? {
+            id: normalizedResponse.result.items[0].id,
+            hasContent: !!normalizedResponse.result.items[0].content,
+            hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
+          } : null
         });
 
         return res.status(200).json(normalizedResponse);
       }
 
       throw new Error('Invalid response from both Helius API methods');
-    } catch (error: unknown) {
-      console.error('Error using searchAssets:', error instanceof Error ? error.message : 'Unknown error');
-      throw error;
+    } catch (searchError: any) {
+      console.error('Error using searchAssets:', {
+        message: searchError.message,
+        status: searchError.response?.status,
+        statusText: searchError.response?.statusText,
+        responseData: searchError.response?.data,
+        stack: searchError.stack
+      });
+      throw searchError;
     }
   } catch (error: any) {
     // Log the complete error for debugging
@@ -177,7 +236,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       success: false, 
       message: 'Error fetching collection NFTs',
       error: error.response?.data || error.message,
-      details: error.response?.data
+      details: {
+        responseData: error.response?.data,
+        requestData: error.config?.data ? JSON.parse(error.config.data) : undefined,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }
     });
   }
 } 

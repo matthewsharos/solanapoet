@@ -146,6 +146,63 @@ const validateCollection = (collection: any): Collection | null => {
   };
 };
 
+// Add retry logic for collection NFT fetching
+const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number, maxRetries = 3) => {
+  let lastError;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      console.log(`Attempt ${attempt + 1}/${maxRetries} - Fetching NFTs for collection ${collection.name} (${collection.address})`);
+      
+      const response = await axios.post('/api/nft/helius/collection', {
+        collectionId: collection.address,
+        page: page,
+        limit: 1000
+      });
+
+      // Log successful response
+      console.log(`Collection ${collection.name} response:`, {
+        status: response.status,
+        hasData: !!response.data,
+        hasResult: !!response.data?.result,
+        itemCount: response.data?.result?.items?.length || 0
+      });
+
+      if (!response.data?.result?.items) {
+        throw new Error('Invalid response format');
+      }
+
+      return response.data.result.items;
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Attempt ${attempt + 1} failed for collection ${collection.name}:`, {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        details: error.response?.data?.details
+      });
+
+      // If we get a 400 error, it means the request was invalid, so don't retry
+      if (error.response?.status === 400) {
+        throw error;
+      }
+
+      // If we get a rate limit error, wait longer
+      if (error.response?.status === 429) {
+        await delay(5000 * Math.pow(2, attempt));
+        continue;
+      }
+
+      // For other errors, use exponential backoff
+      if (attempt < maxRetries - 1) {
+        await delay(2000 * Math.pow(2, attempt));
+      }
+    }
+  }
+
+  // If we've exhausted all retries, throw the last error
+  throw lastError;
+};
+
 const Market: React.FC = () => {
   const { wallet, connected } = useWalletContext();
   const [nfts, setNfts] = useState<NFT[]>([]);
@@ -314,36 +371,15 @@ const Market: React.FC = () => {
       // 2. Handle Regular Collection NFTs
       console.log('5. Fetching regular collection NFTs...');
       for (const collection of regularCollections) {
-        console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
+        console.log(`Starting fetch for collection: ${collection.name} (${collection.address})`);
         let page = 1;
         let hasMore = true;
 
         while (hasMore) {
           try {
-            console.log(`Fetching page ${page} for collection ${collection.name}`);
-            const response = await axios.post('/api/nft/helius/collection', {
-              collectionId: collection.address,
-              page: page,
-              limit: 1000
-            });
-
-            // Check for error response
-            if (!response.data?.result?.items) {
-              console.error(`Invalid response format for collection ${collection.name}:`, response.data);
-              if (response.data?.error) {
-                console.error('API Error:', response.data.error);
-              }
-              break;
-            }
-
-            const nfts = response.data.result.items;
-            if (!Array.isArray(nfts)) {
-              console.error(`Expected array of NFTs but got:`, typeof nfts);
-              break;
-            }
-
-            const total = response.data.result.total || 0;
-            console.log(`Found ${nfts.length} NFTs on page ${page} for collection ${collection.name} (Total: ${total})`);
+            const nfts = await fetchCollectionNFTsWithRetry(collection, page);
+            
+            console.log(`Processing ${nfts.length} NFTs from collection ${collection.name}`);
 
             // Process each NFT in the collection
             for (const nft of nfts) {
@@ -417,38 +453,28 @@ const Market: React.FC = () => {
             }
 
             // Check if we have more pages
-            hasMore = nfts.length === 1000 && (page * 1000) < total;
+            hasMore = nfts.length === 1000;
             if (hasMore) {
               page++;
               // Add delay between pages to avoid rate limits
-              await delay(2000); // Increased delay to avoid rate limits
+              await delay(2000);
             }
 
-          } catch (error) {
-            console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
+          } catch (error: any) {
+            console.error(`Failed to fetch collection ${collection.name} NFTs:`, error);
             
-            const axiosError = error as { response?: { status: number, data: any } };
-            if (axiosError.response?.data?.error) {
-              console.error('Server error details:', axiosError.response.data.error);
-            }
-
-            // If we get a rate limit error, wait longer before retrying
-            if (axiosError.response?.status === 429) {
-              console.log('Rate limit hit, waiting 5 seconds before retry...');
-              await delay(5000);
-              continue;
-            }
-
-            // If we get a server error, log it and break
-            if (axiosError.response?.status === 500) {
-              console.error('Server error response:', axiosError.response.data);
+            // If we get a fatal error, move to the next collection
+            if (error.response?.status === 400) {
+              console.error(`Invalid request for collection ${collection.name}, skipping...`);
               break;
             }
-
-            break;
+            
+            // For other errors, try the next page
+            hasMore = false;
           }
         }
-        // Add longer delay between collections to avoid rate limits
+        
+        // Add delay between collections to avoid rate limits
         await delay(3000);
       }
 
