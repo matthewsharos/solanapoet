@@ -164,6 +164,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // Handle Helius API errors
+    if (error.response?.data?.error) {
+      return res.status(400).json({
+        success: false,
+        message: 'Helius API error',
+        error: error.response.data.error
+      });
+    }
+
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching collection NFTs',

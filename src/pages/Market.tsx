@@ -327,21 +327,36 @@ const Market: React.FC = () => {
               limit: 1000
             });
 
+            // Check for error response
             if (!response.data?.result?.items) {
-              console.warn(`Invalid response format for collection ${collection.name}:`, response.data);
+              console.error(`Invalid response format for collection ${collection.name}:`, response.data);
+              if (response.data?.error) {
+                console.error('API Error:', response.data.error);
+              }
               break;
             }
 
             const nfts = response.data.result.items;
+            if (!Array.isArray(nfts)) {
+              console.error(`Expected array of NFTs but got:`, typeof nfts);
+              break;
+            }
+
             const total = response.data.result.total || 0;
             console.log(`Found ${nfts.length} NFTs on page ${page} for collection ${collection.name} (Total: ${total})`);
 
             // Process each NFT in the collection
             for (const nft of nfts) {
               try {
+                // Validate NFT data structure
+                if (!nft || typeof nft !== 'object') {
+                  console.warn(`Invalid NFT data structure:`, nft);
+                  continue;
+                }
+
                 // Make sure we have content and metadata
-                if (!nft.content || !nft.content.metadata) {
-                  console.warn(`Skipping NFT ${nft.id} - missing content or metadata`);
+                if (!nft.content) {
+                  console.warn(`Skipping NFT ${nft.id} - missing content`);
                   continue;
                 }
 
@@ -397,6 +412,7 @@ const Market: React.FC = () => {
                 updateNFTs(processedNFT);
               } catch (nftError) {
                 console.error(`Error processing NFT ${nft.id}:`, nftError);
+                console.error('NFT data:', nft);
               }
             }
 
@@ -405,24 +421,35 @@ const Market: React.FC = () => {
             if (hasMore) {
               page++;
               // Add delay between pages to avoid rate limits
-              await delay(1000);
+              await delay(2000); // Increased delay to avoid rate limits
             }
 
           } catch (error) {
-            if (error instanceof Error) {
-              console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
-              const axiosError = error as { response?: { status: number; data: any } };
-              if (axiosError.response?.status === 500) {
-                console.log('Server error response:', axiosError.response.data);
-              }
-            } else {
-              console.error(`Unknown error fetching NFTs for collection ${collection.name} page ${page}`);
+            console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
+            
+            const axiosError = error as { response?: { status: number, data: any } };
+            if (axiosError.response?.data?.error) {
+              console.error('Server error details:', axiosError.response.data.error);
             }
+
+            // If we get a rate limit error, wait longer before retrying
+            if (axiosError.response?.status === 429) {
+              console.log('Rate limit hit, waiting 5 seconds before retry...');
+              await delay(5000);
+              continue;
+            }
+
+            // If we get a server error, log it and break
+            if (axiosError.response?.status === 500) {
+              console.error('Server error response:', axiosError.response.data);
+              break;
+            }
+
             break;
           }
         }
-        // Add delay between collections
-        await delay(1000);
+        // Add longer delay between collections to avoid rate limits
+        await delay(3000);
       }
 
       // 3. Process Ultimate NFTs
