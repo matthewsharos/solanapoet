@@ -25,6 +25,7 @@ import bs58 from 'bs58';
 import { callPurchaseSuccessPopupCallback } from './purchaseCallbacks';
 import { createSheetsClient, GOOGLE_SHEETS_CONFIG } from './googleSheetsConfig';
 import { NFT, NFTOwner } from '../types/nft';
+import { getHeliusApiKey } from '../utils/config';
 
 // Types and Interfaces
 interface TransactionOptions {
@@ -62,6 +63,11 @@ interface StoredListing {
   timestamp: number;
 }
 
+// Cache for the Helius connection
+let cachedConnection: Connection | null = null;
+let lastConnectionTime: number = 0;
+const CONNECTION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 // Helper Functions
 const getOwnerAddress = (owner: string | any): string => {
   if (typeof owner === 'string') {
@@ -70,31 +76,69 @@ const getOwnerAddress = (owner: string | any): string => {
   return owner?.publicKey || '';
 };
 
-const ensureConnection = (connection?: Connection): Connection => {
+const ensureConnection = async (connection?: Connection): Promise<Connection> => {
   if (connection) {
     return connection;
   }
 
-  // Get the Helius API key
-  const heliusApiKey = import.meta.env.VITE_HELIUS_API_KEY;
-  if (!heliusApiKey) {
-    console.error('Helius API key not configured in client environment');
-    throw new Error('Helius API key not configured');
+  // Check if we have a valid cached connection
+  const now = Date.now();
+  if (cachedConnection && (now - lastConnectionTime) < CONNECTION_TIMEOUT) {
+    return cachedConnection;
   }
 
-  console.log('Creating new Helius RPC connection...');
-  const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
-  
   try {
-    return new Connection(heliusMainnetRpcUrl, {
-      commitment: 'confirmed',
-      confirmTransactionInitialTimeout: 60000, // 60 seconds
-      wsEndpoint: `wss://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
-    });
+    // Get the Helius API key from the server config
+    const heliusApiKey = await getHeliusApiKey();
+    
+    console.log('Creating new Helius RPC connection...');
+    const heliusMainnetRpcUrl = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+    
+    // Create new connection with retry logic
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (retryCount < maxRetries) {
+      try {
+        const newConnection = new Connection(heliusMainnetRpcUrl, {
+          commitment: 'confirmed',
+          confirmTransactionInitialTimeout: 60000, // 60 seconds
+          wsEndpoint: `wss://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
+        });
+
+        // Validate the connection by getting the version
+        await newConnection.getVersion();
+        
+        // Update cache
+        cachedConnection = newConnection;
+        lastConnectionTime = now;
+        
+        return newConnection;
+      } catch (error) {
+        retryCount++;
+        if (retryCount === maxRetries) {
+          throw error;
+        }
+        console.warn(`Connection attempt ${retryCount} failed, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
+    
+    throw new Error('Failed to create connection after maximum retries');
   } catch (error) {
     console.error('Failed to create Helius RPC connection:', error);
-    throw error;
+    // Clear cache on error
+    cachedConnection = null;
+    lastConnectionTime = 0;
+    throw new Error(`Failed to create Helius RPC connection: ${error instanceof Error ? error.message : String(error)}`);
   }
+};
+
+// Add a function to reset the connection cache if needed
+export const resetConnection = (): void => {
+  cachedConnection = null;
+  lastConnectionTime = 0;
+  console.log('Connection cache reset');
 };
 
 // Cache the API base URL to avoid multiple lookups
@@ -437,7 +481,7 @@ export const listNFTForSale = async (
       return false;
     }
     
-    connection = connection || ensureConnection();
+    connection = connection || await ensureConnection();
     const nftAddress = typeof nft === 'string' ? nft : nft.mint;
     const apiBaseUrl = await getApiBaseUrl();
     
@@ -542,7 +586,7 @@ export const unlistNFT = async (
       const nftAddress = typeof nft === 'string' ? nft : nft.mint;
       
       // Use our consistent connection creator
-      connection = connection || createConsistentConnection();
+      connection = connection || await ensureConnection();
       console.log('Using connection with URL:', (connection as any)._rpcEndpoint);
       
       const ROYALTY_RECEIVER_ADDRESS = 'ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD';

@@ -79,11 +79,13 @@ if (!process.env.SOLANA_RPC_URL && process.env.VITE_SOLANA_RPC_URL) {
   console.log('Using VITE_SOLANA_RPC_URL as SOLANA_RPC_URL');
 }
 
-// Hardcode API key as fallback if not set
-if (!process.env.HELIUS_API_KEY) {
-  console.log('Using hardcoded HELIUS_API_KEY as fallback');
-  process.env.HELIUS_API_KEY = '1aac55c4-5c9d-411a-bd46-37479a165e6d';
-}
+// Log environment variable status
+console.log('Environment variable status:', {
+  HELIUS_API_KEY: process.env.HELIUS_API_KEY ? 'set' : 'not set',
+  VITE_HELIUS_API_KEY: process.env.VITE_HELIUS_API_KEY ? 'set' : 'not set',
+  SOLANA_RPC_URL: process.env.SOLANA_RPC_URL ? 'set' : 'not set',
+  VITE_SOLANA_RPC_URL: process.env.VITE_SOLANA_RPC_URL ? 'set' : 'not set'
+});
 
 // Process environment variables before server startup
 if (process.env.GOOGLE_PRIVATE_KEY && !process.env.GOOGLE_PRIVATE_KEY.includes('\n') && process.env.GOOGLE_PRIVATE_KEY.includes('\\n')) {
@@ -199,7 +201,7 @@ app.use('/api/debug', debugRoutes);
 console.log('API routes registered');
 
 // Pass environment variables to the client
-app.get('/api/config', (req: Request, res: Response) => {
+app.get('/api/config', async (req: Request, res: Response) => {
   try {
     // Debug log all relevant environment variables
     console.log('Environment variables state:', {
@@ -215,10 +217,36 @@ app.get('/api/config', (req: Request, res: Response) => {
       solanaRpcUrl: !!process.env.SOLANA_RPC_URL ? 'set' : 'not set'
     });
 
+    // Validate Helius API key if present
+    let heliusApiKeyValid = false;
+    if (process.env.HELIUS_API_KEY) {
+      try {
+        const response = await fetch('https://mainnet.helius-rpc.com/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'test',
+            method: 'getHealth',
+            params: []
+          })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          heliusApiKeyValid = data.result === 'ok';
+        }
+      } catch (error) {
+        console.error('Error validating Helius API key:', error);
+      }
+    }
+
     // Check if required environment variables are present
     const hasGoogleCredentials = !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY;
     const hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
+    const hasHeliusApiKey = !!process.env.HELIUS_API_KEY && heliusApiKeyValid;
     const hasSolanaRpcUrl = !!process.env.SOLANA_RPC_URL;
     const isConfigured = hasGoogleCredentials && hasSpreadsheetId;
 
