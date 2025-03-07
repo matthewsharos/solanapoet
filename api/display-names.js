@@ -31,10 +31,10 @@ async function getGoogleSheetsClient() {
 
 // Hardcoded fallback display names in case the API fails
 const fallbackDisplayNames = [
-  { walletAddress: "art5dr4bdic2sqvzofheemuxwqq5vgsx9he7jxhcxnqd", displayName: "DegenPoet" },
-  { walletAddress: "cknhwze3kyn24bapmewekce9fnj6dpgnrhjn2ywd7", displayName: "Jack" },
-  { walletAddress: "copufhaobbdchxeczoubehjpijf3xvq1jnxdf9cmh3xz", displayName: "Daniel" },
-  { walletAddress: "hhlja5ewvjygtkkswp9xgyfygdsdrz4mpd1vhpzc5ae", displayName: "Mary" }
+  { walletAddress: "ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD", displayName: "DegenPoet" },
+  { walletAddress: "CknhwzE3kKYFN24BapMeaWekCE9Fnj6dpGnRHJN2yWd7", displayName: "Jack" },
+  { walletAddress: "CoPufhAobbD9ChXEcZoUbEHPiJF3xvQ1JNXDf9cmh3xz", displayName: "Daniel" },
+  { walletAddress: "HhLJA5EWvJygtKksWp9xGYFYgdSdtrz4Mpd1VhPzC5Ae", displayName: "Mary" }
 ];
 
 // Serverless function for display names API
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
       
       // Skip header row and process the data
       const displayNames = rows.slice(1).map(row => ({
-        walletAddress: (row[0] || '').toLowerCase(),
+        walletAddress: row[0] || '',
         displayName: row[1] || '',
         updated_at: row[2] || new Date().toISOString()
       })).filter(entry => entry.walletAddress && entry.displayName);
@@ -90,8 +90,7 @@ export default async function handler(req, res) {
       
       // If an address is provided, return just that one
       if (address) {
-        const normalizedAddress = address.toLowerCase();
-        const match = displayNames.find(entry => entry.walletAddress === normalizedAddress);
+        const match = displayNames.find(entry => entry.walletAddress === address);
         
         if (match) {
           console.log(`[serverless] Found display name for address ${address}: ${match.displayName}`);
@@ -119,8 +118,7 @@ export default async function handler(req, res) {
       
       // Use fallback data if Google Sheets fails
       if (address) {
-        const normalizedAddress = address.toLowerCase();
-        const match = fallbackDisplayNames.find(entry => entry.walletAddress === normalizedAddress);
+        const match = fallbackDisplayNames.find(entry => entry.walletAddress === address);
         
         if (match) {
           console.log(`[serverless] Found fallback display name for address ${address}: ${match.displayName}`);

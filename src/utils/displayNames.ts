@@ -14,10 +14,10 @@ const ERROR_COOLDOWN_TIME = 5 * 60 * 1000; // 5 minutes cooldown after error
 
 // Fallback display names in case the API fails
 const FALLBACK_DISPLAY_NAMES: Record<string, string> = {
-  "art5dr4bdic2sqvzofheemuxwqq5vgsx9he7jxhcxnqd": "DegenPoet",
-  "cknhwze3kyn24bapmewekce9fnj6dpgnrhjn2ywd7": "Jack",
-  "copufhaobbdchxeczoubehjpijf3xvq1jnxdf9cmh3xz": "Daniel",
-  "hhlja5ewvjygtkkswp9xgyfygdsdrz4mpd1vhpzc5ae": "Mary"
+  "ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD": "DegenPoet",
+  "CknhwzE3kKYFN24BapMeaWekCE9Fnj6dpGnRHJN2yWd7": "Jack",
+  "CoPufhAobbD9ChXEcZoUbEHPiJF3xvQ1JNXDf9cmh3xz": "Daniel",
+  "HhLJA5EWvJygtKksWp9xGYFYgdSdtrz4Mpd1VhPzC5Ae": "Mary"
 };
 
 // Cache display names in memory
@@ -140,13 +140,13 @@ export const syncDisplayNamesFromSheets = async (force = false): Promise<void> =
     
     // First add all fallback names to ensure we always have them
     Object.entries(FALLBACK_DISPLAY_NAMES).forEach(([address, name]) => {
-      newCache.set(address.toLowerCase(), name);
+      newCache.set(address, name);
     });
     
     // Then add any fetched names, which will override fallbacks if duplicates exist
     fetchedNames.forEach((entry: DisplayNameMapping) => {
       if (entry.walletAddress && entry.displayName) {
-        newCache.set(entry.walletAddress.toLowerCase(), entry.displayName);
+        newCache.set(entry.walletAddress, entry.displayName);
       }
     });
     
@@ -186,24 +186,22 @@ export const syncDisplayNamesFromSheets = async (force = false): Promise<void> =
 export const getDisplayNameForWallet = async (address: string): Promise<string | null> => {
   if (!address) return null;
   
-  const normalizedAddress = address.toLowerCase();
-  
   // Initialize cache from localStorage if empty
   if (displayNamesCache.size === 0) {
     displayNamesCache = loadDisplayNamesFromStorage();
   }
   
   // Check cache first
-  const cachedName = displayNamesCache.get(normalizedAddress);
+  const cachedName = displayNamesCache.get(address);
   if (cachedName) {
     return cachedName;
   }
   
   // Check fallback data
-  const fallbackName = FALLBACK_DISPLAY_NAMES[normalizedAddress];
+  const fallbackName = FALLBACK_DISPLAY_NAMES[address];
   if (fallbackName) {
     // Add to cache for future use
-    displayNamesCache.set(normalizedAddress, fallbackName);
+    displayNamesCache.set(address, fallbackName);
     saveDisplayNamesToStorage(displayNamesCache);
     return fallbackName;
   }
@@ -212,9 +210,9 @@ export const getDisplayNameForWallet = async (address: string): Promise<string |
   if (!isInErrorCooldown()) {
     try {
       // Try a direct fetch for this address
-      const name = await displayNames.get(normalizedAddress);
+      const name = await displayNames.get(address);
       if (name) {
-        displayNamesCache.set(normalizedAddress, name);
+        displayNamesCache.set(address, name);
         saveDisplayNamesToStorage(displayNamesCache);
         return name;
       }
@@ -238,14 +236,12 @@ export const getDisplayNameForWallet = async (address: string): Promise<string |
 export const setDisplayNameForWallet = async (address: string, name: string): Promise<boolean> => {
   if (!address || !name) return false;
   
-  const normalizedAddress = address.toLowerCase();
-  
   try {
     // Update on the server
-    await displayNames.update(normalizedAddress, name);
+    await displayNames.update(address, name);
     
     // Update in the local cache
-    displayNamesCache.set(normalizedAddress, name);
+    displayNamesCache.set(address, name);
     
     // Save to localStorage
     saveDisplayNamesToStorage(displayNamesCache);

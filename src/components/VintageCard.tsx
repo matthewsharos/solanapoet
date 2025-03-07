@@ -223,8 +223,8 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
         // Use the modified getAllDisplayNames function to get from cache
         const displayNamesMap = getAllDisplayNames();
         
-        if (displayNamesMap.has(ownerAddress.toLowerCase())) {
-          const cachedName = displayNamesMap.get(ownerAddress.toLowerCase());
+        if (displayNamesMap.has(ownerAddress)) {
+          const cachedName = displayNamesMap.get(ownerAddress);
           if (cachedName) {
             setOwnerDisplayName(cachedName);
             return;
@@ -264,7 +264,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
       if (!event.detail?.displayNames || !ownerAddress) return;
       
-      const updatedName = event.detail.displayNames[ownerAddress.toLowerCase()];
+      const updatedName = event.detail.displayNames[ownerAddress];
       if (updatedName) {
         setOwnerDisplayName(updatedName);
       }
