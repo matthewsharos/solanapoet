@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     console.log(`[serverless] Fetching NFT data for ${mintAddress}`);
     
     // Get Helius API key
-    const HELIUS_API_KEY = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
     
     if (!HELIUS_API_KEY) {
       console.error('[serverless] Helius API key not found');
@@ -51,8 +51,7 @@ export default async function handler(req, res) {
         debug: {
           hasHeliusKey: false,
           environment: process.env.NODE_ENV,
-          vercelEnv: process.env.VERCEL_ENV,
-          envKeys: Object.keys(process.env)
+          vercelEnv: process.env.VERCEL_ENV
         }
       });
     }
@@ -61,16 +60,16 @@ export default async function handler(req, res) {
     const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
     // Log request details (safely)
-    console.log('[serverless] Request details:', {
+    console.log('[serverless] Making request with details:', {
       mintAddress,
       hasHeliusKey: true,
       heliusKeyLength: HELIUS_API_KEY.length,
+      heliusKeyStart: HELIUS_API_KEY.substring(0, 4) + '...',
       environment: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV,
-      rpcUrl: HELIUS_RPC_URL.replace(HELIUS_API_KEY, '***')
+      vercelEnv: process.env.VERCEL_ENV
     });
 
-    // Prepare RPC request body
+    // Prepare RPC request body for getAsset
     const requestBody = {
       jsonrpc: "2.0",
       id: "helius-fetch",
@@ -82,19 +81,27 @@ export default async function handler(req, res) {
 
     console.log('[serverless] Making request to Helius RPC API...');
     
-    // Make request to Helius API using axios with timeout
-    const response = await axios.post(HELIUS_RPC_URL, requestBody, {
+    // Define a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000);
+    });
+
+    // Define the fetch promise
+    const fetchPromise = axios.post(HELIUS_RPC_URL, requestBody, {
       headers: {
         'Content-Type': 'application/json'
       },
-      timeout: 10000 // 10 second timeout
+      timeout: 15000 // 15 second timeout
     });
 
+    // Race the fetch against the timeout
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+    
     const data = response.data;
-    console.log('[serverless] Successfully fetched NFT data');
+    console.log('[serverless] Successfully fetched NFT data from Helius');
 
     if (!data || !data.result) {
-      console.log('[serverless] No NFT data found');
+      console.error('[serverless] No NFT data found in response:', data);
       return res.status(404).json({
         success: false,
         message: 'No NFT data found',
@@ -138,30 +145,30 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('[serverless] Error in NFT endpoint:', error);
     
-    // Determine appropriate status code based on error type
+    // Determine appropriate status code
     let statusCode = 500;
+    let errorMessage = 'Internal server error';
+    
     if (error.response) {
       statusCode = error.response.status;
-    } else if (error.code === 'ECONNABORTED') {
-      statusCode = 504; // Gateway Timeout
+      errorMessage = `Helius API error: ${error.response.status}`;
+    } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      statusCode = 504;
+      errorMessage = 'Request timed out';
+    } else if (error.code === 'ERR_BAD_REQUEST') {
+      statusCode = 400;
+      errorMessage = 'Bad request to Helius API';
     }
     
+    // Return detailed error information
     return res.status(statusCode).json({
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: errorMessage,
       error: {
-        type: error.name,
-        code: error.code,
-        status: error.response?.status,
-        stack: error instanceof Error ? error.stack : null,
-        vercelEnv: process.env.VERCEL_ENV || 'unknown',
-        nodeVersion: process.version,
-        platform: process.platform,
-        mintAddress: req.query?.mintAddress,
-        hasHeliusKey: !!process.env.HELIUS_API_KEY,
-        heliusKeyLength: process.env.HELIUS_API_KEY?.length,
-        response: error.response?.data,
-        envKeys: Object.keys(process.env)
+        type: error.name || 'Error',
+        message: error.message || 'Unknown error',
+        code: error.code || 'UNKNOWN',
+        mintAddress: req.query?.mintAddress
       }
     });
   }

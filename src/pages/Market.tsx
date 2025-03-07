@@ -114,17 +114,18 @@ interface DisplayNameMapping {
 const ITEMS_PER_PAGE = 40;
 
 // Helper function to validate collection data
-const validateCollection = (collection: string[]): Collection | null => {
-  if (!collection || !collection[0]) return null;
+const validateCollection = (collection: any): Collection | null => {
+  // Check if collection has required fields
+  if (!collection || !collection.address) return null;
 
   return {
-    address: collection[0],
-    name: collection[1] || 'Unknown Collection',
-    image: collection[2] || '',
-    description: collection[3] || '',
-    addedAt: Number(collection[4]) || Date.now(),
-    creationDate: collection[5] || new Date().toISOString(),
-    ultimates: collection[6]?.toLowerCase() === 'true'
+    address: collection.address,
+    name: collection.name || 'Unknown Collection',
+    image: collection.image || '',
+    description: collection.description || '',
+    addedAt: collection.addedAt || Date.now(),
+    creationDate: collection.creationDate || new Date().toISOString(),
+    ultimates: collection.ultimates || false
   };
 };
 
@@ -239,7 +240,7 @@ const Market: React.FC = () => {
           console.log('Collections data received:', {
             success: !!collectionsData,
             length: Array.isArray(collectionsData) ? collectionsData.length : 0,
-            data: collectionsData
+            sample: collectionsData?.[0]
           });
           break;
         } catch (err) {
@@ -253,172 +254,56 @@ const Market: React.FC = () => {
         }
       }
 
-      if (!collectionsData) {
-        console.error('Failed to fetch collections after multiple retries');
-        setError('Failed to fetch collections after multiple retries');
-        setLoading(false);
-        return;
-      }
-
-      // Filter out invalid collections and transform array data
+      // Process collections
       console.log('3. Processing collections data...');
-      const validCollections = (collectionsData as unknown as string[][])
-        .slice(1) // Skip the header row
-        .map(validateCollection)
-        .filter((collection): collection is Collection => collection !== null);
-      
+      const validCollections = (collectionsData || [])
+        .map(collection => validateCollection(collection))
+        .filter((c): c is Collection => c !== null);
+
       console.log('Valid collections processed:', {
         total: validCollections.length,
-        collections: validCollections.map(c => ({
-          name: c.name,
-          address: c.address,
-          ultimates: c.ultimates
-        }))
+        collections: validCollections
       });
-      
+
       setCollections(validCollections);
-      setIsLoadingMore(true);
-      
-      // Get all ultimate NFTs with retry logic
+
+      // Fetch ultimate NFTs
       console.log('4. Fetching ultimate NFTs...');
-      retryCount = 0;
-      let ultimates = null;
-      
-      while (retryCount < 3) {
-        try {
-          ultimates = (await getUltimateNFTs() as unknown) as string[][];
-          console.log('Ultimates data received:', {
-            success: !!ultimates,
-            length: Array.isArray(ultimates) ? ultimates.length : 0,
-            sample: Array.isArray(ultimates) && ultimates.length > 0 ? ultimates[0] : null
-          });
-          break;
-        } catch (err) {
-          console.error('Error fetching ultimates, attempt', retryCount + 1, ':', err);
-          retryCount++;
-          if (retryCount < 3) {
-            const delayTime = Math.pow(2, retryCount) * 1000;
-            console.log(`Waiting ${delayTime}ms before retry...`);
-            await delay(delayTime);
-          }
+      const ultimateNFTs = await getUltimateNFTs();
+      console.log('Ultimates data received:', {
+        success: !!ultimateNFTs,
+        length: Array.isArray(ultimateNFTs) ? ultimateNFTs.length : 0,
+        sample: ultimateNFTs?.[0]
+      });
+
+      // Process NFTs in batches
+      const nftAddresses = ultimateNFTs.map(nft => nft.nft_address);
+      const batches = chunk(nftAddresses, BATCH_SIZE);
+
+      for (const [batchIndex, batch] of batches.entries()) {
+        console.log(`Processing batch ${batchIndex + 1}/${batches.length}...`);
+        
+        const batchPromises = batch.map(async (nftAddress) => {
+          const ultimate = ultimateNFTs.find(u => u.nft_address === nftAddress) || null;
+          return fetchNFTWithRetries(nftAddress, ultimate, validCollections);
+        });
+
+        const batchResults = await Promise.all(batchPromises);
+        const validNFTs = batchResults.filter((nft): nft is NFT => nft !== null);
+        
+        // Update state with new NFTs
+        validNFTs.forEach(updateNFTs);
+
+        if (batchIndex < batches.length - 1) {
+          await delay(BATCH_DELAY);
         }
       }
 
-      if (!ultimates || !Array.isArray(ultimates)) {
-        console.error('Failed to fetch ultimates or invalid data:', ultimates);
-        setError('Failed to fetch ultimate NFTs');
-        setLoading(false);
-        return;
-      }
-
-      // Process ultimates in optimized batches with error tracking
-      const ultimateChunks = chunk(ultimates.slice(1), BATCH_SIZE); // Skip header row
-      const processedNFTs = new Set<string>(); // Track processed NFTs
-      const failedNFTs: string[] = [];
-      
-      for (const batch of ultimateChunks) {
-        const results = await Promise.allSettled(
-          batch.map(async (ultimate: string[]) => {
-            try {
-              const ultimateNFT: UltimateNFTData = {
-                nft_address: ultimate[0],
-                name: ultimate[1],
-                owner: ultimate[2],
-                collection_id: ultimate[3]
-              };
-              
-              if (!ultimateNFT.nft_address || 
-                  ultimateNFT.nft_address === 'NFT Address' || 
-                  processedNFTs.has(ultimateNFT.nft_address)) {
-                return;
-              }
-
-              processedNFTs.add(ultimateNFT.nft_address);
-              const nft = await fetchNFTWithRetries(ultimateNFT.nft_address, ultimateNFT, validCollections);
-              if (nft) {
-                updateNFTs(nft);
-              } else {
-                failedNFTs.push(ultimateNFT.nft_address);
-              }
-            } catch (err) {
-              console.error('Error fetching ultimate NFT:', err);
-              if (ultimate[0]) failedNFTs.push(ultimate[0]);
-            }
-          })
-        );
-
-        // Log failed NFTs for debugging
-        const failedInBatch = results.filter(r => r.status === 'rejected').length;
-        if (failedInBatch > 0) {
-          console.warn(`Failed to fetch ${failedInBatch} NFTs in current batch`);
-        }
-
-        await delay(BATCH_DELAY);
-      }
-      
-      // Process collections with optimized batches and error tracking
-      for (const collection of validCollections) {
-        if (!collection.address || collection.ultimates === true || processedNFTs.has(collection.address)) {
-          continue;
-        }
-
-        try {
-          const collectionNFTs = await fetchCollectionNFTs(collection.address);
-          const nftChunks = chunk(collectionNFTs, BATCH_SIZE);
-          
-          for (const batch of nftChunks) {
-            const results = await Promise.allSettled(
-              batch.map(async (nft: NFTMetadata) => {
-                try {
-                  if (!nft.mint || processedNFTs.has(nft.mint)) return;
-                  
-                  processedNFTs.add(nft.mint);
-                  const nftData = await fetchNFTWithRetries(nft.mint, null, validCollections);
-                  if (nftData) {
-                    const enrichedNFT = {
-                      ...nftData,
-                      collectionName: collection.name,
-                      collectionAddress: collection.address,
-                      image: nft.image || nftData.image || '',
-                      name: nft.name || nftData.name || 'Unknown NFT',
-                      description: nft.description || nftData.description || ''
-                    } as NFT;
-                    
-                    updateNFTs(enrichedNFT);
-                  } else {
-                    failedNFTs.push(nft.mint);
-                  }
-                } catch (err) {
-                  console.error(`Error fetching NFT ${nft.mint}:`, err);
-                  if (nft.mint) failedNFTs.push(nft.mint);
-                }
-              })
-            );
-
-            const failedInBatch = results.filter(r => r.status === 'rejected').length;
-            if (failedInBatch > 0) {
-              console.warn(`Failed to fetch ${failedInBatch} NFTs in collection ${collection.name} batch`);
-            }
-
-            await delay(BATCH_DELAY);
-          }
-        } catch (err) {
-          console.error(`Error fetching NFTs for collection ${collection.name}:`, err);
-        }
-      }
-
-      // Log summary of failed fetches
-      if (failedNFTs.length > 0) {
-        console.warn(`Total failed NFT fetches: ${failedNFTs.length}`);
-      }
-
-      setIsLoadingMore(false);
       setLoading(false);
-    } catch (err) {
-      console.error('Error fetching NFTs:', err);
-      setError('Failed to fetch NFTs. Please try again later.');
+    } catch (error) {
+      console.error('Error in fetchAllNFTs:', error);
+      setError('Failed to load NFTs. Please try again later.');
       setLoading(false);
-      setIsLoadingMore(false);
     }
   };
 
