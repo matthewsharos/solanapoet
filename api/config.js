@@ -1,30 +1,30 @@
 // Serverless function for configuration endpoint
 module.exports = async (req, res) => {
-  console.log('[serverless] Config endpoint called');
-  
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  // Handle OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
-  // Only allow GET requests
-  if (req.method !== 'GET') {
-    return res.status(200).json({
-      success: false,
-      message: 'Method not allowed'
-    });
-  }
-  
   try {
+    console.log('[serverless] Config endpoint called');
+    
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+    // Handle OPTIONS request
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    // Only allow GET requests
+    if (req.method !== 'GET') {
+      return res.status(200).json({
+        success: false,
+        message: 'Method not allowed'
+      });
+    }
+    
     console.log('[serverless] Checking environment variables...');
     
-    // Get all environment variables safely
+    // Get all environment variables safely with fallbacks
     const envVars = {
       HELIUS_API_KEY: process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY || '',
       SOLANA_RPC_URL: process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL || '',
@@ -60,8 +60,6 @@ module.exports = async (req, res) => {
       hasSpreadsheetId,
       hasGoogleCredentials,
       isConfigured: hasHeliusApiKey && hasSolanaRpcUrl && hasGoogleCredentials && hasSpreadsheetId,
-      HELIUS_API_KEY: hasHeliusApiKey ? envVars.HELIUS_API_KEY.substring(0, 4) + '...' : null,
-      SOLANA_RPC_URL: hasSolanaRpcUrl ? envVars.SOLANA_RPC_URL : null,
       environment: envVars.NODE_ENV,
       vercelEnv: envVars.VERCEL_ENV,
       serverless: true,
@@ -77,29 +75,39 @@ module.exports = async (req, res) => {
           privateKeyLength: hasGooglePrivateKey ? envVars.GOOGLE_PRIVATE_KEY.length : 0,
           clientEmailMask: hasGoogleClientEmail ? 
             envVars.GOOGLE_CLIENT_EMAIL.replace(/^(.{4}).*(@.*)$/, '$1...$2') : null
+        },
+        heliusApiKeyMask: hasHeliusApiKey ? envVars.HELIUS_API_KEY.substring(0, 4) + '...' : null,
+        solanaRpcUrlMask: hasSolanaRpcUrl ? envVars.SOLANA_RPC_URL.replace(/^(https?:\/\/[^\/]+).*$/, '$1/...') : null,
+        googleDriveFolderIdMask: hasGoogleDriveFolderId ? envVars.GOOGLE_DRIVE_FOLDER_ID.substring(0, 4) + '...' : null,
+        spreadsheetIdMask: hasSpreadsheetId ? envVars.GOOGLE_SHEETS_SPREADSHEET_ID.substring(0, 4) + '...' : null,
+        processEnv: {
+          NODE_ENV: process.env.NODE_ENV,
+          VERCEL_ENV: process.env.VERCEL_ENV,
+          VERCEL_REGION: process.env.VERCEL_REGION,
+          VERCEL_URL: process.env.VERCEL_URL
         }
       }
     });
   } catch (error) {
     console.error('[serverless] Error in config endpoint:', error);
     
-    // Always return 200 with error details
+    // Return error response with debugging information
     return res.status(200).json({
       success: false,
-      hasHeliusApiKey: false,
-      hasSolanaRpcUrl: false,
-      hasGoogleDriveFolderId: false,
-      hasSpreadsheetId: false,
-      hasGoogleCredentials: false,
-      isConfigured: false,
-      serverless: true,
-      timestamp: new Date().toISOString(),
+      message: error instanceof Error ? error.message : 'Unknown error',
       error: {
-        message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : null,
         vercelEnv: process.env.VERCEL_ENV || 'unknown',
         nodeVersion: process.version,
-        platform: process.platform
+        platform: process.platform,
+        arch: process.arch,
+        envKeys: Object.keys(process.env),
+        processEnv: {
+          NODE_ENV: process.env.NODE_ENV,
+          VERCEL_ENV: process.env.VERCEL_ENV,
+          VERCEL_REGION: process.env.VERCEL_REGION,
+          VERCEL_URL: process.env.VERCEL_URL
+        }
       }
     });
   }

@@ -47,58 +47,80 @@ module.exports = async (req, res) => {
       console.error('[serverless] Helius API key not found');
       return res.status(200).json({
         success: false,
-        message: 'Helius API key not configured'
+        message: 'Helius API key not configured',
+        debug: {
+          hasHeliusKey: false,
+          environment: process.env.NODE_ENV,
+          vercelEnv: process.env.VERCEL_ENV
+        }
       });
     }
 
-    // Construct Helius API URL
-    const HELIUS_API_URL = `https://api.helius.xyz/v0/tokens/metadata?api-key=${HELIUS_API_KEY}`;
+    // Construct Helius RPC API URL
+    const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
-    // Prepare request body
+    // Prepare RPC request body
     const requestBody = {
-      mintAccounts: [mintAddress],
-      includeOffChain: true,
-      disableCache: false
+      jsonrpc: "2.0",
+      id: "helius-fetch",
+      method: "getAsset",
+      params: {
+        id: mintAddress
+      }
     };
 
-    console.log('[serverless] Making request to Helius API...');
+    console.log('[serverless] Making request to Helius RPC API...');
     
-    // Make request to Helius API
-    const response = await fetch(HELIUS_API_URL, {
-      method: 'POST',
+    // Make request to Helius API using axios
+    const response = await axios.post(HELIUS_RPC_URL, requestBody, {
       headers: {
         'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
+      }
     });
 
-    if (!response.ok) {
-      console.error(`[serverless] Helius API error: ${response.status} ${response.statusText}`);
-      const errorText = await response.text();
-      console.error('[serverless] Error details:', errorText);
-      
-      return res.status(200).json({
-        success: false,
-        message: `Helius API error: ${response.status} ${response.statusText}`,
-        error: errorText
-      });
-    }
-
-    const data = await response.json();
+    const data = response.data;
     console.log('[serverless] Successfully fetched NFT data');
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
+    if (!data || !data.result) {
       console.log('[serverless] No NFT data found');
       return res.status(200).json({
         success: false,
-        message: 'No NFT data found'
+        message: 'No NFT data found',
+        debug: {
+          mintAddress,
+          hasHeliusKey: true,
+          environment: process.env.NODE_ENV,
+          vercelEnv: process.env.VERCEL_ENV,
+          response: data
+        }
       });
     }
 
-    // Return the NFT data
+    const nftData = data.result;
+
+    // Process the NFT data
+    const processedData = {
+      mint: mintAddress,
+      name: nftData.content?.metadata?.name || nftData.name || 'Unknown NFT',
+      description: nftData.content?.metadata?.description || nftData.description || '',
+      image: nftData.content?.files?.[0]?.uri || 
+             nftData.content?.links?.image || 
+             nftData.image || 
+             'https://placehold.co/600x400?text=Image+Not+Available',
+      owner: typeof nftData.ownership?.owner === 'string' 
+        ? { publicKey: nftData.ownership.owner }
+        : { publicKey: nftData.ownership?.owner?.address || '' },
+      attributes: nftData.content?.metadata?.attributes || [],
+      collection: nftData.grouping?.find(g => g.group_key === 'collection')?.group_value || null,
+      creators: nftData.creators || [],
+      royalty: nftData.royalty || null,
+      tokenStandard: nftData.interface || null
+    };
+
+    // Return the processed NFT data
     return res.status(200).json({
       success: true,
-      nft: data[0]
+      nft: processedData
     });
 
   } catch (error) {
@@ -111,7 +133,10 @@ module.exports = async (req, res) => {
         stack: error instanceof Error ? error.stack : null,
         vercelEnv: process.env.VERCEL_ENV || 'unknown',
         nodeVersion: process.version,
-        platform: process.platform
+        platform: process.platform,
+        mintAddress: req.query?.mintAddress,
+        hasHeliusKey: !!process.env.HELIUS_API_KEY,
+        response: error.response?.data
       }
     });
   }
