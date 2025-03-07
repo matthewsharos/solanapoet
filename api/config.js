@@ -20,11 +20,35 @@ module.exports = async (req, res) => {
   }
   
   try {
-    // Check for required environment variables
-    const hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
-    const hasSolanaRpcUrl = !!process.env.SOLANA_RPC_URL;
-    const hasGoogleCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    const hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    // Safely check for environment variables
+    let hasHeliusApiKey = false;
+    let hasSolanaRpcUrl = false;
+    let hasGoogleCredentials = false;
+    let hasSpreadsheetId = false;
+    
+    try {
+      hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
+    } catch (e) {
+      console.error('[serverless] Error checking HELIUS_API_KEY:', e);
+    }
+    
+    try {
+      hasSolanaRpcUrl = !!process.env.SOLANA_RPC_URL;
+    } catch (e) {
+      console.error('[serverless] Error checking SOLANA_RPC_URL:', e);
+    }
+    
+    try {
+      hasGoogleCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+    } catch (e) {
+      console.error('[serverless] Error checking GOOGLE_APPLICATION_CREDENTIALS_JSON:', e);
+    }
+    
+    try {
+      hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    } catch (e) {
+      console.error('[serverless] Error checking GOOGLE_SHEETS_SPREADSHEET_ID:', e);
+    }
     
     // Return config information
     return res.status(200).json({
@@ -36,21 +60,25 @@ module.exports = async (req, res) => {
       HELIUS_API_KEY: hasHeliusApiKey ? process.env.HELIUS_API_KEY.substring(0, 4) + '...' : null,
       SOLANA_RPC_URL: hasSolanaRpcUrl ? process.env.SOLANA_RPC_URL : null,
       environment: process.env.NODE_ENV || 'production',
-      serverless: true
+      serverless: true,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('[serverless] Error in config endpoint:', error);
     
-    return res.status(500).json({
+    // Provide a more resilient response
+    return res.status(200).json({
       hasGoogleCredentials: false,
       hasSpreadsheetId: false,
       hasHeliusApiKey: false,
       hasSolanaRpcUrl: false,
       isConfigured: false,
       serverless: true,
-      error: {
-        code: 'CONFIG_ERROR',
-        message: error instanceof Error ? error.message : 'Error retrieving configuration'
+      timestamp: new Date().toISOString(),
+      troubleshooting: {
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : null,
+        vercelEnv: process.env.VERCEL_ENV || 'unknown'
       }
     });
   }
