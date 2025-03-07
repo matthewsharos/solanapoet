@@ -11,7 +11,11 @@
     },
     {
       "src": "api/**/*.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": ["api/**/*"],
+        "maxLambdaSize": "50mb"
+      }
     }
   ],
   "env": {
@@ -20,19 +24,23 @@
   "routes": [
     {
       "src": "/api/nft/helius/([^/]+)",
-      "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1"
+      "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1",
+      "methods": ["GET", "OPTIONS"]
     },
     {
       "src": "/api/config",
-      "dest": "/api/config.js"
+      "dest": "/api/config.js",
+      "methods": ["GET", "OPTIONS"]
     },
     {
       "src": "/api/debug",
-      "dest": "/api/debug.js"
+      "dest": "/api/debug.js",
+      "methods": ["GET", "OPTIONS"]
     },
     {
       "src": "/api/sheets/([^/]+)",
-      "dest": "/api/sheets.js?sheet=$1"
+      "dest": "/api/sheets.js?sheet=$1",
+      "methods": ["GET", "OPTIONS"]
     },
     {
       "src": "/api/(.*)",
