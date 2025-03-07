@@ -127,30 +127,51 @@ const ITEMS_PER_PAGE = 40;
 
 const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number, maxRetries = 3) => {
   let lastError;
+  let allItems: any[] = [];
+  const pageSize = 1; // Helius API is working best with limit:1
+  const totalPages = 10; // Fetch 10 NFTs max for now
+  
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       console.log(`Attempt ${attempt + 1}/${maxRetries} - Fetching NFTs for collection ${collection.name} (${collection.address})`);
       
-      const response = await axios.post('/api/nft/helius/collection', {
-        collectionId: collection.address,
-        page: page,
-        limit: 1000
-      }, {
-        timeout: 15000 // 15-second timeout
-      });
+      // Fetch items one page at a time
+      for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
+        console.log(`Fetching page ${currentPage}/${totalPages} for collection ${collection.name}`);
+        
+        const response = await axios.post('/api/nft/helius/collection', {
+          collectionId: collection.address,
+          page: currentPage,
+          limit: pageSize
+        }, {
+          timeout: 15000 // 15-second timeout
+        });
 
-      console.log(`Collection ${collection.name} response:`, {
-        status: response.status,
-        hasData: !!response.data,
-        hasResult: !!response.data?.result,
-        itemCount: response.data?.result?.items?.length || 0
-      });
+        console.log(`Page ${currentPage} response:`, {
+          status: response.status,
+          hasData: !!response.data,
+          hasResult: !!response.data?.result,
+          items: response.data?.result?.items?.length || 0
+        });
 
-      if (!response.data?.result?.items) {
-        throw new Error('Invalid response format from server');
+        if (!response.data?.result?.items) {
+          console.warn(`Invalid response format on page ${currentPage}`);
+          continue;
+        }
+        
+        // Add items from this page
+        allItems = [...allItems, ...response.data.result.items];
+        
+        // Check if we've reached the end
+        if (response.data.result.items.length === 0 || 
+            response.data.result.total <= currentPage * pageSize) {
+          console.log(`Reached end of collection at page ${currentPage}`);
+          break;
+        }
       }
-
-      return response.data.result.items;
+      
+      console.log(`Retrieved ${allItems.length} total NFTs for collection ${collection.name}`);
+      return allItems;
     } catch (error: any) {
       lastError = error;
       console.error(`Attempt ${attempt + 1} failed for collection ${collection.name}:`, {
@@ -160,7 +181,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         details: error.response?.data?.details,
         request: {
           url: '/api/nft/helius/collection',
-          payload: { collectionId: collection.address, page, limit: 1000 }
+          payload: { collectionId: collection.address, page, limit: pageSize }
         }
       });
 

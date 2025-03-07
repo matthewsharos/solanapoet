@@ -48,53 +48,56 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Make direct call to Helius
-    try {
-      const heliusResponse = await axios.post(
-        `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
-        {
-          jsonrpc: "2.0",
-          id: "my-id",
-          method: "getAssetsByGroup",
-          params: {
-            groupKey: "collection",
-            groupValue: collectionId
-          }
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 15000
-        }
-      );
+    console.log(`Fetching NFTs for collection: ${collectionId}`);
 
-      // Return success with Helius data
-      return res.status(200).json({ 
-        success: true, 
-        result: {
-          items: heliusResponse.data.result || [],
-          total: heliusResponse.data.result?.length || 0,
-          page: 1
-        } 
-      });
-    } catch (heliusError: any) {
-      console.error('Helius API error:', heliusError.message);
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Helius API error',
-        error: heliusError.message,
-        status: heliusError.response?.status,
-        statusText: heliusError.response?.statusText,
-        data: heliusError.response?.data
-      });
-    }
+    // Using exact working format from curl test with limit:1
+    const rpcPayload = {
+      jsonrpc: "2.0",
+      id: "my-id",
+      method: "getAssetsByGroup",
+      params: {
+        groupKey: "collection",
+        groupValue: collectionId,
+        page: 1,
+        limit: 1
+      }
+    };
+
+    console.log('Request payload:', JSON.stringify(rpcPayload));
+
+    const response = await axios.post(
+      `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
+      rpcPayload,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    console.log('Response status:', response.status);
+    console.log('Response has data:', !!response.data);
+    console.log('Response has result:', !!response.data?.result);
+
+    // Return the raw response directly
+    return res.status(200).json({
+      success: true,
+      result: response.data.result || { items: [], total: 0, page: 1 }
+    });
+
   } catch (error: any) {
-    console.error('Server error:', error);
+    console.error('Collection fetch error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+
     return res.status(500).json({ 
       success: false, 
-      message: 'Server error processing request',
-      error: error.message
+      message: 'Error fetching collection NFTs',
+      error: error.message,
+      details: error.response?.data
     });
   }
 } 
