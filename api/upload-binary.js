@@ -1,11 +1,11 @@
 import { google } from 'googleapis';
 import { Readable } from 'stream';
+import getRawBody from 'raw-body';
 
+// Disable the built-in bodyParser
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '4mb', // Match the 4MB limit
-    },
+    bodyParser: false,
   },
 };
 
@@ -40,6 +40,31 @@ const initializeGoogleDrive = async () => {
     return { drive, folderId: process.env.GOOGLE_DRIVE_FOLDER_ID };
   } catch (error) {
     console.error('[serverless] Google Drive initialization error:', error);
+    throw error;
+  }
+};
+
+// Gets the raw request body as a Buffer
+const getRawRequestBody = async (req) => {
+  try {
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    
+    if (contentLength === 0) {
+      throw new Error('No content received');
+    }
+    
+    if (contentLength > MAX_FILE_SIZE) {
+      throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+    }
+    
+    const buffer = await getRawBody(req, {
+      length: contentLength,
+      limit: MAX_FILE_SIZE + 1024, // Add a little buffer for overhead
+    });
+    
+    return buffer;
+  } catch (error) {
+    console.error('[serverless] Error reading request body:', error);
     throw error;
   }
 };
@@ -84,30 +109,15 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Check file size
-    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
-    console.log(`[serverless] Content length: ${contentLength} bytes`);
+    // Get the raw binary data
+    console.log('[serverless] Reading request body...');
+    const fileBuffer = await getRawRequestBody(req);
+    console.log(`[serverless] Received ${fileBuffer.length} bytes`);
     
-    if (contentLength > MAX_FILE_SIZE) {
-      return res.status(400).json({
-        success: false,
-        message: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`
-      });
-    }
-    
-    if (contentLength === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Empty file received'
-      });
-    }
-    
-    // Create a readable stream from the request
+    // Create a readable stream from the buffer
     const fileStream = new Readable();
     fileStream._read = () => {}; // Required but noop
-    
-    // Push the request body (binary data) to the stream
-    fileStream.push(req.body);
+    fileStream.push(fileBuffer);
     fileStream.push(null); // End of stream
     
     // Set file metadata for upload
