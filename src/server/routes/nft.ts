@@ -732,23 +732,33 @@ router.get('/debug/image/:mintAddress', async (req: Request, res: Response) => {
 // Add test endpoint for Helius API credentials
 router.get('/test-helius', async (req: Request, res: Response) => {
   try {
-    console.log('Testing Helius API credentials...');
-    console.log('Environment variables:', {
-      hasHeliusApiKey: !!process.env.HELIUS_API_KEY || !!process.env.VITE_HELIUS_API_KEY,
-      hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL || !!process.env.VITE_SOLANA_RPC_URL,
-      heliusApiKey: process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY ? 'Present' : 'Missing',
-      solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL ? 'Present' : 'Missing'
+    // Set a timeout of 8 seconds (to stay within Vercel's 10s limit)
+    const TIMEOUT = 8000;
+    
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    const solanaRpcUrl = process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL;
+
+    if (!heliusApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'Helius API key is not configured',
+        config: { hasHeliusApiKey: false }
+      });
+    }
+
+    // Create an axios instance with timeout
+    const heliusClient = axios.create({
+      timeout: TIMEOUT
     });
 
-    // Test mint address (using a known Solana NFT)
-    const testMintAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // USDC mint address as test
+    // Test mint address (USDC mint address)
+    const testMintAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-    // Test the Helius API
-    const response = await axios.post<HeliusResponse>(
-      `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY}`,
+    const response = await heliusClient.post(
+      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
       {
         jsonrpc: "2.0",
-        id: "my-id",
+        id: "helius-test",
         method: "getAsset",
         params: {
           id: testMintAddress
@@ -756,28 +766,29 @@ router.get('/test-helius', async (req: Request, res: Response) => {
       }
     );
 
-    console.log('Helius API test response:', {
-      status: response.status,
-      hasData: !!response.data,
-      resultExists: !!response.data.result
-    });
-
-    res.json({
+    return res.json({
       success: true,
       message: 'Helius API credentials are working',
-      testResponse: {
-        status: response.status,
-        hasData: !!response.data,
-        resultExists: !!response.data.result
+      config: {
+        hasHeliusApiKey: true,
+        hasSolanaRpcUrl: !!solanaRpcUrl
       }
     });
+
   } catch (error: any) {
-    console.error('Error testing Helius API:', error);
-    res.status(500).json({
+    // Handle specific error cases
+    if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+      return res.status(504).json({
+        success: false,
+        message: 'Request timed out while testing Helius API',
+        error: 'TIMEOUT'
+      });
+    }
+
+    return res.status(500).json({
       success: false,
       message: 'Failed to test Helius API credentials',
       error: error.message,
-      response: error.response?.data,
       config: {
         hasHeliusApiKey: !!process.env.HELIUS_API_KEY || !!process.env.VITE_HELIUS_API_KEY,
         hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL || !!process.env.VITE_SOLANA_RPC_URL
