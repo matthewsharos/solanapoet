@@ -228,26 +228,31 @@ const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
 const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
   try {
     const nfts = await fetchCollectionNFTsWithRetry(collection, 1);
-    return nfts.map(nftData => ({
-      mint: nftData.id,
-      name: nftData.content?.metadata?.name || nftData.content?.json?.name || 'Unknown NFT',
-      description: nftData.content?.metadata?.description || nftData.content?.json?.description || '',
-      image: nftData.content?.files?.[0]?.uri || nftData.content?.links?.image || nftData.content?.metadata?.image || nftData.content?.json?.image || '',
-      attributes: nftData.content?.metadata?.attributes || nftData.content?.json?.attributes || [],
-      owner: {
-        publicKey: nftData.ownership?.owner || '',
-        ownershipModel: nftData.ownership?.ownershipModel || 'single',
-        delegated: nftData.ownership?.delegated || false,
-        delegate: nftData.ownership?.delegate || null,
-        frozen: nftData.ownership?.frozen || false,
-      },
-      listed: false,
-      collectionName: collection.name,
-      collectionAddress: collection.address,
-      creators: nftData.creators || [],
-      royalty: nftData.royalty || null,
-      tokenStandard: nftData.tokenStandard || null,
-    }));
+    return nfts.map(nftData => {
+      // Add defensive checks for missing data structures
+      const ownership = nftData.ownership || {};
+      
+      return {
+        mint: nftData.id,
+        name: nftData.content?.metadata?.name || nftData.content?.json?.name || 'Unknown NFT',
+        description: nftData.content?.metadata?.description || nftData.content?.json?.description || '',
+        image: nftData.content?.files?.[0]?.uri || nftData.content?.links?.image || nftData.content?.metadata?.image || nftData.content?.json?.image || '',
+        attributes: nftData.content?.metadata?.attributes || nftData.content?.json?.attributes || [],
+        owner: {
+          publicKey: ownership.owner || '',
+          ownershipModel: ownership.ownershipModel || 'single',
+          delegated: ownership.delegated || false,
+          delegate: ownership.delegate || null,
+          frozen: ownership.frozen || false,
+        },
+        listed: false,
+        collectionName: collection.name,
+        collectionAddress: collection.address,
+        creators: nftData.creators || [],
+        royalty: nftData.royalty || null,
+        tokenStandard: nftData.tokenStandard || null,
+      };
+    });
   } catch (error) {
     console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
     return [];
@@ -282,6 +287,17 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       }
     }
 
+    // Default owner object to ensure we always have required fields
+    const ownerObj = typeof nftData.owner === 'string' 
+      ? { publicKey: nftData.owner || '' }
+      : {
+          publicKey: nftData.owner?.publicKey || '',
+          delegate: nftData.owner?.delegate || null,
+          ownershipModel: nftData.owner?.ownershipModel || 'single',
+          frozen: nftData.owner?.frozen || false,
+          delegated: nftData.owner?.delegated || false,
+        };
+
     // Ensure we have all required data
     return {
       ...nftData,
@@ -290,15 +306,7 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       description: nftData.description || '',
       image: imageUrl,
       attributes: nftData.attributes || [],
-      owner: typeof nftData.owner === 'string' 
-        ? { publicKey: nftData.owner }
-        : {
-            publicKey: nftData.owner.publicKey || '',
-            delegate: nftData.owner.delegate || null,
-            ownershipModel: nftData.owner.ownershipModel || 'single',
-            frozen: nftData.owner.frozen || false,
-            delegated: nftData.owner.delegated || false,
-          },
+      owner: ownerObj,
       listed: false,
       collectionName: collectionName || nftData.collection?.name || '',
       collectionAddress: collectionAddress || nftData.collection?.address || '',
