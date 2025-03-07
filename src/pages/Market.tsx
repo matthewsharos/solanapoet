@@ -238,6 +238,8 @@ const Market: React.FC = () => {
       setLoadedNFTs([]);
       setIsLoadingMore(false);
 
+      console.log('Starting fetchAllNFTs...');
+
       // Fetch display names first
       await fetchDisplayNames();
 
@@ -245,9 +247,11 @@ const Market: React.FC = () => {
       let retryCount = 0;
       let collectionsData = null;
       
+      console.log('Fetching collections from API...');
       while (retryCount < 3) {
         try {
           collectionsData = await fetchCollectionsFromApi();
+          console.log('Collections data received:', collectionsData);
           break;
         } catch (err) {
           console.error('Error fetching collections, attempt', retryCount + 1, ':', err);
@@ -259,6 +263,7 @@ const Market: React.FC = () => {
       }
 
       if (!collectionsData) {
+        console.error('Failed to fetch collections after multiple retries');
         setError('Failed to fetch collections after multiple retries');
         setLoading(false);
         return;
@@ -270,6 +275,7 @@ const Market: React.FC = () => {
         .map(validateCollection)
         .filter((collection): collection is Collection => collection !== null);
       
+      console.log('Valid collections:', validCollections);
       setCollections(validCollections);
       setIsLoadingMore(true);
       
@@ -277,9 +283,11 @@ const Market: React.FC = () => {
       retryCount = 0;
       let ultimates = null;
       
+      console.log('Fetching ultimate NFTs...');
       while (retryCount < 3) {
         try {
           ultimates = (await getUltimateNFTs() as unknown) as string[][];
+          console.log('Ultimates data received:', ultimates);
           break;
         } catch (err) {
           console.error('Error fetching ultimates, attempt', retryCount + 1, ':', err);

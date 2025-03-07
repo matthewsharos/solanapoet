@@ -1,4 +1,5 @@
 import { GOOGLE_SHEETS_CONFIG, get, sheets, createSheetsClient, SheetResponse } from './googleSheetsConfig';
+import { API_BASE_URL } from './config';
 
 /**
  * Type definition for a collection
@@ -119,72 +120,66 @@ const exponentialBackoff = async (attempt: number) => {
 };
 
 /**
- * Fetch from Google Sheets with retry logic and rate limiting
+ * Fetch with timeout utility
  */
-const fetchFromGoogleSheets = async <T extends Collection | UltimateNFT>(
-  sheetName: string,
-  retries = MAX_RETRIES
-): Promise<T[]> => {
+const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number): Promise<Response> => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
   try {
-    // Check cache first
-    const cacheKey = sheetName as keyof CacheType;
-    const cacheEntry = cache[cacheKey] as CacheEntry<T> | undefined;
-    if (cacheEntry && isCacheValid(cacheEntry)) {
-      console.log(`Using cached data for ${sheetName}`);
-      return cacheEntry.data;
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
+
+/**
+ * Fetch data from Google Sheets with improved error handling
+ */
+const fetchFromGoogleSheets = async <T>(sheetName: string): Promise<T[]> => {
+  try {
+    console.log(`Fetching data from Google Sheets: ${sheetName}`);
+    const url = `${API_BASE_URL}/api/sheets/${sheetName}`;
+    console.log(`API URL: ${url}`);
+    
+    const response = await fetchWithTimeout(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      // Remove credentials to avoid CORS issues
+      // credentials: 'include'
+    }, FETCH_TIMEOUT);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error fetching from Google Sheets (${sheetName}):`, {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
-    // If we're retrying, add exponential backoff
-    if (retries < MAX_RETRIES) {
-      await exponentialBackoff(MAX_RETRIES - retries);
+    const result = await response.json();
+    console.log(`Received data from ${sheetName}:`, result);
+    
+    if (!result.success || !result.data || !Array.isArray(result.data)) {
+      console.error(`Invalid response format from ${sheetName}:`, result);
+      throw new Error('Invalid response format');
     }
 
-    const response = await get(sheetName);
-    
-    // Handle rate limiting
-    const retryAfter = response.retryAfter || 0;
-    if (!response.success && retryAfter > 0) {
-      console.log(`Rate limited, waiting ${retryAfter} seconds before retry...`);
-      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
-      return fetchFromGoogleSheets(sheetName, retries - 1);
-    }
-
-    if (!response.success) {
-      throw new Error(response.error || 'Failed to fetch from Google Sheets');
-    }
-
-    // Update cache
-    const newCacheEntry: CacheEntry<T> = {
-      data: response.data as T[],
-      timestamp: Date.now()
-    };
-    
-    if (sheetName === GOOGLE_SHEETS_CONFIG.sheets.collections) {
-      cache.collections = newCacheEntry as CacheEntry<Collection>;
-    } else if (sheetName === GOOGLE_SHEETS_CONFIG.sheets.ultimates) {
-      cache.ultimates = newCacheEntry as CacheEntry<UltimateNFT>;
-    }
-
-    return response.data as T[];
-  } catch (error: any) {
-    console.error('Error fetching from Google Sheets:', error);
-    
-    // If we have cached data, return it even if expired
-    const cacheKey = sheetName as keyof CacheType;
-    const cacheEntry = cache[cacheKey] as CacheEntry<T> | undefined;
-    if (cacheEntry) {
-      console.log(`Using expired cache for ${sheetName} due to error`);
-      return cacheEntry.data;
-    }
-    
-    // If no cache and retries left, try again
-    if (retries > 0) {
-      console.log(`Retrying fetch for ${sheetName}, ${retries} attempts remaining`);
-      await exponentialBackoff(MAX_RETRIES - retries);
-      return fetchFromGoogleSheets(sheetName, retries - 1);
-    }
-    
-    return [];
+    return result.data;
+  } catch (error) {
+    console.error(`Error in fetchFromGoogleSheets (${sheetName}):`, error);
+    throw error;
   }
 };
 

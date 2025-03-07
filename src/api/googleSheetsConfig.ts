@@ -31,8 +31,27 @@ export const initializeConfig = async (retries = 3, delay = 2000) => {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        credentials: 'include'
+        // Remove credentials to avoid CORS issues
+        // credentials: 'include'
       });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Config API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          attempt: attempt + 1
+        });
+
+        // If we have retries left, wait and try again
+        if (attempt < retries - 1) {
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        throw new Error(`Config API error: ${response.status} ${response.statusText}`);
+      }
       
       const config = await response.json();
       
