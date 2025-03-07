@@ -66,58 +66,76 @@ async function findWalletAddressRow(sheets, walletAddress) {
 
 // Serverless function for display names API
 export default async function handler(req, res) {
-  console.log('[serverless] Display names endpoint called with path:', req.url);
-  
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
-
-  // Handle OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  // Parse the URL to determine the action
-  const url = new URL(req.url, `https://${req.headers.host}`);
-  const pathParts = url.pathname.split('/').filter(Boolean);
-  
-  // Log the path parts for debugging
-  console.log('[serverless] Path parts:', pathParts);
-  
-  // Main display-names endpoint
-  if (pathParts.length === 2 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
-    // GET: List all display names
-    if (req.method === 'GET') {
-      return await getAllDisplayNames(req, res);
-    }
-    // POST: Add/update a display name
-    else if (req.method === 'POST') {
-      return await updateDisplayName(req, res);
-    }
-    else {
-      return res.status(405).json({ success: false, message: 'Method not allowed' });
-    }
-  }
-  // Display name by address endpoint
-  else if (pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
-    const address = pathParts[2];
+  try {
+    console.log('[serverless] Display names endpoint called with path:', req.url);
     
-    // GET: Get a specific display name
-    if (req.method === 'GET') {
-      return await getDisplayName(req, res, address);
+    // Debug logging for environment variables
+    console.log('[serverless] Environment variables check:', {
+      hasGoogleClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
+      hasGooglePrivateKey: !!process.env.GOOGLE_PRIVATE_KEY,
+      hasSpreadsheetId: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      vercelEnv: process.env.VERCEL_ENV || 'unknown'
+    });
+    
+    // Set CORS headers
+    res.setHeader('Access-Control-Allow-Credentials', true);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT');
+    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+    // Handle OPTIONS request
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
     }
-    // PUT: Update a display name
-    else if (req.method === 'PUT') {
-      return await updateDisplayNameByAddress(req, res, address);
+
+    // Parse the URL to determine the action
+    const url = new URL(req.url, `https://${req.headers.host}`);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    
+    // Log the path parts for debugging
+    console.log('[serverless] Path parts:', pathParts);
+    
+    // Main display-names endpoint
+    if (pathParts.length === 2 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
+      // GET: List all display names
+      if (req.method === 'GET') {
+        return await getAllDisplayNames(req, res);
+      }
+      // POST: Add/update a display name
+      else if (req.method === 'POST') {
+        return await updateDisplayName(req, res);
+      }
+      else {
+        return res.status(405).json({ success: false, message: 'Method not allowed' });
+      }
+    }
+    // Display name by address endpoint
+    else if (pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
+      const address = pathParts[2];
+      
+      // GET: Get a specific display name
+      if (req.method === 'GET') {
+        return await getDisplayName(req, res, address);
+      }
+      // PUT: Update a display name
+      else if (req.method === 'PUT') {
+        return await updateDisplayNameByAddress(req, res, address);
+      }
+      else {
+        return res.status(405).json({ success: false, message: 'Method not allowed' });
+      }
     }
     else {
-      return res.status(405).json({ success: false, message: 'Method not allowed' });
+      return res.status(404).json({ success: false, message: 'Endpoint not found' });
     }
-  }
-  else {
-    return res.status(404).json({ success: false, message: 'Endpoint not found' });
+  } catch (error) {
+    console.error('[serverless] Error in display names endpoint:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+      stack: error.stack
+    });
   }
 }
 
@@ -158,19 +176,42 @@ async function getAllDisplayNames(req, res) {
     recordApiCall();
     
     // Get data from the display_names sheet
+    console.log('Fetching data from display_names sheet...');
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'display_names!A:C', // Update range to include updated_at column
     });
     
-    const rows = response.data.values || [];
+    const rawData = response.data.values || [];
+    console.log(`Received ${rawData.length} rows from Google Sheets`);
+    
+    // Log the header row to verify column order
+    if (rawData.length > 0) {
+      console.log('Header row:', rawData[0]);
+    }
     
     // Skip header row
-    const displayNames = rows.slice(1).map(row => ({
-      wallet_address: row[0] || '',
-      display_name: row[1] || '',
-      updated_at: row[2] || new Date().toISOString()
-    })).filter(entry => entry.wallet_address);
+    const rows = rawData.slice(1);
+    console.log('Raw rows before processing:', rows);
+    
+    // Process rows into display names
+    const displayNames = rows.map(row => {
+      const entry = {
+        wallet_address: row[0] || '',
+        display_name: row[1] || '',
+        updated_at: row[2] || new Date().toISOString()
+      };
+      console.log('Processed display name entry:', entry);
+      return entry;
+    }).filter(entry => {
+      const isValid = entry.wallet_address;
+      if (!isValid) {
+        console.log('Filtered out invalid display name entry:', entry);
+      }
+      return isValid;
+    });
+    
+    console.log(`Found ${displayNames.length} valid display names in Google Sheets`);
     
     // Cache the results
     setCachedData('displayNames', displayNames);
