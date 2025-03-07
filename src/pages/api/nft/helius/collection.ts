@@ -53,7 +53,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('Making Helius API request:', {
         url: 'https://mainnet.helius-rpc.com',
         method: 'POST',
-        payload: requestPayload
+        payload: JSON.stringify(requestPayload)
       });
 
       const response = await axios.post(
@@ -75,44 +75,75 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         resultType: response.data?.result ? typeof response.data.result : 'undefined',
         isArray: Array.isArray(response.data?.result),
         hasItems: !!response.data?.result?.items,
-        error: response.data?.error
+        error: response.data?.error,
+        rawResponse: JSON.stringify(response.data)
       });
 
-      if (response.data?.result) {
-        const normalizedResponse = {
-          jsonrpc: '2.0',
-          id: 'collection-nfts',
-          result: {
-            items: Array.isArray(response.data.result) ? response.data.result : (response.data.result.items || []),
-            total: response.data.result.total || (Array.isArray(response.data.result) ? response.data.result.length : 0),
-            page: Number(page)
-          }
-        };
-
-        console.log('Normalized response:', {
-          itemCount: normalizedResponse.result.items.length,
-          total: normalizedResponse.result.total,
-          page: normalizedResponse.result.page,
-          sampleItem: normalizedResponse.result.items[0] ? {
-            id: normalizedResponse.result.items[0].id,
-            hasContent: !!normalizedResponse.result.items[0].content,
-            hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
-          } : null
-        });
-
-        return res.status(200).json(normalizedResponse);
+      if (!response.data) {
+        throw new Error('No data received from Helius API');
       }
 
-      console.log('No result in response, falling through to searchAssets');
+      if (response.data.error) {
+        throw new Error(`Helius API error: ${JSON.stringify(response.data.error)}`);
+      }
+
+      if (!response.data.result) {
+        throw new Error('No result field in Helius API response');
+      }
+
+      const result = response.data.result;
+      let items = [];
+      let total = 0;
+
+      // Handle different response formats
+      if (Array.isArray(result)) {
+        items = result;
+        total = result.length;
+      } else if (typeof result === 'object' && result.items) {
+        items = result.items;
+        total = result.total || items.length;
+      } else {
+        throw new Error(`Unexpected result format: ${JSON.stringify(result)}`);
+      }
+
+      const normalizedResponse = {
+        jsonrpc: '2.0',
+        id: 'collection-nfts',
+        result: {
+          items,
+          total,
+          page: Number(page)
+        }
+      };
+
+      console.log('Normalized response:', {
+        itemCount: normalizedResponse.result.items.length,
+        total: normalizedResponse.result.total,
+        page: normalizedResponse.result.page,
+        sampleItem: normalizedResponse.result.items[0] ? {
+          id: normalizedResponse.result.items[0].id,
+          hasContent: !!normalizedResponse.result.items[0].content,
+          hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
+        } : null
+      });
+
+      return res.status(200).json(normalizedResponse);
     } catch (error: any) {
       console.error('Error using getAssetsByGroup:', {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        responseData: error.response?.data,
+        responseData: error.response?.data ? JSON.stringify(error.response.data) : undefined,
         stack: error.stack
       });
-      // Fall through to searchAssets
+
+      // If this is a Helius API error, try the fallback
+      if (error.response?.status === 400 || error.response?.status === 404) {
+        console.log('Helius API error, trying fallback...');
+      } else {
+        // For other errors, throw immediately
+        throw error;
+      }
     }
 
     // Fallback to searchAssets if getAssetsByGroup fails
@@ -136,7 +167,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('Trying searchAssets fallback:', {
         url: 'https://mainnet.helius-rpc.com',
         method: 'POST',
-        payload: searchPayload
+        payload: JSON.stringify(searchPayload)
       });
 
       const searchResponse = await axios.post(
@@ -156,41 +187,54 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         hasData: !!searchResponse.data,
         hasResult: !!searchResponse.data?.result,
         resultType: searchResponse.data?.result ? typeof searchResponse.data.result : 'undefined',
-        error: searchResponse.data?.error
+        error: searchResponse.data?.error,
+        rawResponse: JSON.stringify(searchResponse.data)
       });
 
-      if (searchResponse.data?.result) {
-        const normalizedResponse = {
-          jsonrpc: '2.0',
-          id: 'collection-nfts',
-          result: {
-            items: searchResponse.data.result.items || [],
-            total: searchResponse.data.result.total || 0,
-            page: Number(page)
-          }
-        };
-
-        console.log('Normalized searchAssets response:', {
-          itemCount: normalizedResponse.result.items.length,
-          total: normalizedResponse.result.total,
-          page: normalizedResponse.result.page,
-          sampleItem: normalizedResponse.result.items[0] ? {
-            id: normalizedResponse.result.items[0].id,
-            hasContent: !!normalizedResponse.result.items[0].content,
-            hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
-          } : null
-        });
-
-        return res.status(200).json(normalizedResponse);
+      if (!searchResponse.data) {
+        throw new Error('No data received from Helius searchAssets API');
       }
 
-      throw new Error('Invalid response from both Helius API methods');
+      if (searchResponse.data.error) {
+        throw new Error(`Helius searchAssets API error: ${JSON.stringify(searchResponse.data.error)}`);
+      }
+
+      if (!searchResponse.data.result) {
+        throw new Error('No result field in Helius searchAssets API response');
+      }
+
+      const result = searchResponse.data.result;
+      const items = Array.isArray(result) ? result : (result.items || []);
+      const total = result.total || items.length;
+
+      const normalizedResponse = {
+        jsonrpc: '2.0',
+        id: 'collection-nfts',
+        result: {
+          items,
+          total,
+          page: Number(page)
+        }
+      };
+
+      console.log('Normalized searchAssets response:', {
+        itemCount: normalizedResponse.result.items.length,
+        total: normalizedResponse.result.total,
+        page: normalizedResponse.result.page,
+        sampleItem: normalizedResponse.result.items[0] ? {
+          id: normalizedResponse.result.items[0].id,
+          hasContent: !!normalizedResponse.result.items[0].content,
+          hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
+        } : null
+      });
+
+      return res.status(200).json(normalizedResponse);
     } catch (searchError: any) {
       console.error('Error using searchAssets:', {
         message: searchError.message,
         status: searchError.response?.status,
         statusText: searchError.response?.statusText,
-        responseData: searchError.response?.data,
+        responseData: searchError.response?.data ? JSON.stringify(searchError.response.data) : undefined,
         stack: searchError.stack
       });
       throw searchError;
@@ -199,11 +243,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Log the complete error for debugging
     console.error('Error fetching collection NFTs:', {
       message: error.message,
-      response: error.response?.data,
+      response: error.response?.data ? JSON.stringify(error.response.data) : undefined,
       status: error.response?.status,
       code: error.code,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      requestData: error.config?.data ? JSON.parse(error.config.data) : undefined
+      stack: error.stack,
+      requestData: error.config?.data ? JSON.stringify(JSON.parse(error.config.data)) : undefined
     });
 
     // Handle specific error cases
@@ -235,10 +279,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching collection NFTs',
-      error: error.response?.data || error.message,
+      error: error.message,
       details: {
-        responseData: error.response?.data,
-        requestData: error.config?.data ? JSON.parse(error.config.data) : undefined,
+        responseData: error.response?.data ? JSON.stringify(error.response.data) : undefined,
+        requestData: error.config?.data ? JSON.stringify(JSON.parse(error.config.data)) : undefined,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       }
     });
