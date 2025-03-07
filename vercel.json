@@ -73,6 +73,18 @@
       "dest": "/assets/$1"
     },
     {
+      "src": "^/src/assets/images/(.*)",
+      "dest": "/assets/images/$1"
+    },
+    {
+      "src": "^/images/(.*)",
+      "dest": "/assets/images/$1"
+    },
+    {
+      "src": "\\.(jpg|jpeg|png|gif|ico|svg|webp)$",
+      "dest": "/assets/images/$1"
+    },
+    {
       "src": "^/favicon.ico",
       "dest": "/favicon.ico"
     },

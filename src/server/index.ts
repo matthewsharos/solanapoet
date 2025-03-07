@@ -137,13 +137,30 @@ if (process.env.NODE_ENV === 'production') {
   // Log the possible paths for debugging
   console.log('Checking for static files in paths:', possibleDistPaths);
   
-  // Try each path and use the first one that exists
+  // Find the first existing dist path
+  let foundDistPath = '';
   for (const distPath of possibleDistPaths) {
     if (fs.existsSync(distPath)) {
       console.log(`Found static files at: ${distPath}`);
+      foundDistPath = distPath;
       app.use(express.static(distPath));
       break;
     }
+  }
+
+  // Set up additional static file mappings if we found a dist directory
+  if (foundDistPath) {
+    // Handle legacy paths that might still be referenced in the frontend
+    app.use('/src/assets', express.static(path.join(foundDistPath, 'assets')));
+    app.use('/images', express.static(path.join(foundDistPath, 'assets/images')));
+    app.use('/assets/images', express.static(path.join(foundDistPath, 'assets/images')));
+    
+    // Explicitly log paths for debugging
+    console.log('Static asset paths configured:');
+    console.log(`- ${foundDistPath} → /`);
+    console.log(`- ${path.join(foundDistPath, 'assets')} → /src/assets`);
+    console.log(`- ${path.join(foundDistPath, 'assets/images')} → /images`);
+    console.log(`- ${path.join(foundDistPath, 'assets/images')} → /assets/images`);
   }
 }
 
@@ -259,30 +276,42 @@ app.get('/api/health', (req: Request, res: Response<HealthCheckResponse>) => {
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res, next) => {
     // Exclude API routes from this catch-all
-    if (!req.path.startsWith('/api/')) {
-      console.log(`Serving index.html for path: ${req.path}`);
-      
-      // Try multiple possible locations for index.html
-      const possibleIndexPaths = [
-        path.join(__dirname, '../../dist/index.html'),
-        '/var/task/dist/index.html',
-        path.join(process.cwd(), 'dist/index.html')
-      ];
-      
-      // Try to find and serve index.html from one of the possible paths
-      for (const indexPath of possibleIndexPaths) {
-        if (fs.existsSync(indexPath)) {
-          console.log(`Found index.html at: ${indexPath}`);
-          return res.sendFile(indexPath);
-        }
-      }
-      
-      // If we reach here, we couldn't find index.html in any of the expected locations
-      console.error(`Error: Could not find index.html in any of these paths:`, possibleIndexPaths);
-      return next(new Error('Could not find index.html'));
-    } else {
-      next();
+    if (req.path.startsWith('/api/')) {
+      return next();
     }
+    
+    // Skip serving index.html for image and other static asset paths
+    const isStaticAssetPath = 
+      req.path.match(/\.(jpg|jpeg|png|gif|ico|svg|webp|css|js|woff|woff2|ttf|eot|map)$/i) ||
+      req.path.startsWith('/assets/') ||
+      req.path.startsWith('/src/assets/') ||
+      req.path.startsWith('/images/');
+    
+    if (isStaticAssetPath) {
+      console.log(`Skipping index.html for static asset: ${req.path}`);
+      return next();
+    }
+    
+    console.log(`Serving index.html for path: ${req.path}`);
+    
+    // Try multiple possible locations for index.html
+    const possibleIndexPaths = [
+      path.join(__dirname, '../../dist/index.html'),
+      '/var/task/dist/index.html',
+      path.join(process.cwd(), 'dist/index.html')
+    ];
+    
+    // Try to find and serve index.html from one of the possible paths
+    for (const indexPath of possibleIndexPaths) {
+      if (fs.existsSync(indexPath)) {
+        console.log(`Found index.html at: ${indexPath}`);
+        return res.sendFile(indexPath);
+      }
+    }
+    
+    // If we reach here, we couldn't find index.html in any of the expected locations
+    console.error(`Error: Could not find index.html in any of these paths:`, possibleIndexPaths);
+    return next(new Error('Could not find index.html'));
   });
 }
 
