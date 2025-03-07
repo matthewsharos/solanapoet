@@ -174,4 +174,75 @@ router.get('/helius-test', async (_req: Request, res: Response) => {
   }
 });
 
+// Add a route to list all registered routes
+router.get('/routes', (req: Request, res: Response) => {
+  const app = req.app;
+  const routes: any[] = [];
+
+  // Helper function to get all express routes
+  function print(path: string, layer: any) {
+    if (layer.route) {
+      layer.route.stack.forEach((stack: any) => {
+        routes.push({
+          path: path + layer.route.path,
+          method: stack.method.toUpperCase()
+        });
+      });
+    } else if (layer.name === 'router' && layer.handle.stack) {
+      layer.handle.stack.forEach((stack: any) => {
+        print(path + layer.regexp.source.replace('^\\/','').replace('\\/?(?=\\/|$)', ''), stack);
+      });
+    }
+  }
+
+  // Get all registered routes
+  if (app._router && app._router.stack) {
+    app._router.stack.forEach((layer: any) => {
+      print('', layer);
+    });
+  }
+
+  res.json({
+    success: true,
+    routes: routes.filter(r => r.path.startsWith('/api')).sort((a, b) => a.path.localeCompare(b.path))
+  });
+});
+
+// Add a route to check Helius API key configuration
+router.get('/helius-config', (req: Request, res: Response) => {
+  const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+  
+  res.json({
+    success: true,
+    config: {
+      hasHeliusApiKey: !!heliusApiKey,
+      keyPrefix: heliusApiKey ? heliusApiKey.substring(0, 4) + '...' : null,
+      keyLength: heliusApiKey ? heliusApiKey.length : 0,
+      isValidFormat: heliusApiKey ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(heliusApiKey) : false
+    }
+  });
+});
+
+// Add a basic health check endpoint
+router.get('/api-check', (req: Request, res: Response) => {
+  const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+  
+  res.json({
+    success: true,
+    message: 'Express API is working correctly',
+    timestamp: new Date().toISOString(),
+    request: {
+      url: req.originalUrl,
+      method: req.method,
+      host: req.headers.host,
+      path: req.path
+    },
+    env: {
+      node_env: process.env.NODE_ENV,
+      has_helius_key: !!heliusApiKey,
+      helius_key_length: heliusApiKey ? heliusApiKey.length : 0
+    }
+  });
+});
+
 export default router; 

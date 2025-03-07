@@ -118,6 +118,11 @@ const cacheNFTData = (mintAddress: string, data: HeliusNFTData): void => {
   });
 };
 
+// Helper function to add delay between requests
+const delay = (ms: number): Promise<void> => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
 // Helper function to fetch NFT data from Helius with retries
 const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<HeliusNFTData> => {
   try {
@@ -126,60 +131,86 @@ const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<Helius
       throw new Error('Helius API key not configured');
     }
 
+    console.log(`[fetchHeliusData] Using API key (prefix: ${heliusApiKey.substring(0, 4)}...)`);
+
     // Create an axios instance with timeout
     const heliusClient = axios.create({
-      timeout: 8000 // 8 second timeout
+      timeout: 10000 // 10 second timeout
     });
 
     // First try the RPC API
-    console.log(`Fetching NFT data for ${mintAddress} from Helius RPC API...`);
-    const rpcResponse = await heliusClient.post<HeliusResponse>(
-      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-      {
-        jsonrpc: "2.0",
-        id: "helius-fetch",
-        method: "getAsset",
-        params: {
-          id: mintAddress
+    console.log(`[fetchHeliusData] Attempting RPC API for NFT: ${mintAddress}`);
+    try {
+      const rpcEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+      console.log(`[fetchHeliusData] RPC endpoint: ${rpcEndpoint.substring(0, rpcEndpoint.indexOf('?'))}?...`);
+      
+      const rpcResponse = await heliusClient.post<HeliusResponse>(
+        rpcEndpoint,
+        {
+          jsonrpc: "2.0",
+          id: "helius-fetch",
+          method: "getAsset",
+          params: {
+            id: mintAddress
+          }
         }
+      );
+      
+      console.log(`[fetchHeliusData] RPC API response status: ${rpcResponse.status}`);
+      
+      if (rpcResponse.data.result) {
+        console.log(`[fetchHeliusData] RPC API success for ${mintAddress}`);
+        return rpcResponse.data.result;
+      } else {
+        console.log(`[fetchHeliusData] RPC API returned no result for ${mintAddress}`);
       }
-    );
-    
-    if (rpcResponse.data.result) {
-      console.log(`Successfully fetched NFT data for ${mintAddress} from RPC API`);
-      return rpcResponse.data.result;
+    } catch (error: any) {
+      console.error(`[fetchHeliusData] RPC API error: ${error.message}`);
+      if (error.response) {
+        console.error(`[fetchHeliusData] RPC API response status: ${error.response.status}`);
+        console.error(`[fetchHeliusData] RPC API response data: ${JSON.stringify(error.response.data)}`);
+      }
     }
 
-    // If RPC API returns no data, try the metadata API
-    console.log(`No data from RPC API, trying metadata API for ${mintAddress}...`);
-    const metadataResponse = await heliusClient.post<HeliusResponse>(
-      `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
-      {
-        mintAccounts: [mintAddress]
+    // If RPC API fails, try the metadata API
+    console.log(`[fetchHeliusData] Attempting metadata API for NFT: ${mintAddress}`);
+    try {
+      const metadataEndpoint = `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`;
+      console.log(`[fetchHeliusData] Metadata endpoint: ${metadataEndpoint.substring(0, metadataEndpoint.indexOf('?'))}?...`);
+      
+      const metadataResponse = await heliusClient.post<HeliusResponse>(
+        metadataEndpoint,
+        {
+          mintAccounts: [mintAddress]
+        }
+      );
+
+      console.log(`[fetchHeliusData] Metadata API response status: ${metadataResponse.status}`);
+      
+      if (metadataResponse.data.data && metadataResponse.data.data[0]) {
+        console.log(`[fetchHeliusData] Metadata API success for ${mintAddress}`);
+        return metadataResponse.data.data[0];
+      } else {
+        console.log(`[fetchHeliusData] Metadata API returned no data for ${mintAddress}`);
+        throw new Error('No metadata found from metadata API');
       }
-    );
-
-    if (!metadataResponse.data.data?.[0]) {
-      throw new Error('No metadata found from either API');
+    } catch (error: any) {
+      console.error(`[fetchHeliusData] Metadata API error: ${error.message}`);
+      if (error.response) {
+        console.error(`[fetchHeliusData] Metadata API response status: ${error.response.status}`);
+        console.error(`[fetchHeliusData] Metadata API response data: ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
     }
-
-    console.log(`Successfully fetched NFT data for ${mintAddress} from metadata API`);
-    return metadataResponse.data.data[0];
   } catch (error: any) {
+    console.error(`[fetchHeliusData] Overall error for ${mintAddress}: ${error.message}`);
+    
     if (retries > 0) {
-      const delay = Math.min(2000 * Math.pow(2, 3 - retries), 8000);
-      console.log(`Retrying Helius API fetch for ${mintAddress}, ${retries} attempts remaining. Waiting ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      const delayTime = Math.pow(2, 3 - retries) * 1000; // Exponential backoff
+      console.log(`[fetchHeliusData] Retrying in ${delayTime}ms (${retries} retries left)`);
+      await delay(delayTime);
       return fetchHeliusData(mintAddress, retries - 1);
     }
-    
-    // Add detailed error logging
-    console.error('Helius API fetch failed:', {
-      error: error.message,
-      status: error.response?.status,
-      data: error.response?.data,
-      mintAddress
-    });
     
     throw error;
   }
@@ -544,61 +575,78 @@ router.get('/owner/:owner', async (req: Request, res: Response) => {
 router.get('/helius/:mintAddress', async (req: Request, res: Response) => {
   try {
     const { mintAddress } = req.params;
-    console.log('Helius endpoint called for mint address:', mintAddress);
+    console.log(`[Helius API] Request received for NFT: ${mintAddress}`);
+    console.log(`[Helius API] Full URL: ${req.protocol}://${req.get('host')}${req.originalUrl}`);
     
-    if (!HELIUS_API_KEY) {
-      console.error('Helius API key not configured');
-      res.status(500).json({ success: false, message: 'Helius API key not configured' });
-      return;
+    // Debug environment variables
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    console.log(`[Helius API] API Key available: ${!!heliusApiKey}`);
+    if (heliusApiKey) {
+      console.log(`[Helius API] Key prefix: ${heliusApiKey.substring(0, 4)}... (length: ${heliusApiKey.length})`);
     }
-    console.log('Using Helius API key:', HELIUS_API_KEY);
+    
+    if (!heliusApiKey) {
+      console.error('[Helius API] ERROR: API key not configured');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Helius API key not configured',
+        error: 'MISSING_API_KEY'
+      });
+    }
 
     // Check cache first
     const cachedData = getCachedNFTData(mintAddress);
     if (cachedData) {
-      console.log('Returning cached data for mint:', mintAddress);
-      res.json({ success: true, nft: cachedData });
-      return;
+      console.log('[Helius API] Returning cached data');
+      return res.json({ success: true, nft: cachedData });
     }
 
+    // Fetch from Helius API
+    console.log('[Helius API] Fetching fresh data from Helius');
     let nftData = null;
     try {
-      console.log('Fetching NFT data from Helius for mint:', mintAddress);
       nftData = await fetchHeliusData(mintAddress);
-      console.log('Helius response:', JSON.stringify(nftData, null, 2));
+      console.log('[Helius API] Successfully fetched data');
     } catch (error: any) {
-      console.error('Error fetching from Helius:', error);
+      console.error('[Helius API] Error fetching from Helius:', error.message);
       const status = error.response?.status;
       const isServerError = status >= 500;
       const isRateLimit = status === 429;
       
       if (isServerError) {
-        res.status(503).json({ 
+        return res.status(503).json({ 
           success: false, 
           message: 'Helius API is temporarily unavailable',
           shouldRetry: true,
-          retryAfter: 5000
+          retryAfter: 5000,
+          error: 'HELIUS_SERVER_ERROR'
         });
-        return;
       }
       
       if (isRateLimit) {
-        res.status(429).json({ 
+        return res.status(429).json({ 
           success: false, 
           message: 'Rate limit exceeded',
           shouldRetry: true,
-          retryAfter: 2000
+          retryAfter: 2000,
+          error: 'RATE_LIMIT_EXCEEDED'
         });
-        return;
       }
       
-      res.status(500).json({ success: false, message: 'Error fetching NFT data' });
-      return;
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Error fetching NFT data',
+        error: error.message || 'UNKNOWN_ERROR'
+      });
     }
 
     if (!nftData) {
-      res.status(404).json({ success: false, message: 'NFT not found' });
-      return;
+      console.error('[Helius API] No data returned for NFT:', mintAddress);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'NFT not found',
+        error: 'NFT_NOT_FOUND'
+      });
     }
 
     let ultimateData = null;

@@ -18,43 +18,12 @@
         "maxDuration": 10,
         "memory": 1024
       }
-    },
-    {
-      "src": "src/pages/api/**/*.js",
-      "use": "@vercel/node@3.0.0",
-      "config": {
-        "nodeVersion": "18.x"
-      }
     }
   ],
   "env": {
     "NODE_ENV": "production"
   },
   "routes": [
-    {
-      "src": "/api/debug",
-      "dest": "src/pages/api/debug.js",
-      "methods": ["GET", "OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "86400"
-      }
-    },
-    {
-      "src": "/api/sheets-test",
-      "dest": "src/pages/api/sheets-test.js",
-      "methods": ["GET", "OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "86400"
-      }
-    },
     {
       "src": "/api/(.*)",
       "dest": "src/server/index.ts",

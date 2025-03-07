@@ -106,6 +106,21 @@ app.use(cors({
   maxAge: 86400 // 24 hours
 }));
 
+// Add request debug logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  
+  // Log headers for troubleshooting
+  console.log('Request headers:', JSON.stringify({
+    host: req.headers.host,
+    origin: req.headers.origin,
+    referer: req.headers.referer,
+    'user-agent': req.headers['user-agent']
+  }));
+  
+  next();
+});
+
 // Add better error logging middleware
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('Global error handler caught:', {
@@ -185,6 +200,12 @@ if (process.env.NODE_ENV === 'production') {
     console.log(`- ${path.join(foundDistPath, 'assets/images')} → /assets/images`);
   }
 }
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // API routes
 console.log('Registering API routes...');
