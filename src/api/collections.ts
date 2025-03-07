@@ -482,9 +482,9 @@ export const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
       .filter((item: any) => {
         const isValid = item && 
           typeof item === 'object' &&
-          item.nft_address && 
-          typeof item.nft_address === 'string' &&
-          item.nft_address.trim().length > 0 &&
+          item["NFT Address"] && 
+          typeof item["NFT Address"] === 'string' &&
+          item["NFT Address"].trim().length > 0 &&
           item.collection_id && 
           typeof item.collection_id === 'string' &&
           item.collection_id.trim().length > 0;
@@ -495,10 +495,10 @@ export const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
         return isValid;
       })
       .map((item: any) => ({
-        nft_address: item.nft_address.trim(),
-        name: item.name || 'Unnamed Ultimate',
-        owner: item.owner || '',
-        collection_id: item.collection_id.trim()
+        "NFT Address": item["NFT Address"].trim(),
+        "Name": item["Name"] || 'Unnamed Ultimate',
+        "Owner": item["Owner"] || '',
+        "collection_id": item.collection_id.trim()
       }));
 
     console.log('Processed ultimates:', {
@@ -538,7 +538,7 @@ export const addUltimateNFT = async (nft: UltimateNFT): Promise<boolean> => {
 
     // Check if NFT already exists
     const existingNFTs = await getUltimateNFTs();
-    if (existingNFTs.some(existing => existing.nft_address === nft.nft_address)) {
+    if (existingNFTs.some(existing => existing["NFT Address"] === nft["NFT Address"])) {
       console.warn('NFT already exists in ultimates sheet');
       return false;
     }
@@ -550,10 +550,10 @@ export const addUltimateNFT = async (nft: UltimateNFT): Promise<boolean> => {
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
-          nft.nft_address,
-          nft.name || '',
-          nft.owner || '',
-          nft.collection_id
+          nft["NFT Address"],
+          nft["Name"],
+          nft["Owner"],
+          nft["collection_id"]
         ]]
       }
     });

@@ -10,10 +10,12 @@ export interface Collection {
 }
 
 export interface UltimateNFT {
-  mint: string;
-  name: string;
-  collection_id?: string;
-  image: string;
+  "NFT Address": string;
+  "Name": string;
+  "Owner": string;
+  "collection_id": string;
+  // Optional extended properties for UI
+  image?: string;
   description?: string;
   attributes?: {
     trait_type: string;

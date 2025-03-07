@@ -10,10 +10,10 @@ export interface Collection {
 }
 
 export interface UltimateNFT {
-  nft_address: string;
-  name: string;
-  owner: string;
-  collection_id: string;
+  "NFT Address": string;
+  "Name": string;
+  "Owner": string;
+  "collection_id": string;
 }
 
 export interface DisplayName {

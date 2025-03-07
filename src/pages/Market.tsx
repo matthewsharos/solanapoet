@@ -50,10 +50,10 @@ interface GoogleSheetsNFTData {
 
 // Helper function to normalize NFT data
 const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
-  nft_address: nft["NFT Address"],
-  name: nft["Name"],
-  owner: nft["Owner"],
-  collection_id: nft["collection_id"]
+  "NFT Address": nft["NFT Address"],
+  "Name": nft["Name"],
+  "Owner": nft["Owner"],
+  "collection_id": nft["collection_id"]
 });
 
 // Helper function to fetch NFT data with retries and rate limiting
@@ -292,15 +292,9 @@ const Market: React.FC = () => {
       // Filter out invalid NFT addresses
       const validNftAddresses = ultimateNFTs
         .filter((nft): nft is UltimateNFT => {
-          const isValid = nft && 
-            nft["NFT Address"] && 
-            typeof nft["NFT Address"] === 'string' && 
-            nft["NFT Address"].trim().length > 0;
-          
-          if (!isValid) {
-            console.warn('Invalid NFT data:', nft);
-          }
-          return isValid;
+          if (!nft || typeof nft !== 'object') return false;
+          if (!nft["NFT Address"] || typeof nft["NFT Address"] !== 'string') return false;
+          return nft["NFT Address"].trim().length > 0;
         })
         .map(nft => nft["NFT Address"].trim());
 
