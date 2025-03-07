@@ -23,7 +23,15 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
 import { uploadFileToPinata, createAndUploadMetadata } from '../utils/pinata';
 import CollectionManager from '../components/CollectionManager';
-import { getApiBaseUrl } from '../api/marketplace';
+
+// Helper function to get API base URL
+const getApiBaseUrl = async () => {
+  const response = await axios.get('/api/config');
+  if (!response.data.success) {
+    throw new Error('Failed to fetch API base URL');
+  }
+  return response.data.baseUrl;
+};
 
 // Styled components for vintage look
 const MintContainer = styled(Paper)({

@@ -1,39 +1,31 @@
 export interface NFTAttribute {
   trait_type: string;
-  value: string | number;
+  value: string;
 }
 
 export interface NFTOwner {
   publicKey: string;
-  displayName?: string;
+  delegate?: string | null;
+  ownershipModel?: string;
+  frozen?: boolean;
+  delegated?: boolean;
 }
 
 export interface NFT {
   mint: string;
   name: string;
-  title?: string;
-  description?: string;
+  description: string;
   image: string;
-  imageUrl?: string;
-  attributes?: Array<{
-    trait_type: string;
-    value: string;
-  }>;
+  attributes: NFTAttribute[];
   owner: string | NFTOwner;
-  collection?: string;
-  collectionName?: string;
-  collectionAddress?: string;
-  listed?: boolean;
-  price?: number;
-  lister?: string;
-  createdAt?: string;
-  listing?: {
-    seller_address: string;
-    price: number;
-    list_date: string;
-  };
-  grouping?: Array<{
-    group_key: string;
-    group_value: string;
+  listed: boolean;
+  collectionName: string;
+  collectionAddress: string;
+  creators: Array<{
+    address: string;
+    share: number;
+    verified: boolean;
   }>;
+  royalty: number | null;
+  tokenStandard: string | null;
 } 

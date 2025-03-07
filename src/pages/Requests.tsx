@@ -13,10 +13,27 @@ import {
   Container
 } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
-import { uploadFileToDrive } from '../api/googleDrive';
 import axios from 'axios';
 import ImageCarousel from '../components/ImageCarousel';
 import SubmissionAnimation from '../components/SubmissionAnimation';
+
+// Helper function to upload file to Google Drive
+const uploadFileToDrive = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const response = await axios.post('/api/drive/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+
+  if (!response.data.success) {
+    throw new Error('Failed to upload file');
+  }
+
+  return response.data.fileUrl;
+};
 
 const FormContainer = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(4),

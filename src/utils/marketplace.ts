@@ -28,13 +28,7 @@ const API_BASE_URL = process.env.NODE_ENV === 'development' ? '' : process.env.N
 
 // Helper function to get API base URL with retry
 const getApiBaseUrl = async (): Promise<string> => {
-  // In development, use relative URLs that work with Vite proxy
-  if (process.env.NODE_ENV === 'development') {
-    return '';  // Empty string for relative URLs
-  }
-  
-  // In production, use the configured API URL
-  return process.env.REACT_APP_API_URL || '';
+  return API_BASE_URL;
 };
 
 /**
@@ -189,12 +183,9 @@ export const createPurchaseInstructions = async (
   return instructions;
 };
 
-/**
- * Formats a price in SOL with USD equivalent
- */
+// Retain only helper functions that might be used elsewhere
 export const formatPrice = (solPrice: number, solUsdPrice: number): string => {
-  const usdPrice = solPrice * solUsdPrice;
-  return `${solPrice} SOL ($${usdPrice.toFixed(2)})`;
+  return `${solPrice.toFixed(3)} SOL${solUsdPrice ? ` ($${(solPrice * solUsdPrice).toFixed(2)})` : ''}`;
 };
 
 /**
@@ -260,198 +251,20 @@ const createAndSendTransaction = async (
   return { signature, blockhash, lastValidBlockHeight };
 };
 
-/**
- * Lists an NFT for sale
- */
-export const listNFTForSale = async (
-  nft: NFT,
-  price: number,
-  wallet: WalletContextState,
-  connection?: Connection
-): Promise<NFT> => {
-  if (!wallet.publicKey) {
-    throw new Error('Wallet not connected');
-  }
+// Export empty function stubs if needed to prevent breaking code
+export const listNFTForSale = async (): Promise<NFT | null> => {
+  console.warn('Listing functionality has been removed');
+  return null;
+};
 
-  if (!connection) {
-    // Create a default connection if none is provided
-    connection = new Connection(
-      process.env.SOLANA_RPC_URL || `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`,
-      'confirmed'
-    );
-  }
-
-  // Get the API base URL
-  const apiBaseUrl = await getApiBaseUrl();
-  console.log('Using API base URL:', apiBaseUrl);
-  
-  // Validate and ensure the mint address is a valid PublicKey
-  let nftMintPubkey: string;
-  try {
-    // Validate that the mint is a proper base58 public key
-    const mintPubkey = new PublicKey(nft.mint);
-    nftMintPubkey = mintPubkey.toString();
-    console.log('Valid NFT mint public key:', nftMintPubkey);
-  } catch (error) {
-    console.error('Invalid NFT mint address:', nft.mint, error);
-    throw new Error(`Invalid NFT mint address: ${nft.mint}`);
-  }
-  
-  // Log wallet information for debugging
-  console.log('Wallet public key:', wallet.publicKey.toString());
-  console.log('Price for listing:', price);
-  
-  try {
-    // First check if we have a pending escrow creation
-    const pendingEscrow = localStorage.getItem(`pending_escrow_${nft.mint}`);
-    if (pendingEscrow) {
-      console.log('Found pending escrow creation, checking status...');
-      const escrowData = JSON.parse(pendingEscrow);
-      
-      try {
-        // Check if the escrow account exists
-        const escrowAccount = new PublicKey(escrowData.escrowTokenAccount);
-        const accountInfo = await connection.getAccountInfo(escrowAccount);
-        
-        if (accountInfo) {
-          console.log('Escrow account exists, proceeding with listing');
-          localStorage.removeItem(`pending_escrow_${nft.mint}`);
-        } else {
-          console.log('Escrow account not found, retrying creation');
-        }
-      } catch (error) {
-        console.log('Error checking escrow account:', error);
-      }
-    }
-
-    // Prepare listing request
-    console.log('Sending listing request to server...');
-
-    // Use the exact parameter names expected by the server
-    const requestData = {
-      nftAddress: nft.mint,
-      sellerAddress: wallet.publicKey.toString(),
-      price: price
-    };
-    
-    console.log('Request body:', JSON.stringify(requestData, null, 2));
-    
-    const listingResponse = await fetch(`${apiBaseUrl}/api/market/listings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestData)
-    });
-
-    if (!listingResponse.ok) {
-      const errorData = await listingResponse.json();
-      console.error('Error listing NFT:', errorData);
-      throw new Error(`Error listing NFT: ${JSON.stringify(errorData)}`);
-    }
-
-    const responseData = await listingResponse.json();
-    console.log('Server response:', responseData);
-    
-    if (responseData.action === 'create_escrow_account') {
-      console.log('Creating escrow account...');
-      
-      // Save pending escrow creation state
-      localStorage.setItem(`pending_escrow_${nft.mint}`, JSON.stringify({
-        escrowTokenAccount: responseData.escrowTokenAccount,
-        timestamp: Date.now()
-      }));
-
-      // Create and send the escrow creation transaction
-      const escrowTx = Transaction.from(Buffer.from(responseData.transaction, 'base64'));
-      
-      try {
-        const { signature, blockhash, lastValidBlockHeight } = await createAndSendTransaction(
-          connection,
-          wallet,
-          escrowTx.instructions,
-          'finalized'
-        );
-
-        // Wait for confirmation with retries
-        await confirmTransaction(
-          connection,
-          signature,
-          blockhash,
-          lastValidBlockHeight
-        );
-
-        console.log('Escrow account created successfully');
-        
-        // Clear pending state
-        localStorage.removeItem(`pending_escrow_${nft.mint}`);
-
-        // Now proceed with the actual listing
-        return listNFTForSale(nft, price, wallet, connection);
-      } catch (error) {
-        console.error('Error creating escrow account:', error);
-        throw error;
-      }
-    }
-    
-    // If we get here, the escrow account exists, process the listing transaction
-    console.log('Processing listing transaction...');
-    const listingTx = Transaction.from(Buffer.from(responseData.transaction, 'base64'));
-    
-    const { signature, blockhash, lastValidBlockHeight } = await createAndSendTransaction(
-      connection,
-      wallet,
-      listingTx.instructions,
-      'finalized'
-    );
-
-    // Wait for confirmation with retries
-    await confirmTransaction(
-      connection,
-      signature,
-      blockhash,
-      lastValidBlockHeight
-    );
-
-    console.log('NFT listed successfully');
-    return {
-      ...nft,
-      price,
-      listed: true
-    };
-  } catch (error) {
-    console.error('Error in listNFTForSale:', error);
-    throw error;
-  }
+export const purchaseNFT = async (): Promise<NFT | null> => {
+  console.warn('Purchase functionality has been removed');
+  return null;
 };
 
 // Get connection with proper fallbacks
 export const getConnection = () => {
-  try {
-    // Try to get RPC URL from various sources
-    let rpcUrl = '';
-    
-    // 1. Try process.env.VITE_SOLANA_RPC_URL
-    if (process.env.VITE_SOLANA_RPC_URL) {
-      rpcUrl = process.env.VITE_SOLANA_RPC_URL;
-    } 
-    // 2. Try import.meta.env.VITE_SOLANA_RPC_URL
-    else if (import.meta.env.VITE_SOLANA_RPC_URL) {
-      rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
-    } 
-    // 3. Build URL with Helius API key
-    else if (import.meta.env.VITE_HELIUS_API_KEY) {
-      rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`;
-    }
-    // 4. Hardcoded fallback
-    else {
-      rpcUrl = 'https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d';
-    }
-    
-    console.log('Using RPC URL:', rpcUrl ? 'Available' : 'Not available');
-    return new Connection(rpcUrl, 'confirmed');
-  } catch (error) {
-    console.error('Error creating connection:', error);
-    // Final fallback - hardcoded URL
-    console.log('Using hardcoded fallback RPC URL');
-    return new Connection('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', 'confirmed');
-  }
+  const endpoint = process.env.VITE_SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  console.log(`Using Solana RPC endpoint: ${endpoint}`);
+  return new Connection(endpoint);
 }; 

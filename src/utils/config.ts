@@ -1,3 +1,5 @@
+import { CONFIG_API_URL } from '../api/config';
+
 // Configuration interface
 interface ServerConfig {
   hasGoogleCredentials: boolean;
@@ -18,7 +20,7 @@ export const getServerConfig = async (): Promise<ServerConfig> => {
   }
 
   try {
-    const response = await fetch('/api/config');
+    const response = await fetch(CONFIG_API_URL);
     if (!response.ok) {
       throw new Error('Failed to fetch server configuration');
     }

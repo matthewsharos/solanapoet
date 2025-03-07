@@ -17,14 +17,126 @@ import {
 } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
-import type { NFT } from '../types/nft';
+import type { NFT, NFTOwner, NFTAttribute } from '../types/nft';
 import VintageCard from '../components/VintageCard';
-import { getCollections } from '../api/storage';
-import { fetchCollections as fetchCollectionsFromApi, getUltimateNFTs, UltimateNFT, Collection } from '../api/collections';
 import { useWalletContext } from '../contexts/WalletContext';
-import { fetchCollectionNFTs, NFTMetadata } from '../utils/nftUtils';
-import { API_BASE_URL } from '../api/config';
+import { fetchCollectionNFTs as fetchCollectionNFTsFromUtils, NFTMetadata } from '../utils/nftUtils';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
+
+// Define types from removed imports
+interface Collection {
+  address: string;
+  name: string;
+  image?: string;
+  description?: string;
+  addedAt?: number;
+  creationDate?: string;
+  ultimates?: boolean;
+}
+
+interface UltimateNFT {
+  "NFT Address": string;
+  "Name": string;
+  "Owner": string;
+  "collection_id": string;
+}
+
+// API Response Types
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+interface CollectionApiResponse extends ApiResponse<never> {
+  collections: Collection[];
+  length: number;
+  sample?: Collection;
+}
+
+interface UltimatesApiResponse extends ApiResponse<UltimateNFT[]> {}
+
+interface NFTApiResponse extends ApiResponse<never> {
+  nft: {
+    id?: string;
+    mint?: string;
+    name?: string;
+    description?: string;
+    image?: string;
+    attributes?: NFTAttribute[];
+    owner: string | NFTOwner;
+    collection?: {
+      name?: string;
+      address?: string;
+    };
+    creators?: Array<{
+      address: string;
+      share: number;
+      verified: boolean;
+    }>;
+    royalty?: number;
+    tokenStandard?: string;
+    content?: {
+      files?: Array<{ uri: string; type: string }>;
+      metadata?: {
+        name?: string;
+        description?: string;
+        image?: string;
+        attributes?: NFTAttribute[];
+      };
+      json?: {
+        name?: string;
+        description?: string;
+        image?: string;
+        attributes?: NFTAttribute[];
+      };
+      links?: {
+        image?: string;
+      };
+    };
+  };
+}
+
+interface CollectionAssetsApiResponse extends ApiResponse<never> {
+  result: {
+    items: Array<{
+      id: string;
+      content?: {
+        metadata?: {
+          name?: string;
+          description?: string;
+          image?: string;
+          attributes?: NFTAttribute[];
+        };
+        json?: {
+          name?: string;
+          description?: string;
+          image?: string;
+          attributes?: NFTAttribute[];
+        };
+        files?: Array<{ uri: string; type: string }>;
+        links?: {
+          image?: string;
+        };
+      };
+      ownership?: {
+        owner: string;
+        ownershipModel?: string;
+        delegated?: boolean;
+        delegate?: string | null;
+        frozen?: boolean;
+      };
+      creators?: Array<{
+        address: string;
+        share: number;
+        verified: boolean;
+      }>;
+      royalty?: number;
+      tokenStandard?: string;
+    }>;
+    total: number;
+  };
+}
 
 // Helper function to add delay between requests
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -56,11 +168,60 @@ const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
   "collection_id": nft["collection_id"]
 });
 
+// Helper function to fetch collections
+const fetchCollections = async (): Promise<Collection[]> => {
+  const response = await axios.get<CollectionApiResponse>('/api/collection');
+  if (!response.data.success) {
+    throw new Error('Failed to fetch collections');
+  }
+  return response.data.collections;
+};
+
+// Helper function to fetch ultimate NFTs
+const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
+  const response = await axios.get<UltimatesApiResponse>('/api/ultimates');
+  if (!response.data.success) {
+    throw new Error('Failed to fetch ultimate NFTs');
+  }
+  return response.data.data || [];
+};
+
+// Helper function to fetch collection NFTs
+const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
+  try {
+    const nfts = await fetchCollectionNFTsWithRetry(collection, 1);
+    return nfts.map(nftData => ({
+      mint: nftData.id,
+      name: nftData.content?.metadata?.name || nftData.content?.json?.name || 'Unknown NFT',
+      description: nftData.content?.metadata?.description || nftData.content?.json?.description || '',
+      image: nftData.content?.files?.[0]?.uri || nftData.content?.links?.image || nftData.content?.metadata?.image || nftData.content?.json?.image || '',
+      attributes: nftData.content?.metadata?.attributes || nftData.content?.json?.attributes || [],
+      owner: {
+        publicKey: nftData.ownership?.owner || '',
+        ownershipModel: nftData.ownership?.ownershipModel || 'single',
+        delegated: nftData.ownership?.delegated || false,
+        delegate: nftData.ownership?.delegate || null,
+        frozen: nftData.ownership?.frozen || false,
+      },
+      listed: false,
+      collectionName: collection.name,
+      collectionAddress: collection.address,
+      creators: nftData.creators || [],
+      royalty: nftData.royalty || null,
+      tokenStandard: nftData.tokenStandard || null,
+    }));
+  } catch (error) {
+    console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
+    return [];
+  }
+};
+
 // Helper function to fetch NFT data with retries and rate limiting
 const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | null = null, collections: Collection[], retries = 3): Promise<NFT | null> => {
   try {
     console.log(`Fetching NFT data for address: ${nftAddress}`);
-    const response = await axios.get(`/api/nft/helius/${nftAddress}`);
+    const response = await axios.get<NFTApiResponse>(`/api/nft-helius/${nftAddress}`);
+    
     if (!response.data.success) {
       console.error('Failed to fetch NFT data:', response.data);
       throw new Error(response.data.message || 'Failed to fetch NFT data');
@@ -111,6 +272,7 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     console.error(`Failed to fetch NFT ${nftAddress}:`, error);
     if (retries > 0) {
       const delayTime = Math.pow(2, 3 - retries) * 1000; // Exponential backoff
+      console.log(`Retrying fetch for ${nftAddress} in ${delayTime}ms (${retries} retries left)`);
       await delay(delayTime);
       return fetchNFTWithRetries(nftAddress, ultimate, collections, retries - 1);
     }
@@ -139,10 +301,11 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
       for (let currentPage = 1; currentPage <= totalPages; currentPage++) {
         console.log(`Fetching page ${currentPage}/${totalPages} for collection ${collection.name}`);
         
-        const response = await axios.post('/api/nft/helius/collection', {
-          collectionId: collection.address,
-          page: currentPage
-        }, {
+        const response = await axios.get<CollectionAssetsApiResponse>('/api/collection/assets', {
+          params: {
+            collectionId: collection.address,
+            page: currentPage
+          },
           timeout: 15000 // 15-second timeout
         });
 
@@ -179,7 +342,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         data: error.response?.data,
         details: error.response?.data?.details,
         request: {
-          url: '/api/nft/helius/collection',
+          url: '/api/collection/assets',
           payload: { collectionId: collection.address, page }
         }
       });
@@ -350,7 +513,7 @@ const Market: React.FC = () => {
       console.log('2. Fetching collections from API...');
       while (retryCount < 3) {
         try {
-          collectionsData = await fetchCollectionsFromApi();
+          collectionsData = await fetchCollections();
           console.log('Collections data received:', {
             success: !!collectionsData,
             length: Array.isArray(collectionsData) ? collectionsData.length : 0,

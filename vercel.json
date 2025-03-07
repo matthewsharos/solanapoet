@@ -39,12 +39,8 @@
       }
     },
     {
-      "src": "api/**/*.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["api/**/*"],
-        "maxLambdaSize": "50mb"
-      }
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     }
   ],
   "env": {
@@ -52,12 +48,18 @@
   },
   "rewrites": [
     { "source": "/api/nft/helius/collection", "destination": "/api/nft/helius/collection.js" },
-    { "source": "/api/nft/helius/:mint", "destination": "/api/nft/helius/[mint].js" },
+    { "source": "/api/nft/helius/:mintAddress", "destination": "/api/nft/helius/[mintAddress].js" },
+    { "source": "/api/collection", "destination": "/api/collection.js" },
+    { "source": "/api/ultimates", "destination": "/api/ultimates.js" },
+    { "source": "/api/display-names", "destination": "/api/display-names.js" },
+    { "source": "/api/display-names/update", "destination": "/api/display-names.js" },
+    { "source": "/api/drive/upload", "destination": "/api/drive/upload.js" },
+    { "source": "/api/price", "destination": "/api/price.js" },
+    { "source": "/api/sol/price", "destination": "/api/price.js" },
     { "source": "/api/config", "destination": "/api/config.js" },
     { "source": "/api/debug", "destination": "/api/debug.js" },
     { "source": "/api/diagnosis", "destination": "/api/diagnosis.js" },
     { "source": "/api/sheets/:sheet", "destination": "/api/sheets.js" },
-    { "source": "/api/(.*)", "destination": "/api/nft-helius.js" },
     { "source": "/(.*)", "destination": "/" }
   ]
 } 
