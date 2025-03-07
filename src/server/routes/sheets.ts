@@ -69,50 +69,9 @@ const getGoogleAuth = async (): Promise<OAuth2Client> => {
       return await auth.getClient() as OAuth2Client;
     }
     
-    // Fall back to JSON credentials
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-      console.error('Neither GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY environment variables are set');
-      throw new Error('Google credentials not configured');
-    }
-
-    console.log('Attempting to parse Google credentials...');
-    let credentials;
-    try {
-      
-      // Fix private key format if needed
-      if (credentials.private_key) {
-        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
-      }
-      
-      console.log('Successfully parsed Google credentials with fields:', Object.keys(credentials));
-    } catch (parseError) {
-      console.error('Failed to parse Google credentials:', {
-        error: parseError,
-      });
-      throw new Error('Invalid Google credentials format: ' + (parseError instanceof Error ? parseError.message : String(parseError)));
-    }
-
-    if (!credentials.client_email || !credentials.private_key) {
-      console.error('Missing required fields in Google credentials:', {
-        hasClientEmail: !!credentials.client_email,
-        hasPrivateKey: !!credentials.private_key,
-        availableFields: Object.keys(credentials)
-      });
-      throw new Error('Invalid Google credentials structure: missing required fields');
-    }
-
-    console.log('Initializing Google Sheets auth with client email:', credentials.client_email);
-    
-    // Create auth client with proper credentials
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-
-    console.log('Created GoogleAuth instance, attempting to get client...');
-    const client = await auth.getClient() as OAuth2Client;
-    console.log('Successfully created Google auth client');
-    return client;
+    // If we get here, we don't have valid credentials
+    console.error('No valid Google credentials found');
+    throw new Error('Google credentials not configured');
   } catch (error) {
     console.error('Error in getGoogleAuth:', error);
     throw error;
@@ -294,7 +253,18 @@ router.get('/test-config', async (req, res) => {
       spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID
     });
 
-    const results = {
+    interface TestResults {
+      envVarsPresent: {
+        GOOGLE_CLIENT_EMAIL: boolean;
+        GOOGLE_PRIVATE_KEY: boolean;
+        GOOGLE_SHEETS_SPREADSHEET_ID: boolean;
+      };
+      credentialsValid: boolean;
+      authResult: string | null;
+      error?: string;
+    }
+
+    const results: TestResults = {
       envVarsPresent: {
         GOOGLE_CLIENT_EMAIL: !!process.env.GOOGLE_CLIENT_EMAIL,
         GOOGLE_PRIVATE_KEY: !!process.env.GOOGLE_PRIVATE_KEY,
@@ -304,15 +274,27 @@ router.get('/test-config', async (req, res) => {
       authResult: null
     };
 
-    // Attempt to parse credentials if present
+    // Check if we have direct credentials
+    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
       try {
-        results.credentialsValid = !!(credentials.client_email && credentials.private_key);
+        // Test credentials by attempting to create an auth client
+        const auth = new google.auth.GoogleAuth({
+          credentials: {
+            client_email: process.env.GOOGLE_CLIENT_EMAIL,
+            private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n')
+          },
+          scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+
+        await auth.getClient(); // Test if we can get a client
+        results.credentialsValid = true;
         results.authResult = 'success';
       } catch (parseError) {
         results.authResult = 'failed';
         results.error = parseError instanceof Error ? parseError.message : String(parseError);
       }
     } else {
+      results.authResult = 'no_credentials';
     }
 
     // Always return a response
