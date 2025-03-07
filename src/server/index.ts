@@ -126,7 +126,25 @@ app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 if (process.env.NODE_ENV === 'production') {
   // Serve static files from the dist directory
   console.log('Serving frontend from dist directory');
-  app.use(express.static(path.join(__dirname, '../../dist')));
+  
+  // Try multiple possible locations for the static files
+  const possibleDistPaths = [
+    path.join(__dirname, '../../dist'),
+    '/var/task/dist',
+    path.join(process.cwd(), 'dist')
+  ];
+  
+  // Log the possible paths for debugging
+  console.log('Checking for static files in paths:', possibleDistPaths);
+  
+  // Try each path and use the first one that exists
+  for (const distPath of possibleDistPaths) {
+    if (fs.existsSync(distPath)) {
+      console.log(`Found static files at: ${distPath}`);
+      app.use(express.static(distPath));
+      break;
+    }
+  }
 }
 
 // API routes
@@ -235,11 +253,31 @@ app.get('/api/health', (req: Request, res: Response<HealthCheckResponse>) => {
 // Add a catch-all route to serve the frontend for client-side routing
 // This should be added after all API routes
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
+  app.get('*', (req, res, next) => {
     // Exclude API routes from this catch-all
     if (!req.path.startsWith('/api/')) {
       console.log(`Serving index.html for path: ${req.path}`);
-      res.sendFile(path.join(__dirname, '../../dist/index.html'));
+      
+      // Try multiple possible locations for index.html
+      const possibleIndexPaths = [
+        path.join(__dirname, '../../dist/index.html'),
+        '/var/task/dist/index.html',
+        path.join(process.cwd(), 'dist/index.html')
+      ];
+      
+      // Try to find and serve index.html from one of the possible paths
+      for (const indexPath of possibleIndexPaths) {
+        if (fs.existsSync(indexPath)) {
+          console.log(`Found index.html at: ${indexPath}`);
+          return res.sendFile(indexPath);
+        }
+      }
+      
+      // If we reach here, we couldn't find index.html in any of the expected locations
+      console.error(`Error: Could not find index.html in any of these paths:`, possibleIndexPaths);
+      return next(new Error('Could not find index.html'));
+    } else {
+      next();
     }
   });
 }
