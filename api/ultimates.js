@@ -1,4 +1,33 @@
-import axios from 'axios';
+import { google } from 'googleapis';
+
+// Helper function to initialize Google Sheets client
+async function getGoogleSheetsClient() {
+  try {
+    console.log('[serverless] Initializing Google Sheets client for ultimates...');
+    
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Missing Google API credentials');
+    }
+    
+    // Ensure private key is properly formatted
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey,
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+
+    console.log('[serverless] Google Auth client initialized for ultimates');
+    const sheets = google.sheets({ version: 'v4', auth });
+    return sheets;
+  } catch (error) {
+    console.error('[serverless] Error initializing Google Sheets client:', error);
+    throw error;
+  }
+}
 
 // Serverless function for fetching ultimate NFTs data
 export default async function handler(req, res) {
@@ -20,20 +49,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get ultimate NFTs from Google Sheets
-    console.log('Fetching ultimates from Google Sheets...');
+    // Get ultimate NFTs directly from Google Sheets
+    console.log('Fetching ultimates directly from Google Sheets...');
     
-    // Use internal sheets API to get the ultimates data
-    const response = await axios.get('/api/sheets/ultimates', {
-      baseURL: process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
-    });
+    // Initialize Google Sheets client
+    const sheets = await getGoogleSheetsClient();
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
     
-    if (!response.data || !response.data.success) {
-      throw new Error('Failed to fetch ultimates data from Google Sheets');
+    if (!spreadsheetId) {
+      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
     }
     
-    // Process the raw data to ensure it's valid
-    const rawData = response.data.data || [];
+    // Get data from the ultimates sheet
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'ultimates!A:D', // Adjust range as needed for your sheet
+    });
+    
+    const rawData = response.data.values || [];
     
     // Skip header row
     const rows = rawData.slice(1);

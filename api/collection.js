@@ -1,4 +1,34 @@
 import axios from 'axios';
+import { google } from 'googleapis';
+
+// Helper function to initialize Google Sheets client
+async function getGoogleSheetsClient() {
+  try {
+    console.log('[serverless] Initializing Google Sheets client for collections...');
+    
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Missing Google API credentials');
+    }
+    
+    // Ensure private key is properly formatted
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey,
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+
+    console.log('[serverless] Google Auth client initialized for collections');
+    const sheets = google.sheets({ version: 'v4', auth });
+    return sheets;
+  } catch (error) {
+    console.error('[serverless] Error initializing Google Sheets client:', error);
+    throw error;
+  }
+}
 
 // Serverless function for fetching collections data
 export default async function handler(req, res) {
@@ -26,39 +56,43 @@ export default async function handler(req, res) {
     }
 
     // Try to get collection data from Google Sheets first
-    console.log('Attempting to fetch collections from Google Sheets...');
+    console.log('Attempting to fetch collections directly from Google Sheets...');
     let collections = [];
     
     try {
-      // Get collections from Google Sheets
-      const sheetsUrl = process.env.GOOGLE_SHEETS_API_URL || 'https://sheets.googleapis.com/v4/spreadsheets';
+      // Initialize Google Sheets client
+      const sheets = await getGoogleSheetsClient();
       const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
       
-      if (spreadsheetId) {
-        console.log('Fetching collections from Google Sheets...');
-        
-        // Load collections from sheets API
-        const response = await axios.get(`/api/sheets/collections`);
-        
-        if (response.data && response.data.success && Array.isArray(response.data.data)) {
-          // Skip header row (first row)
-          const rows = response.data.data.slice(1);
-          
-          collections = rows.map(row => ({
-            address: row[0] || '',
-            name: row[1] || '',
-            description: row[2] || '',
-            image: row[3] || '',
-            website: row[4] || '',
-            twitter: row[5] || '',
-            discord: row[6] || '',
-            isFeatured: row[7] === 'TRUE' || row[7] === 'true',
-            ultimates: row[8] === 'TRUE' || row[8] === 'true'
-          })).filter(collection => collection.address && collection.name);
-          
-          console.log(`Found ${collections.length} collections in Google Sheets`);
-        }
+      if (!spreadsheetId) {
+        throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
       }
+      
+      // Get data from the collections sheet
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'collections!A:I', // Adjust range as needed for your sheet
+      });
+      
+      const rawData = response.data.values || [];
+      
+      // Skip header row
+      const rows = rawData.slice(1);
+      
+      collections = rows.map(row => ({
+        address: row[0] || '',
+        name: row[1] || '',
+        description: row[2] || '',
+        image: row[3] || '',
+        website: row[4] || '',
+        twitter: row[5] || '',
+        discord: row[6] || '',
+        isFeatured: row[7] === 'TRUE' || row[7] === 'true',
+        ultimates: row[8] === 'TRUE' || row[8] === 'true',
+        collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
+      })).filter(collection => collection.address && collection.name);
+      
+      console.log(`Found ${collections.length} collections in Google Sheets`);
     } catch (sheetError) {
       console.error('Error fetching collections from Google Sheets:', sheetError);
       // Continue execution to try fetching from Helius as fallback
@@ -93,7 +127,8 @@ export default async function handler(req, res) {
           twitter: collection.twitter || '',
           discord: collection.discord || '',
           isFeatured: false,
-          ultimates: false
+          ultimates: false,
+          collectionId: collection.id // Ensure collectionId is set to id for compatibility
         }));
         
         console.log(`Found ${collections.length} collections from Helius`);

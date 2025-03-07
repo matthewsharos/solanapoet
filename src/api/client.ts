@@ -1,6 +1,9 @@
 import { Collection, CollectionApiResponse, DisplayNameMapping, MarketListing, MarketStats, MintNFTData, ListNFTData, PurchaseNFTData } from '../types/api';
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// Use window.location.origin in the browser to ensure correct URL in production
+export const API_BASE_URL = typeof window !== 'undefined' 
+  ? window.location.origin 
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000');
 
 // Collections API
 export const collections = {

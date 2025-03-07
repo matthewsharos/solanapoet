@@ -74,15 +74,40 @@ export default async function handler(req, res) {
   // GET: Fetch display names
   if (req.method === 'GET') {
     try {
-      console.log('Redirecting to sheets API for display names');
+      console.log('Fetching display names directly from Google Sheets');
       
-      // Redirect to sheets API for fetching display names
-      return res.status(307).redirect('/api/sheets/display_names');
+      // Initialize Google Sheets client
+      const sheets = await getGoogleSheetsClient();
+      const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+      
+      if (!spreadsheetId) {
+        throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
+      }
+      
+      // Get data from the display_names sheet
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'display_names!A:B', // Columns for wallet address and display name
+      });
+      
+      const rows = response.data.values || [];
+      
+      // Skip header row
+      const displayNames = rows.slice(1).map(row => ({
+        walletAddress: row[0] || '',
+        displayName: row[1] || ''
+      })).filter(entry => entry.walletAddress);
+      
+      return res.status(200).json({
+        success: true,
+        displayNames: displayNames
+      });
     } catch (error) {
       console.error('Error fetching display names:', error);
       return res.status(500).json({ 
         success: false, 
-        error: 'Error fetching display names'
+        error: 'Error fetching display names',
+        message: error.message
       });
     }
   }
