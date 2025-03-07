@@ -2,6 +2,16 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import axios from 'axios';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
   }
@@ -13,21 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    console.log('API Key check:', {
-      exists: !!heliusApiKey,
-      length: heliusApiKey.length,
-      prefix: heliusApiKey.substring(0, 4)
-    });
-
     const { collectionId } = req.body;
     if (!collectionId) {
       return res.status(400).json({ message: 'Collection ID is required' });
     }
 
-    console.log('Processing request for collection:', collectionId);
-
-    // Using exact working payload structure
-    const payload = {
+    // Direct RPC call structure
+    const rpcEndpoint = `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+    const rpcPayload = {
       jsonrpc: "2.0",
       id: "my-id",
       method: "getAssetsByGroup",
@@ -39,59 +42,81 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
-    console.log('Sending request to Helius with payload:', JSON.stringify(payload));
+    console.log('Attempting RPC call to:', rpcEndpoint);
+    console.log('With payload:', JSON.stringify(rpcPayload, null, 2));
 
-    const response = await axios.post(
-      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-      payload,
-      {
+    try {
+      const response = await axios({
+        url: rpcEndpoint,
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    console.log('Helius response status:', response.status);
-    console.log('Helius response headers:', response.headers);
-    console.log('Helius response data:', JSON.stringify(response.data));
-
-    if (response.data.error) {
-      console.error('Helius returned error:', response.data.error);
-      return res.status(400).json({
-        message: 'Helius API error',
-        error: response.data.error
+          'Content-Type': 'application/json',
+        },
+        data: rpcPayload,
+        timeout: 30000
       });
+
+      console.log('RPC Response received:', {
+        status: response.status,
+        hasData: !!response.data,
+        hasResult: !!response.data?.result
+      });
+
+      // Check for RPC-specific errors
+      if (response.data?.error) {
+        console.error('RPC Error:', response.data.error);
+        return res.status(400).json({
+          message: 'RPC Error',
+          error: response.data.error
+        });
+      }
+
+      // Validate response structure
+      if (!response.data?.result) {
+        console.error('Invalid RPC response structure:', response.data);
+        return res.status(500).json({
+          message: 'Invalid RPC response structure',
+          error: 'No result field in response'
+        });
+      }
+
+      // Return the successful response
+      return res.status(200).json(response.data);
+
+    } catch (rpcError: any) {
+      console.error('RPC call failed:', {
+        message: rpcError.message,
+        status: rpcError.response?.status,
+        data: rpcError.response?.data
+      });
+
+      // Handle specific RPC errors
+      if (rpcError.response?.status === 429) {
+        return res.status(429).json({
+          message: 'Rate limit exceeded',
+          error: rpcError.response.data
+        });
+      }
+
+      throw rpcError; // Re-throw for general error handling
     }
 
-    // Return the raw response
-    return res.status(200).json(response.data);
   } catch (error: any) {
     console.error('Collection fetch error:', {
       message: error.message,
-      response: error.response?.data,
+      name: error.name,
       status: error.response?.status,
-      headers: error.response?.headers,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers,
-        data: error.config?.data
-      }
+      data: error.response?.data,
+      stack: error.stack
     });
 
-    if (error.response?.status === 429) {
-      return res.status(429).json({
-        message: 'Rate limit exceeded',
-        error: error.response.data
-      });
-    }
-
-    return res.status(500).json({ 
+    // Return appropriate error response
+    return res.status(500).json({
       message: 'Error fetching collection NFTs',
-      error: error.response?.data || error.message,
+      error: error.message,
       details: {
         status: error.response?.status,
-        statusText: error.response?.statusText
+        data: error.response?.data
       }
     });
   }
