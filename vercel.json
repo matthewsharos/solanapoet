@@ -38,6 +38,11 @@
       "methods": ["GET", "OPTIONS"]
     },
     {
+      "src": "/api/diagnosis",
+      "dest": "/api/diagnosis.js",
+      "methods": ["GET", "OPTIONS"]
+    },
+    {
       "src": "/api/sheets/([^/]+)",
       "dest": "/api/sheets.js?sheet=$1",
       "methods": ["GET", "OPTIONS"]
