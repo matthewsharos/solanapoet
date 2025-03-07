@@ -195,6 +195,11 @@ const fetchCollections = async (): Promise<Collection[]> => {
     console.log('Collections type:', typeof collections);
     console.log('Is array:', Array.isArray(collections));
     
+    if (!Array.isArray(collections)) {
+      console.error('Collections is not an array:', collections);
+      return [];
+    }
+    
     if (collections.length === 0) {
       console.warn('No collections received from API');
       return [];
@@ -434,12 +439,18 @@ const validateCollection = (collection: any): Collection | null => {
     return null;
   }
   
-  if (!collection.address || !collection.name) {
-    console.log('Invalid collection (missing address or name):', {
-      hasAddress: !!collection.address,
-      hasName: !!collection.name,
-      address: collection.address,
-      name: collection.name
+  // Check if the collection has an address field
+  if (!collection.address) {
+    console.log('Invalid collection (missing address):', {
+      collection
+    });
+    return null;
+  }
+  
+  // Check if the collection has a name field
+  if (!collection.name) {
+    console.log('Invalid collection (missing name):', {
+      collection
     });
     return null;
   }
