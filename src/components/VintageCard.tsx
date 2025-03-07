@@ -197,7 +197,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     if (!nft.owner) return '';
     return typeof nft.owner === 'string' 
       ? nft.owner 
-      : nft.owner.publicKey || '';
+      : (nft.owner.publicKey || '');
   }, [nft.owner]);
 
   // Effect to handle display name updates

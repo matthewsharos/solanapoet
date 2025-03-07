@@ -15,10 +15,18 @@ const NFTCard: React.FC<NFTCardProps> = ({ nft, onPurchaseComplete }) => {
   const handlePurchase = async () => {
     setLoading(true);
     try {
+      const sellerAddress = typeof nft.owner === 'string' 
+        ? nft.owner 
+        : (nft.owner?.publicKey || '');
+      
+      if (!sellerAddress) {
+        throw new Error('Invalid seller address');
+      }
+      
       await market.transactions.purchase({
         nftAddress: nft.mint,
         price: nft.price || 0,
-        seller: typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey,
+        seller: sellerAddress,
       });
       onPurchaseComplete();
     } catch (error) {

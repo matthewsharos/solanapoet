@@ -519,13 +519,21 @@ const Market: React.FC = () => {
     if (!displayNamesLoaded) return;
     
     setNfts(loadedNFTs.map(nft => {
+      // Add defensive check to handle cases where nft.owner is undefined
+      if (!nft.owner) {
+        return {
+          ...nft,
+          ownerDisplayName: undefined
+        };
+      }
+      
       const ownerAddress = typeof nft.owner === 'string' 
         ? nft.owner.toLowerCase()
-        : nft.owner.publicKey.toLowerCase();
+        : (nft.owner.publicKey ? nft.owner.publicKey.toLowerCase() : '');
       
       return {
         ...nft,
-        ownerDisplayName: displayNames.get(ownerAddress)
+        ownerDisplayName: ownerAddress ? displayNames.get(ownerAddress) : undefined
       };
     }));
   }, [loadedNFTs, displayNames, displayNamesLoaded]);
@@ -731,14 +739,21 @@ const Market: React.FC = () => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [collections]);
 
-  // Modify the filter function to handle multiple addresses and exact name matching
+  // Filter NFTs based on search term, collection, and ownership
   const filterNFTs = (nfts: NFT[], searchTerm: string, selectedCollection: string): NFT[] => {
-    return nfts.filter((nft: NFT) => {
-      const matchesSearch = searchTerm === '' || 
-        (nft.name && nft.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (nft.description && nft.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    const collectionAddresses = collections
+      .filter(c => c.name === selectedCollection)
+      .map(c => c.address);
       
-      const collectionAddresses = consolidatedCollections.find(c => c.name === selectedCollection)?.addresses || [];
+    const searchLower = searchTerm.toLowerCase();
+    
+    return nfts.filter(nft => {
+      const nftName = nft.name?.toLowerCase() || '';
+      const collectionName = nft.collectionName?.toLowerCase() || '';
+      const matchesSearch = searchTerm === '' || 
+        nftName.includes(searchLower) || 
+        collectionName.includes(searchLower);
+      
       const matchesCollection = selectedCollection === '' || 
         collectionAddresses.includes(nft.collectionAddress || '') ||
         nft.collectionName === selectedCollection; // Exact match with collection name
@@ -749,7 +764,7 @@ const Market: React.FC = () => {
         nft.owner && 
         (typeof nft.owner === 'string' 
           ? nft.owner === wallet.publicKey.toString()
-          : nft.owner.publicKey === wallet.publicKey.toString())
+          : (nft.owner.publicKey ? nft.owner.publicKey === wallet.publicKey.toString() : false))
       );
       
       return matchesSearch && matchesCollection && matchesOwner;
@@ -849,9 +864,10 @@ const Market: React.FC = () => {
                       wallet={wallet} 
                       connected={connected}
                       displayName={
+                        !nft.owner ? undefined :
                         typeof nft.owner === 'string'
                           ? displayNames.get(nft.owner)
-                          : displayNames.get(nft.owner.publicKey)
+                          : (nft.owner.publicKey ? displayNames.get(nft.owner.publicKey) : undefined)
                       }
                     />
                   </Grid>

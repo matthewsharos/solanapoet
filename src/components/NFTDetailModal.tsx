@@ -569,7 +569,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     if (!nft.owner) return '';
     return typeof nft.owner === 'string' 
       ? nft.owner 
-      : nft.owner.publicKey || '';
+      : (nft.owner.publicKey || '');
   }, [nft.owner]);
 
   // Effect to handle display name updates
