@@ -1,5 +1,15 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 
+// Configure the API route
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+    responseLimit: '10mb'
+  },
+};
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -41,33 +51,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
+    // Use global fetch without node-fetch
     const response = await fetch(rpcEndpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(rpcPayload)
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
 
-    // Set response headers for large JSON
+    // Set appropriate headers
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
     
-    // Return the response
     return res.status(200).json(data);
 
   } catch (error: any) {
-    console.error('Collection fetch error:', {
-      message: error.message,
-      name: error.name,
-      status: error.response?.status,
-      data: error.response?.data
-    });
+    console.error('Collection fetch error:', error);
 
     return res.status(500).json({
       message: 'Error fetching collection NFTs',
