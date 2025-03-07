@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import axios from 'axios';
 
 // Configure the API route
 export const config = {
@@ -23,7 +24,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
   try {
@@ -32,9 +33,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    const { collectionId } = req.body;
+    const { collectionId, page = 1, limit = 1000 } = req.body;
     if (!collectionId) {
-      return res.status(400).json({ message: 'Collection ID is required' });
+      return res.status(400).json({ success: false, message: 'Collection ID is required' });
     }
 
     // Direct RPC call structure
@@ -46,39 +47,53 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       params: {
         groupKey: "collection",
         groupValue: collectionId,
-        page: 1,
-        limit: 1000
+        page: Number(page),
+        limit: Number(limit)
       }
     };
 
-    // Use global fetch without node-fetch
-    const response = await fetch(rpcEndpoint, {
+    const response = await axios({
+      url: rpcEndpoint,
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(rpcPayload)
+      data: rpcPayload,
+      timeout: 15000 // Match the timeout from Market.tsx
     });
 
-    if (!response.ok) {
-      throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
+    if (response.data?.error) {
+      console.error('Helius API error:', response.data.error);
+      return res.status(400).json({
+        success: false,
+        message: 'Helius API error',
+        error: response.data.error
+      });
     }
 
-    const data = await response.json();
-
-    // Set appropriate headers
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'no-store');
-    
-    return res.status(200).json(data);
+    // Match the exact response structure expected by Market.tsx
+    return res.status(200).json({
+      success: true,
+      result: {
+        items: response.data.result || [],
+        total: response.data.result?.length || 0,
+        page: Number(page)
+      }
+    });
 
   } catch (error: any) {
-    console.error('Collection fetch error:', error);
+    console.error('Collection fetch error:', {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
 
+    // Match error response structure from Market.tsx
     return res.status(500).json({
+      success: false,
       message: 'Error fetching collection NFTs',
-      error: error.message
+      error: error.message,
+      details: error.response?.data
     });
   }
 } 
