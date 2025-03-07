@@ -37,18 +37,17 @@ const uploadFileToDrive = async (file: File) => {
     // Create a File object with the new name
     const renamedFile = new File([file], fileName, { type: file.type });
     
-    // Create form data with explicit key name
-    const formData = new FormData();
-    formData.append('upload', renamedFile);
+    // Use binary upload instead of multipart/form-data
+    console.log('Using binary upload endpoint');
+    const fileBuffer = await renamedFile.arrayBuffer();
     
-    // Add some debug info
-    console.log('FormData created with file under key "upload"');
-    
-    // Send the request with timeout and proper error handling
-    console.log('Sending POST request to /api/drive/upload...');
-    const response = await axios.post('/api/drive/upload', formData, {
+    // Send the binary data directly
+    console.log('Sending POST request to /api/upload-binary...');
+    const response = await axios.post('/api/upload-binary', fileBuffer, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': renamedFile.name,
+        'X-File-Type': renamedFile.type
       },
       timeout: 60000, // 60 seconds timeout
     });
