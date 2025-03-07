@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "functions": {
-    "api/nft/helius/collection.ts": {
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  },
   "headers": [
     {
       "source": "/api/(.*)",
@@ -27,7 +21,7 @@
       }
     },
     {
-      "src": "api/**/*.js",
+      "src": "api/**/*.ts",
       "use": "@vercel/node",
       "config": {
         "includeFiles": ["api/**/*"],
@@ -43,6 +37,11 @@
       "src": "/api/nft/helius/([^/]+)",
       "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1",
       "methods": ["GET", "OPTIONS"]
+    },
+    {
+      "src": "/api/nft/helius/collection",
+      "dest": "/api/nft/helius/collection.js",
+      "methods": ["POST", "OPTIONS"]
     },
     {
       "src": "/api/config",
