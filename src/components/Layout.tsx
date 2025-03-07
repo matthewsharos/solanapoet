@@ -5,6 +5,10 @@ import { useWalletContext } from '../contexts/WalletContext';
 import DisplayNameEditor from './DisplayNameEditor';
 import ThemeToggle from './ThemeToggle';
 
+// Public URLs for the monkey images
+const MONKEY_IMAGE_URL = "/images/monkey.png";
+const DARK_MONKEY_IMAGE_URL = "/images/dark_monkey.png";
+
 // Styled components for vintage look
 const VintageAppBar = styled(AppBar)(({ theme }) => ({
   backgroundColor: 'rgba(255, 255, 255, 0.65)',
@@ -224,20 +228,16 @@ const MonkeyContainer = styled(Box)({
   }
 });
 
-// Add styled component for the monkey image
-const MonkeyImage = styled('img')({
-  height: '40px',
+// Update the MonkeyImage component to use the theme-aware image
+const MonkeyImage = styled('img')(({ theme }) => ({
   cursor: 'pointer',
-  filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.3))',
-  transition: 'transform 0.2s ease',
+  width: '32px',
+  height: '32px',
+  transition: 'transform 0.2s',
   '&:hover': {
-    transform: 'scale(1.1)'
+    transform: 'scale(1.1)',
   },
-  '&:hover, &:focus, &:active': {
-    boxShadow: 'none',
-    outline: 'none'
-  }
-});
+}));
 
 interface LayoutProps {
   children?: React.ReactNode;
@@ -313,9 +313,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <MonkeyContainer>
               <MonkeyImage 
-                src="/src/assets/images/monkey.png" 
+                src={MONKEY_IMAGE_URL}
                 alt="Set Display Name" 
                 onClick={handleMonkeyClick} 
+                className="monkey-icon"
               />
             </MonkeyContainer>
             

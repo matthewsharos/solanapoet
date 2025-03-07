@@ -310,8 +310,8 @@
 }
 
 /* Switch monkey icon in dark mode */
-[data-theme="dark"] .css-16js2hq[src*="/monkey.png"] {
-  content: url("/src/assets/images/dark_monkey.png") !important;
+[data-theme="dark"] .monkey-icon {
+  content: url("/images/dark_monkey.png") !important;
 }
 
 [data-theme="dark"] .MuiDialog-paper .MuiTypography-root a[href*="explorer.solana.com"] {
