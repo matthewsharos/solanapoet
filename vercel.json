@@ -52,7 +52,7 @@
   },
   "rewrites": [
     { "source": "/api/nft/helius/collection", "destination": "/api/nft/helius/collection.js" },
-    { "source": "/api/nft/helius/:mintAddress", "destination": "/api/nft/helius/[mintAddress].js" },
+    { "source": "/api/nft/helius/:mint", "destination": "/api/nft/helius/[mint].js" },
     { "source": "/api/config", "destination": "/api/config.js" },
     { "source": "/api/debug", "destination": "/api/debug.js" },
     { "source": "/api/diagnosis", "destination": "/api/diagnosis.js" },
