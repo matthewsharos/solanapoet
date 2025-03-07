@@ -23,6 +23,18 @@
       "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1"
     },
     {
+      "src": "/api/config",
+      "dest": "/api/config.js"
+    },
+    {
+      "src": "/api/debug",
+      "dest": "/api/debug.js"
+    },
+    {
+      "src": "/api/sheets/([^/]+)",
+      "dest": "/api/sheets.js?sheet=$1"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/nft-helius.js"
     },

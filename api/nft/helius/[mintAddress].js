@@ -3,86 +3,22 @@ const axios = require('axios');
 // Helper function to add delay between requests
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Helper function to fetch NFT data from Helius with retries
-const fetchHeliusData = async (mintAddress, retries = 3) => {
-  try {
-    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
-    if (!heliusApiKey) {
-      throw new Error('Helius API key not configured');
-    }
-
-    console.log(`[serverless] Using Helius API key (prefix: ${heliusApiKey.substring(0, 4)}...)`);
-
-    // Create an axios instance with timeout
-    const heliusClient = axios.create({
-      timeout: 10000 // 10 second timeout
-    });
-
-    // First try the RPC API
-    console.log(`[serverless] Attempting RPC API for NFT: ${mintAddress}`);
-    try {
-      const rpcResponse = await heliusClient.post(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        {
-          jsonrpc: "2.0",
-          id: "helius-fetch",
-          method: "getAsset",
-          params: {
-            id: mintAddress
-          }
-        }
-      );
-      
-      if (rpcResponse.data.result) {
-        console.log(`[serverless] RPC API success for ${mintAddress}`);
-        return rpcResponse.data.result;
-      }
-    } catch (error) {
-      console.error(`[serverless] RPC API error: ${error.message}`);
-    }
-
-    // If RPC API fails, try the metadata API
-    console.log(`[serverless] Attempting metadata API for NFT: ${mintAddress}`);
-    try {
-      const metadataResponse = await heliusClient.post(
-        `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
-        {
-          mintAccounts: [mintAddress]
-        }
-      );
-      
-      if (metadataResponse.data.data && metadataResponse.data.data[0]) {
-        console.log(`[serverless] Metadata API success for ${mintAddress}`);
-        return metadataResponse.data.data[0];
-      } else {
-        console.log(`[serverless] Metadata API returned no data for ${mintAddress}`);
-        throw new Error('No metadata found from metadata API');
-      }
-    } catch (error) {
-      console.error(`[serverless] Metadata API error: ${error.message}`);
-      throw error;
-    }
-  } catch (error) {
-    console.error(`[serverless] Overall error for ${mintAddress}: ${error.message}`);
-    
-    if (retries > 0) {
-      const delayTime = Math.pow(2, 3 - retries) * 1000; // Exponential backoff
-      console.log(`[serverless] Retrying in ${delayTime}ms (${retries} retries left)`);
-      await delay(delayTime);
-      return fetchHeliusData(mintAddress, retries - 1);
-    }
-    
-    throw error;
-  }
-};
-
 // Serverless function handler
 module.exports = async (req, res) => {
+  // Basic CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', true);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+
+  // Handle OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   const { mintAddress } = req.query;
   
   console.log(`[serverless] NFT Helius endpoint called for: ${mintAddress}`);
-  console.log(`[serverless] Request method: ${req.method}`);
-  console.log(`[serverless] Request URL: ${req.url}`);
   
   if (req.method !== 'GET') {
     return res.status(405).json({ 
@@ -101,12 +37,8 @@ module.exports = async (req, res) => {
   }
   
   try {
-    // Debug environment variables
+    // Get the Helius API key
     const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
-    console.log(`[serverless] Helius API key available: ${!!heliusApiKey}`);
-    if (heliusApiKey) {
-      console.log(`[serverless] API key prefix: ${heliusApiKey.substring(0, 4)}... (length: ${heliusApiKey.length})`);
-    }
     
     if (!heliusApiKey) {
       console.error('[serverless] ERROR: Helius API key not configured');
@@ -117,59 +49,103 @@ module.exports = async (req, res) => {
       });
     }
     
-    // Fetch data from Helius
-    console.log('[serverless] Fetching data from Helius');
-    const nftData = await fetchHeliusData(mintAddress);
-    
-    if (!nftData) {
-      console.error('[serverless] No data returned for NFT:', mintAddress);
-      return res.status(404).json({ 
-        success: false, 
-        message: 'NFT not found',
-        error: 'NFT_NOT_FOUND'
-      });
-    }
-    
-    // Process and return the NFT data
-    const processedData = {
-      mint: mintAddress,
-      name: nftData.content?.metadata?.name || nftData.name || 'Unknown NFT',
-      description: nftData.content?.metadata?.description || nftData.description || '',
-      image: nftData.content?.files?.[0]?.uri || nftData.content?.links?.image || nftData.image || '',
-      attributes: nftData.content?.metadata?.attributes || nftData.attributes || [],
-      owner: typeof nftData.owner === 'string' 
-        ? { publicKey: nftData.owner }
-        : {
-            publicKey: nftData.owner?.publicKey || nftData.ownership?.owner || '',
-            delegate: nftData.owner?.delegate || null,
-            ownershipModel: nftData.owner?.ownershipModel || 'single',
-            frozen: nftData.owner?.frozen || false,
-            delegated: nftData.owner?.delegated || false,
-          },
-      collection: (nftData.grouping && nftData.grouping.find(g => g.group_key === 'collection'))
-        ? {
-            address: nftData.grouping.find(g => g.group_key === 'collection').group_value,
-            name: nftData.content?.metadata?.collection?.name || ''
-          }
-        : null,
-      creators: nftData.creators || [],
-      royalty: nftData.royalty || null,
-      tokenStandard: nftData.tokenStandard || null,
-    };
-    
-    console.log(`[serverless] Successfully processed NFT data for ${mintAddress}`);
-    
-    return res.status(200).json({
-      success: true,
-      nft: processedData
+    // Create an axios instance with timeout
+    const heliusClient = axios.create({
+      timeout: 10000 // 10 second timeout
     });
+    
+    // Make request to Helius RPC API
+    try {
+      const rpcResponse = await heliusClient.post(
+        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+        {
+          jsonrpc: "2.0",
+          id: "helius-fetch",
+          method: "getAsset",
+          params: {
+            id: mintAddress
+          }
+        }
+      );
+      
+      const nftData = rpcResponse.data.result;
+      
+      if (!nftData) {
+        return res.status(404).json({
+          success: false,
+          message: 'NFT not found',
+          error: 'NFT_NOT_FOUND'
+        });
+      }
+      
+      // Simplify the response to avoid complex property access errors
+      const processedData = {
+        mint: mintAddress,
+        name: nftData.content?.metadata?.name || nftData.name || 'Unknown NFT',
+        description: nftData.content?.metadata?.description || nftData.description || '',
+        image: nftData.content?.files?.[0]?.uri || nftData.content?.links?.image || nftData.image || '',
+        owner: typeof nftData.owner === 'string' 
+          ? { publicKey: nftData.owner }
+          : { publicKey: nftData.owner?.publicKey || nftData.ownership?.owner || '' }
+      };
+      
+      return res.status(200).json({
+        success: true,
+        nft: processedData
+      });
+      
+    } catch (error) {
+      console.error(`[serverless] RPC API error: ${error.message}`);
+      
+      // Fallback to metadata API
+      try {
+        const metadataResponse = await heliusClient.post(
+          `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
+          {
+            mintAccounts: [mintAddress]
+          }
+        );
+        
+        const nftData = metadataResponse.data.data?.[0];
+        
+        if (!nftData) {
+          return res.status(404).json({
+            success: false,
+            message: 'NFT not found in metadata API',
+            error: 'NFT_NOT_FOUND_METADATA'
+          });
+        }
+        
+        // Simplify the response
+        const processedData = {
+          mint: mintAddress,
+          name: nftData.name || 'Unknown NFT',
+          description: nftData.description || '',
+          image: nftData.image || '',
+          owner: { publicKey: nftData.owner || '' }
+        };
+        
+        return res.status(200).json({
+          success: true,
+          nft: processedData
+        });
+        
+      } catch (metadataError) {
+        console.error(`[serverless] Metadata API error: ${metadataError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Error fetching NFT data from both APIs',
+          error: metadataError.message
+        });
+      }
+    }
   } catch (error) {
-    console.error(`[serverless] Error processing NFT ${mintAddress}:`, error.message);
+    console.error(`[serverless] Overall error: ${error.message}`);
     
     return res.status(500).json({
       success: false,
-      message: 'Error fetching NFT data',
-      error: error.message || 'UNKNOWN_ERROR'
+      message: 'Server error processing request',
+      error: error.message
     });
   }
 }; 
