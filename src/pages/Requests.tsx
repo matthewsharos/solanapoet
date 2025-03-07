@@ -37,60 +37,79 @@ const uploadFileToDrive = async (file: File) => {
     // Create a File object with the new name
     const renamedFile = new File([file], fileName, { type: file.type });
     
-    // Use binary upload instead of multipart/form-data
-    console.log('Using binary upload endpoint');
-    const fileBuffer = await renamedFile.arrayBuffer();
-    
-    // Send the binary data directly
-    console.log('Sending POST request to /api/upload-binary...');
-    const response = await axios.post('/api/upload-binary', fileBuffer, {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-File-Name': renamedFile.name,
-        'X-File-Type': renamedFile.type
-      },
-      timeout: 60000, // 60 seconds timeout
-    });
-
-    console.log('Google Drive upload response received:', response.status);
-    
-    if (!response.data) {
-      console.error('Upload failed: Empty response data');
-      throw new Error('Empty response data');
+    try {
+      // First try the binary upload method
+      console.log('Trying binary upload endpoint...');
+      const fileBuffer = await renamedFile.arrayBuffer();
+      
+      // Send the binary data directly
+      console.log('Sending POST request to /api/upload-binary...');
+      const response = await axios.post('/api/upload-binary', fileBuffer, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-File-Name': renamedFile.name,
+          'X-File-Type': renamedFile.type
+        },
+        timeout: 60000, // 60 seconds timeout
+      });
+      
+      console.log('Google Drive upload response received:', response.status);
+      
+      if (!response.data) {
+        throw new Error('Empty response data');
+      }
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to upload file');
+      }
+      
+      if (!response.data.fileUrl) {
+        throw new Error('No file URL returned from server');
+      }
+      
+      console.log('File successfully uploaded, URL:', response.data.fileUrl);
+      return response.data.fileUrl;
+    } catch (binaryUploadError: any) {
+      // If binary upload fails, fall back to form data upload
+      console.log('Binary upload failed, falling back to form data upload:', binaryUploadError.message);
+      
+      // Create form data
+      const formData = new FormData();
+      formData.append('file', renamedFile);
+      
+      console.log('Sending POST request to /api/drive/upload...');
+      const response = await axios.post('/api/drive/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 60000, // 60 seconds timeout
+      });
+      
+      console.log('Google Drive form upload response received:', response.status);
+      
+      if (!response.data) {
+        throw new Error('Empty response data from form upload');
+      }
+      
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Failed to upload file via form');
+      }
+      
+      if (!response.data.fileUrl) {
+        throw new Error('No file URL returned from server in form upload');
+      }
+      
+      console.log('File successfully uploaded via form, URL:', response.data.fileUrl);
+      return response.data.fileUrl;
     }
-    
-    if (!response.data.success) {
-      console.error('Upload failed:', response.data.message || 'Unknown error');
-      throw new Error(response.data.message || 'Failed to upload file');
-    }
-
-    if (!response.data.fileUrl) {
-      console.error('Upload succeeded but no file URL returned');
-      throw new Error('No file URL returned from server');
-    }
-
-    console.log('File successfully uploaded, URL:', response.data.fileUrl);
-    return response.data.fileUrl;
   } catch (error: any) {
     console.error('Error in uploadFileToDrive:', error);
-    
-    // More descriptive error messages
-    if (error.response) {
-      // Server responded with an error status code
-      console.error('Server response error:', {
-        status: error.response.status,
-        data: error.response.data
-      });
-      const serverError = error.response.data?.message || `Server error (${error.response.status})`;
-      throw new Error(`Upload failed: ${serverError}`);
-    } else if (error.request) {
-      // Request was made but no response received
-      console.error('No response received from server');
-      throw new Error('Upload timed out or server did not respond');
-    } else {
-      // Something else happened while setting up the request
-      throw error;
-    }
+    const responseData = error.response?.data || {};
+    console.log('Server response error:', {
+      status: error.response?.status,
+      data: responseData
+    });
+    throw error;
   }
 };
 
