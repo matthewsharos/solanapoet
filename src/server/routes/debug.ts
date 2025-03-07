@@ -1,7 +1,9 @@
-// Debug API route to check environment variables and server status
-import { NextApiRequest, NextApiResponse } from 'next';
+import express, { Request, Response } from 'express';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+const router = express.Router();
+
+// Debug API route to check environment variables and server status
+router.get('/', async (req: Request, res: Response) => {
   try {
     console.log('Debug API route called');
 
@@ -33,4 +35,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
-} 
+});
+
+export default router; 

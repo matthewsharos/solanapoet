@@ -21,6 +21,7 @@ import driveRoutes from './routes/drive.js';
 import listingRoutes from './routes/listing-routes.js';
 // @ts-ignore
 import transactionRoutes from './routes/transaction-routes.js';
+import debugRoutes from './routes/debug';
 
 // Get current directory name
 const __filename = fileURLToPath(import.meta.url);
@@ -194,6 +195,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/display-names', displayNamesRouter);
 app.use('/api/sheets', sheetsRoutes);
 app.use('/api/drive', driveRoutes);
+app.use('/api/debug', debugRoutes);
 console.log('API routes registered');
 
 // Pass environment variables to the client
