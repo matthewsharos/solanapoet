@@ -39,20 +39,24 @@ const uploadFileToDrive = async (file: File) => {
     
     // Create FormData object
     const formData = new FormData();
-    formData.append('file', renamedFile);
+    formData.append('file', renamedFile); // Key must be 'file' to match server expectation
     
-    console.log('Sending form data upload to /api/drive/upload...');
+    console.log('Preparing upload to Google Drive...');
     
     // Use the full URL for production or the relative path for development
     const uploadUrl = process.env.NODE_ENV === 'production' 
       ? 'https://solanapoet.vercel.app/api/drive/upload'
       : '/api/drive/upload';
     
-    // Send the request using fetch for more native FormData handling
+    console.log('Sending request to:', uploadUrl);
+    
+    // Use native fetch for better FormData handling
     const response = await fetch(uploadUrl, {
       method: 'POST',
       body: formData,
     });
+    
+    console.log('Response status:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -61,7 +65,7 @@ const uploadFileToDrive = async (file: File) => {
     }
     
     const data = await response.json();
-    console.log('Upload response:', data);
+    console.log('Upload response data:', data);
     
     if (!data.success) {
       throw new Error(data.message || 'Upload failed');
