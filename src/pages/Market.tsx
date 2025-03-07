@@ -233,31 +233,37 @@ const Market: React.FC = () => {
 
   const fetchAllNFTs = async () => {
     try {
+      console.log('=== Starting NFT Loading Process ===');
       setLoading(true);
       setError(null);
       setLoadedNFTs([]);
       setIsLoadingMore(false);
 
-      console.log('Starting fetchAllNFTs...');
-
       // Fetch display names first
+      console.log('1. Fetching display names...');
       await fetchDisplayNames();
 
       // Fetch collections from Google Sheets with exponential backoff
       let retryCount = 0;
       let collectionsData = null;
       
-      console.log('Fetching collections from API...');
+      console.log('2. Fetching collections from API...');
       while (retryCount < 3) {
         try {
           collectionsData = await fetchCollectionsFromApi();
-          console.log('Collections data received:', collectionsData);
+          console.log('Collections data received:', {
+            success: !!collectionsData,
+            length: Array.isArray(collectionsData) ? collectionsData.length : 0,
+            data: collectionsData
+          });
           break;
         } catch (err) {
           console.error('Error fetching collections, attempt', retryCount + 1, ':', err);
           retryCount++;
           if (retryCount < 3) {
-            await delay(Math.min(2000 * Math.pow(2, retryCount), 8000));
+            const delayTime = Math.min(2000 * Math.pow(2, retryCount), 8000);
+            console.log(`Waiting ${delayTime}ms before retry...`);
+            await delay(delayTime);
           }
         }
       }
@@ -270,30 +276,45 @@ const Market: React.FC = () => {
       }
 
       // Filter out invalid collections and transform array data
+      console.log('3. Processing collections data...');
       const validCollections = (collectionsData as unknown as string[][])
         .slice(1)
         .map(validateCollection)
         .filter((collection): collection is Collection => collection !== null);
       
-      console.log('Valid collections:', validCollections);
+      console.log('Valid collections processed:', {
+        total: validCollections.length,
+        collections: validCollections.map(c => ({
+          name: c.name,
+          address: c.address,
+          ultimates: c.ultimates
+        }))
+      });
+      
       setCollections(validCollections);
       setIsLoadingMore(true);
       
       // Get all ultimate NFTs with retry logic
+      console.log('4. Fetching ultimate NFTs...');
       retryCount = 0;
       let ultimates = null;
       
-      console.log('Fetching ultimate NFTs...');
       while (retryCount < 3) {
         try {
           ultimates = (await getUltimateNFTs() as unknown) as string[][];
-          console.log('Ultimates data received:', ultimates);
+          console.log('Ultimates data received:', {
+            success: !!ultimates,
+            length: Array.isArray(ultimates) ? ultimates.length : 0,
+            sample: Array.isArray(ultimates) && ultimates.length > 0 ? ultimates[0] : null
+          });
           break;
         } catch (err) {
           console.error('Error fetching ultimates, attempt', retryCount + 1, ':', err);
           retryCount++;
           if (retryCount < 3) {
-            await delay(Math.pow(2, retryCount) * 1000);
+            const delayTime = Math.pow(2, retryCount) * 1000;
+            console.log(`Waiting ${delayTime}ms before retry...`);
+            await delay(delayTime);
           }
         }
       }
