@@ -43,7 +43,7 @@ export default async function handler(req, res) {
       `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
       {
         jsonrpc: "2.0",
-        id: "collection-assets",
+        id: "my-id",
         method: "getAssetsByGroup",
         params: {
           groupKey: "collection",
