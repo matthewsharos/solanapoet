@@ -40,6 +40,22 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
   );
 };
 
+// Types for NFT data from Google Sheets
+interface GoogleSheetsNFTData {
+  "NFT Address": string;
+  "Name": string;
+  "Owner": string;
+  "collection_id": string;
+}
+
+// Helper function to normalize NFT data
+const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
+  nft_address: nft["NFT Address"],
+  name: nft["Name"],
+  owner: nft["Owner"],
+  collection_id: nft["collection_id"]
+});
+
 // Helper function to fetch NFT data with retries and rate limiting
 const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | null = null, collections: Collection[], retries = 3): Promise<NFT | null> => {
   try {
@@ -71,7 +87,7 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     return {
       ...nftData,
       mint: nftAddress,
-      name: nftData.name || (ultimate?.name || 'Unknown NFT'),
+      name: nftData.name || (ultimate?.Name || 'Unknown NFT'),
       description: nftData.description || '',
       image: imageUrl,
       attributes: nftData.attributes || [],
@@ -101,13 +117,6 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     return null;
   }
 };
-
-interface UltimateNFTData {
-  nft_address: string;
-  name: string;
-  owner: string;
-  collection_id: string;
-}
 
 interface DisplayNameMapping {
   walletAddress: string;
@@ -282,18 +291,18 @@ const Market: React.FC = () => {
 
       // Filter out invalid NFT addresses
       const validNftAddresses = ultimateNFTs
-        .filter(nft => {
+        .filter((nft): nft is UltimateNFT => {
           const isValid = nft && 
-            nft.nft_address && 
-            typeof nft.nft_address === 'string' && 
-            nft.nft_address.trim().length > 0;
+            nft["NFT Address"] && 
+            typeof nft["NFT Address"] === 'string' && 
+            nft["NFT Address"].trim().length > 0;
           
           if (!isValid) {
             console.warn('Invalid NFT data:', nft);
           }
           return isValid;
         })
-        .map(nft => nft.nft_address.trim());
+        .map(nft => nft["NFT Address"].trim());
 
       console.log(`Found ${validNftAddresses.length} valid NFT addresses:`, validNftAddresses);
 
@@ -310,9 +319,9 @@ const Market: React.FC = () => {
         console.log(`Processing batch ${batchIndex + 1}/${batches.length}:`, batch);
         
         const batchPromises = batch.map(async (nftAddress) => {
-          const ultimate = ultimateNFTs.find(u => u.nft_address === nftAddress) || null;
+          const ultimate = ultimateNFTs.find(u => u["NFT Address"] === nftAddress);
           console.log(`Fetching NFT ${nftAddress} with ultimate data:`, ultimate);
-          return fetchNFTWithRetries(nftAddress, ultimate, validCollections);
+          return fetchNFTWithRetries(nftAddress, ultimate || null, validCollections);
         });
 
         const batchResults = await Promise.all(batchPromises);

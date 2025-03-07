@@ -1,5 +1,6 @@
 import { GOOGLE_SHEETS_CONFIG, get, sheets, createSheetsClient, SheetResponse } from './googleSheetsConfig';
 import { API_BASE_URL } from './config';
+import axios from 'axios';
 
 /**
  * Type definition for a collection
@@ -16,10 +17,10 @@ export interface Collection {
 
 // Add new type for ultimate NFT entries
 export interface UltimateNFT {
-  nft_address: string;
-  name: string;
-  owner: string;
-  collection_id: string;
+  "NFT Address": string;
+  "Name": string;
+  "Owner": string;
+  "collection_id": string;
 }
 
 // Timeout for fetch requests in milliseconds
@@ -455,41 +456,73 @@ export const updateCollectionUltimates = async (address: string, ultimates: stri
  */
 export const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
   try {
-    // Check memory cache first
-    if (cache.ultimates && isCacheValid(cache.ultimates)) {
-      return cache.ultimates.data;
+    // Try to get from cache first
+    const cachedUltimates = localStorage.getItem('ultimates_cache');
+    if (cachedUltimates) {
+      const { data, timestamp } = JSON.parse(cachedUltimates);
+      // Check if cache is less than 5 minutes old
+      if (Date.now() - timestamp < 5 * 60 * 1000) {
+        console.log('Using cached ultimates data');
+        return data;
+      }
     }
 
-    // Check local storage cache next
-    const localCache = getFromLocalStorage<UltimateNFT>(LS_KEYS.ULTIMATES);
-    if (localCache && Date.now() - localCache.timestamp < CACHE_DURATION) {
-      // Update memory cache
-      cache.ultimates = {
-        data: localCache.data,
-        timestamp: localCache.timestamp
-      };
-      return localCache.data;
-    }
-
-    // Fetch from Google Sheets
-    const ultimates = await fetchFromGoogleSheets<UltimateNFT>(GOOGLE_SHEETS_CONFIG.sheets.ultimates);
+    // Fetch fresh data from API
+    console.log('Fetching ultimates from API...');
+    const response = await axios.get(`${API_BASE_URL}/api/sheets/ultimates`);
     
-    // Update both caches
-    const newCache = {
-      data: ultimates,
-      timestamp: Date.now()
-    };
-    cache.ultimates = newCache;
-    saveToLocalStorage(LS_KEYS.ULTIMATES, ultimates);
+    if (!response.data.success) {
+      throw new Error('Failed to fetch ultimates data');
+    }
 
-    return ultimates;
+    console.log('Raw ultimates data:', response.data.data);
+
+    // Transform and validate the data
+    const validUltimates = response.data.data
+      .filter((item: any) => {
+        const isValid = item && 
+          typeof item === 'object' &&
+          item.nft_address && 
+          typeof item.nft_address === 'string' &&
+          item.nft_address.trim().length > 0 &&
+          item.collection_id && 
+          typeof item.collection_id === 'string' &&
+          item.collection_id.trim().length > 0;
+
+        if (!isValid) {
+          console.warn('Invalid ultimate NFT data:', item);
+        }
+        return isValid;
+      })
+      .map((item: any) => ({
+        nft_address: item.nft_address.trim(),
+        name: item.name || 'Unnamed Ultimate',
+        owner: item.owner || '',
+        collection_id: item.collection_id.trim()
+      }));
+
+    console.log('Processed ultimates:', {
+      total: validUltimates.length,
+      items: validUltimates
+    });
+
+    // Cache the validated data
+    localStorage.setItem('ultimates_cache', JSON.stringify({
+      data: validUltimates,
+      timestamp: Date.now()
+    }));
+
+    console.log(`Processed ${validUltimates.length} valid ultimate NFTs`);
+    return validUltimates;
   } catch (error) {
     console.error('Error fetching ultimate NFTs:', error);
     
-    // Try to return local storage cache even if expired
-    const localCache = getFromLocalStorage<UltimateNFT>(LS_KEYS.ULTIMATES);
-    if (localCache) {
-      return localCache.data;
+    // Try to use cached data even if it's old
+    const cachedUltimates = localStorage.getItem('ultimates_cache');
+    if (cachedUltimates) {
+      const { data } = JSON.parse(cachedUltimates);
+      console.log('Using expired cached ultimates data due to fetch error');
+      return data;
     }
     
     return [];
