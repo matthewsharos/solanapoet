@@ -209,7 +209,7 @@ async function getAllCollections(req, res) {
         console.log('Processed collection:', collection);
         return collection;
       }).filter(collection => {
-        const isValid = collection.address && collection.name;
+        const isValid = collection.address && collection.name && !collection.ultimates;
         if (!isValid) {
           console.log('Filtered out invalid collection:', collection);
         }

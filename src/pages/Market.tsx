@@ -404,6 +404,8 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
 const validateCollection = (collection: any): Collection | null => {
   if (!collection || typeof collection !== 'object') return null;
   if (!collection.address || !collection.name) return null;
+  // Filter out collections with ultimates=true
+  if (collection.ultimates === true) return null;
   
   return {
     address: collection.address,
@@ -571,12 +573,13 @@ const Market: React.FC = () => {
 
       setCollections(validCollections);
 
-      // Separate collections into ultimate and regular collections
+      // With our new API filtering, there should be no ultimates collections
+      // But we'll keep this code for safety, just with updated comments
       const ultimateCollections = validCollections.filter(c => c.ultimates === true);
       const regularCollections = validCollections.filter(c => !c.ultimates);
 
       console.log('Collection breakdown:', {
-        ultimate: ultimateCollections.length,
+        ultimate: ultimateCollections.length, // Should be 0 with our new API filtering
         regular: regularCollections.length
       });
 
