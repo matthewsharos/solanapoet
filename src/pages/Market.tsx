@@ -334,7 +334,7 @@ const Market: React.FC = () => {
             });
 
             if (!response.data?.result?.items) {
-              console.warn(`Invalid response format for collection ${collection.name}`);
+              console.warn(`Invalid response format for collection ${collection.name}:`, response.data);
               break;
             }
 
@@ -378,7 +378,7 @@ const Market: React.FC = () => {
                   collectionAddress: collection.address,
                   creators: nft.creators || [],
                   royalty: nft.royalty || null,
-                  tokenStandard: nft.tokenStandard || null,
+                  tokenStandard: nft.content?.metadata?.token_standard || null,
                 };
 
                 console.log(`Processing NFT: ${processedNFT.name} (${processedNFT.mint})`);
@@ -397,7 +397,15 @@ const Market: React.FC = () => {
             }
 
           } catch (error) {
-            console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
+            if (error instanceof Error) {
+              console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
+              const axiosError = error as { response?: { status: number; data: any } };
+              if (axiosError.response?.status === 500) {
+                console.log('Server error response:', axiosError.response.data);
+              }
+            } else {
+              console.error(`Unknown error fetching NFTs for collection ${collection.name} page ${page}`);
+            }
             break;
           }
         }
