@@ -169,9 +169,8 @@ const PageContainer = styled(Box)(({ theme }) => ({
   width: '100%',
   margin: '0',
   padding: '0',
-  backgroundImage: 'url("/src/assets/images/vintage-paper.jpg")',
-  backgroundSize: 'cover',
-  backgroundAttachment: 'fixed',
+  backgroundImage: 'none',
+  backgroundColor: '#f5f5dc',
 }));
 
 const ContentContainer = styled(Container)(({ theme }) => ({

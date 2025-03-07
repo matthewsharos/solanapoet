@@ -327,4 +327,8 @@
 [data-theme="dark"] .MuiMenu-paper {
   width: 400px !important;
   max-width: 400px !important;
+}
+
+[data-theme="dark"] body {
+  background-color: #1a1a1a !important;
 } 
