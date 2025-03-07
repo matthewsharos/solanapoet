@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import axios from 'axios';
 
 const router = express.Router();
 
@@ -28,10 +29,47 @@ router.get('/', async (req: Request, res: Response) => {
       VITE_SOLANA_RPC_URL_exists: !!process.env.VITE_SOLANA_RPC_URL
     };
 
+    // Test Helius API if key exists
+    let heliusTest = null;
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    
+    if (heliusApiKey) {
+      try {
+        const testMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // USDC mint
+        const response = await axios.post(
+          `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+          {
+            jsonrpc: '2.0',
+            id: 'debug-test',
+            method: 'getAsset',
+            params: {
+              id: testMint
+            }
+          },
+          { timeout: 5000 }
+        );
+        
+        heliusTest = {
+          success: true,
+          responseStatus: response.status,
+          hasData: !!response.data,
+          hasResult: !!response.data?.result
+        };
+      } catch (heliusError: any) {
+        heliusTest = {
+          success: false,
+          error: heliusError.message,
+          responseStatus: heliusError.response?.status,
+          responseData: heliusError.response?.data
+        };
+      }
+    }
+
     return res.status(200).json({
       status: 'ok',
       time: new Date().toISOString(),
-      environment: envInfo
+      environment: envInfo,
+      heliusTest
     });
   } catch (error: any) {
     console.error('Debug API route error:', error);
