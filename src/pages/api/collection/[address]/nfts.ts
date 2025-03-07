@@ -18,21 +18,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
+    // First, get the collection metadata to check if it's an ultimate collection
+    const collectionsResponse = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/api/sheets/collections`);
+    const collections = collectionsResponse.data.data;
+    
+    const collection = collections.find((c: any) => c[0] === address);
+    if (!collection) {
+      return res.status(404).json({ success: false, message: 'Collection not found' });
+    }
+
+    // Check if this is an ultimates collection
+    const isUltimatesCollection = collection[6]?.toLowerCase() === 'true';
+    if (isUltimatesCollection) {
+      return res.status(200).json({ success: true, nfts: [] });
+    }
+
+    // Use the getAssetsByGroup endpoint for collection NFTs
     const response = await axios.post(
-      `https://api.helius.xyz/v0/token-accounts?api-key=${heliusApiKey}`,
+      `https://api.helius.xyz/v0/addresses/${address}/nfts?api-key=${heliusApiKey}`,
       {
-        ownerAddress: address,
-        displayOptions: {
+        options: {
           showCollectionMetadata: true,
-          showNativeBalance: false,
+          showFungible: false,
         }
       }
     );
 
-    const nfts = response.data.filter((token: any) => 
-      token.tokenMetadata && 
-      !token.tokenMetadata.metadata.name.includes('Metadata')
-    );
+    const nfts = response.data.filter((nft: any) => 
+      nft && 
+      nft.onChainMetadata?.metadata &&
+      !nft.onChainMetadata.metadata.name.includes('Metadata')
+    ).map((nft: any) => ({
+      mint: nft.mint,
+      name: nft.onChainMetadata?.metadata?.name || 'Unknown',
+      symbol: nft.onChainMetadata?.metadata?.symbol,
+      description: nft.onChainMetadata?.metadata?.description,
+      image: nft.onChainMetadata?.metadata?.image || '',
+      attributes: nft.onChainMetadata?.metadata?.attributes,
+      owner: nft.ownership?.owner,
+      collection: {
+        address: address,
+        name: collection[1] || 'Unknown Collection'
+      }
+    }));
 
     return res.status(200).json({ success: true, nfts });
   } catch (error: any) {

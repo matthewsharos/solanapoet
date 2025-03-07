@@ -18,9 +18,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    const response = await axios.post(
-      `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
-      { mintAccounts: [mint] }
+    // Use the getAsset endpoint for more complete metadata
+    const response = await axios.get(
+      `https://api.helius.xyz/v1/mintlist?api-key=${heliusApiKey}`,
+      { 
+        params: { 
+          mints: [mint]
+        }
+      }
     );
 
     const nftData = response.data[0];
@@ -29,7 +34,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(404).json({ success: false, message: 'NFT not found' });
     }
 
-    return res.status(200).json({ success: true, nft: nftData });
+    // Transform the data to match expected format
+    const transformedData = {
+      mint: nftData.mint,
+      name: nftData.name,
+      symbol: nftData.symbol,
+      description: nftData.description,
+      image: nftData.image,
+      attributes: nftData.attributes,
+      owner: nftData.ownership?.owner,
+      collection: nftData.collection,
+      tokenMetadata: nftData
+    };
+
+    return res.status(200).json({ success: true, nft: transformedData });
   } catch (error: any) {
     console.error('Error fetching NFT data:', error);
     return res.status(500).json({ 
