@@ -34,28 +34,28 @@ const uploadFileToDrive = async (file: File) => {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
     }
     
-    // Create FormData object
-    const formData = new FormData();
-    
-    // Append the file with the field name 'file'
-    formData.append('file', file, fileName);
+    // Read file as ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
     
     console.log('Preparing upload to Google Drive...');
     
-    // Use the full URL for production or the relative path for development
+    // Use the binary upload endpoint
     const uploadUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://solanapoet.vercel.app/api/drive/upload'
-      : '/api/drive/upload';
+      ? 'https://solanapoet.vercel.app/api/upload-binary'
+      : '/api/upload-binary';
     
     console.log('Sending request to:', uploadUrl);
     
-    // Use native fetch with proper headers
+    // Send binary data with appropriate headers
     const response = await fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        'Accept': 'application/json',
+        'Content-Type': file.type,
+        'X-File-Name': fileName,
+        'X-File-Type': file.type,
+        'Accept': 'application/json'
       },
-      body: formData,
+      body: arrayBuffer
     });
     
     console.log('Response status:', response.status);
