@@ -58,32 +58,51 @@ export default async function handler(req, res) {
       }
     );
     
+    // Log the raw response for debugging
+    console.log('Helius response:', JSON.stringify(heliusResponse.data, null, 2).substring(0, 500) + '...');
+    
     // Check if the response contains the expected data
-    if (!heliusResponse.data || !heliusResponse.data.result) {
-      console.error('Unexpected Helius response:', heliusResponse.data);
-      throw new Error('Unexpected response from Helius API');
+    if (!heliusResponse.data) {
+      console.error('Empty Helius response');
+      throw new Error('Empty response from Helius API');
     }
     
-    const assets = heliusResponse.data.result.items || [];
-    const total = heliusResponse.data.result.total || 0;
+    // Format the response to match what the frontend expects
+    let formattedResponse = {
+      status: 200,
+      hasData: true,
+      hasResult: false,
+      items: 0,
+      data: []
+    };
     
-    console.log(`Found ${assets.length} assets for collection ${collectionId} (total: ${total})`);
+    if (heliusResponse.data.result && Array.isArray(heliusResponse.data.result.items)) {
+      const assets = heliusResponse.data.result.items;
+      const total = heliusResponse.data.result.total || 0;
+      
+      formattedResponse.hasResult = true;
+      formattedResponse.items = assets.length;
+      formattedResponse.total = total;
+      formattedResponse.data = assets;
+      
+      console.log(`Found ${assets.length} assets for collection ${collectionId} (total: ${total})`);
+    } else if (heliusResponse.data.error) {
+      console.error('Helius API error:', heliusResponse.data.error);
+      formattedResponse.status = 500;
+      formattedResponse.error = heliusResponse.data.error;
+    } else {
+      console.log('No assets found or unexpected response format');
+    }
     
-    // Return the assets
-    return res.status(200).json({
-      success: true,
-      data: {
-        items: assets,
-        total: total,
-        page: parseInt(page),
-        limit: parseInt(limit)
-      }
-    });
+    // Return the formatted response
+    return res.status(formattedResponse.status).json(formattedResponse);
   } catch (error) {
     console.error('Collection assets endpoint error:', error);
     return res.status(500).json({ 
-      success: false, 
-      message: 'Error fetching collection assets',
+      status: 500,
+      hasData: true,
+      hasResult: false,
+      items: 0,
       error: error.message
     });
   }
