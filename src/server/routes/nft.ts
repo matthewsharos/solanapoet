@@ -729,4 +729,61 @@ router.get('/debug/image/:mintAddress', async (req: Request, res: Response) => {
   }
 });
 
+// Add test endpoint for Helius API credentials
+router.get('/test-helius', async (req: Request, res: Response) => {
+  try {
+    console.log('Testing Helius API credentials...');
+    console.log('Environment variables:', {
+      hasHeliusApiKey: !!process.env.HELIUS_API_KEY || !!process.env.VITE_HELIUS_API_KEY,
+      hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL || !!process.env.VITE_SOLANA_RPC_URL,
+      heliusApiKey: process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY ? 'Present' : 'Missing',
+      solanaRpcUrl: process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL ? 'Present' : 'Missing'
+    });
+
+    // Test mint address (using a known Solana NFT)
+    const testMintAddress = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // USDC mint address as test
+
+    // Test the Helius API
+    const response = await axios.post<HeliusResponse>(
+      `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY}`,
+      {
+        jsonrpc: "2.0",
+        id: "my-id",
+        method: "getAsset",
+        params: {
+          id: testMintAddress
+        }
+      }
+    );
+
+    console.log('Helius API test response:', {
+      status: response.status,
+      hasData: !!response.data,
+      resultExists: !!response.data.result
+    });
+
+    res.json({
+      success: true,
+      message: 'Helius API credentials are working',
+      testResponse: {
+        status: response.status,
+        hasData: !!response.data,
+        resultExists: !!response.data.result
+      }
+    });
+  } catch (error: any) {
+    console.error('Error testing Helius API:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to test Helius API credentials',
+      error: error.message,
+      response: error.response?.data,
+      config: {
+        hasHeliusApiKey: !!process.env.HELIUS_API_KEY || !!process.env.VITE_HELIUS_API_KEY,
+        hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL || !!process.env.VITE_SOLANA_RPC_URL
+      }
+    });
+  }
+});
+
 export default router; 
