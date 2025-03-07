@@ -36,14 +36,9 @@ const uploadFileToDrive = async (file: File) => {
     
     // Create FormData object
     const formData = new FormData();
-    formData.append('file', file); // Use original file, server will handle renaming
     
-    // Add metadata as a separate field
-    const metadata = {
-      name: fileName,
-      mimeType: file.type
-    };
-    formData.append('metadata', JSON.stringify(metadata));
+    // Append the file with the field name 'file'
+    formData.append('file', file, fileName);
     
     console.log('Preparing upload to Google Drive...');
     
@@ -54,9 +49,12 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Sending request to:', uploadUrl);
     
-    // Use native fetch for better FormData handling
+    // Use native fetch with proper headers
     const response = await fetch(uploadUrl, {
       method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+      },
       body: formData,
     });
     
@@ -71,8 +69,11 @@ const uploadFileToDrive = async (file: File) => {
     const data = await response.json();
     console.log('Upload response data:', data);
     
-    // Check for webViewLink or webContentLink
-    const fileUrl = data.webViewLink || data.webContentLink;
+    if (!data.success) {
+      throw new Error(data.message || 'Upload failed');
+    }
+    
+    const fileUrl = data.fileUrl;
     if (!fileUrl) {
       throw new Error('No file URL returned from server');
     }
