@@ -19,7 +19,13 @@ router.get('/', async (req: Request, res: Response) => {
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'Not set',
       NODE_ENV: process.env.NODE_ENV || 'Not set',
       VERCEL_ENV: process.env.VERCEL_ENV || 'Not set',
-      VERCEL_URL: process.env.VERCEL_URL || 'Not set'
+      VERCEL_URL: process.env.VERCEL_URL || 'Not set',
+      HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
+      VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY,
+      HELIUS_API_KEY_prefix: process.env.HELIUS_API_KEY ? process.env.HELIUS_API_KEY.substring(0, 4) : null,
+      VITE_HELIUS_API_KEY_prefix: process.env.VITE_HELIUS_API_KEY ? process.env.VITE_HELIUS_API_KEY.substring(0, 4) : null,
+      SOLANA_RPC_URL_exists: !!process.env.SOLANA_RPC_URL,
+      VITE_SOLANA_RPC_URL_exists: !!process.env.VITE_SOLANA_RPC_URL
     };
 
     return res.status(200).json({
