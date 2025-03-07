@@ -8,12 +8,17 @@ async function getGoogleSheetsClient() {
     console.log('[serverless] Initializing Google Sheets client for collections...');
     
     if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      console.error('[serverless] Missing Google API credentials:', {
+        hasClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
+        hasPrivateKey: !!process.env.GOOGLE_PRIVATE_KEY
+      });
       throw new Error('Missing Google API credentials');
     }
     
     // Ensure private key is properly formatted
     const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
     
+    console.log('[serverless] Creating Google Auth client...');
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GOOGLE_CLIENT_EMAIL,
@@ -24,9 +29,23 @@ async function getGoogleSheetsClient() {
 
     console.log('[serverless] Google Auth client initialized for collections');
     const sheets = google.sheets({ version: 'v4', auth });
+    
+    // Test the connection
+    console.log('[serverless] Testing Google Sheets connection...');
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    if (!spreadsheetId) {
+      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID not configured');
+    }
+    
+    await sheets.spreadsheets.get({
+      spreadsheetId: spreadsheetId
+    });
+    
+    console.log('[serverless] Google Sheets connection test successful');
     return sheets;
   } catch (error) {
     console.error('[serverless] Error initializing Google Sheets client:', error);
+    console.error('[serverless] Stack trace:', error.stack);
     throw error;
   }
 }
@@ -109,6 +128,7 @@ async function getAllCollections(req, res) {
   try {
     const heliusApiKey = process.env.HELIUS_API_KEY;
     if (!heliusApiKey) {
+      console.error('Helius API key not configured');
       throw new Error('Helius API key not configured');
     }
 
@@ -140,6 +160,7 @@ async function getAllCollections(req, res) {
       const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
       
       if (!spreadsheetId) {
+        console.error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
         throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
       }
       
@@ -147,12 +168,14 @@ async function getAllCollections(req, res) {
       recordApiCall();
       
       // Get data from the collections sheet
+      console.log('Fetching data from collections sheet...');
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: 'collections!A:I', // Adjust range as needed for your sheet
       });
       
       const rawData = response.data.values || [];
+      console.log(`Received ${rawData.length} rows from Google Sheets`);
       
       // Skip header row
       const rows = rawData.slice(1);
@@ -173,13 +196,14 @@ async function getAllCollections(req, res) {
         collection.name
       );
       
-      console.log(`Found ${collections.length} collections in Google Sheets`);
+      console.log(`Found ${collections.length} valid collections in Google Sheets`);
       
       // Cache the collections
       setCachedData('collections', collections);
       
     } catch (sheetError) {
       console.error('Error fetching collections from Google Sheets:', sheetError);
+      console.error('Stack trace:', sheetError.stack);
       // Continue execution to try fetching from Helius as fallback
       return await getHeliusCollections(req, res, heliusApiKey);
     }
@@ -199,10 +223,12 @@ async function getAllCollections(req, res) {
 
   } catch (error) {
     console.error('Collections endpoint error:', error);
+    console.error('Stack trace:', error.stack);
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching collections',
-      error: error.message
+      error: error.message,
+      stack: error.stack
     });
   }
 }
