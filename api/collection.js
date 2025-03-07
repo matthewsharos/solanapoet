@@ -15,7 +15,7 @@ async function getGoogleSheetsClient() {
       throw new Error('Missing Google API credentials');
     }
     
-    // Ensure private key is properly formatted
+    // Ensure private key is properly formatted - use the exact same approach as ultimates.js
     const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
     
     console.log('[serverless] Creating Google Auth client...');
@@ -29,19 +29,6 @@ async function getGoogleSheetsClient() {
 
     console.log('[serverless] Google Auth client initialized for collections');
     const sheets = google.sheets({ version: 'v4', auth });
-    
-    // Test the connection
-    console.log('[serverless] Testing Google Sheets connection...');
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    if (!spreadsheetId) {
-      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID not configured');
-    }
-    
-    await sheets.spreadsheets.get({
-      spreadsheetId: spreadsheetId
-    });
-    
-    console.log('[serverless] Google Sheets connection test successful');
     return sheets;
   } catch (error) {
     console.error('[serverless] Error initializing Google Sheets client:', error);
@@ -53,6 +40,9 @@ async function getGoogleSheetsClient() {
 // Serverless function for fetching collections data
 export default async function handler(req, res) {
   console.log('[serverless] Collections endpoint called with path:', req.url);
+  console.log('[serverless] Request method:', req.method);
+  console.log('[serverless] Request headers:', req.headers);
+  console.log('[serverless] Request query:', req.query);
   
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -135,34 +125,7 @@ async function getAllCollections(req, res) {
       vercelEnv: process.env.VERCEL_ENV || 'unknown'
     });
 
-    const heliusApiKey = process.env.HELIUS_API_KEY;
-    if (!heliusApiKey) {
-      console.error('Helius API key not configured');
-      throw new Error('Helius API key not configured');
-    }
-
-    // Check cache first
-    const cachedCollections = getCachedData('collections');
-    if (cachedCollections) {
-      console.log('Returning collections from cache, count:', cachedCollections.length);
-      return res.status(200).json({
-        success: true,
-        length: cachedCollections.length,
-        sample: cachedCollections[0] || null,
-        collections: cachedCollections
-      });
-    }
-
-    // Check rate limits before making API call
-    if (isRateLimited()) {
-      console.log('Rate limit reached, using Helius fallback...');
-      return await getHeliusCollections(req, res, heliusApiKey);
-    }
-
-    // Try to get collection data from Google Sheets first
-    console.log('Attempting to fetch collections directly from Google Sheets...');
-    let collections = [];
-    
+    // Use the simpler, more direct approach like in ultimates.js
     try {
       // Initialize Google Sheets client
       const sheets = await getGoogleSheetsClient();
@@ -173,60 +136,36 @@ async function getAllCollections(req, res) {
         throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
       }
       
-      // Record this API call
-      recordApiCall();
-      
       // Get data from the collections sheet
       console.log('Fetching data from collections sheet...');
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'collections!A:G', // Update range to match actual columns
+        range: 'collections!A:G',
       });
       
-      const rawData = response.data.values || [];
-      console.log(`Received ${rawData.length} rows from Google Sheets`);
+      const rows = response.data.values || [];
+      console.log(`Received ${rows.length} rows from Google Sheets`);
       
-      // Log the header row to verify column order
-      if (rawData.length > 0) {
-        console.log('Header row:', rawData[0]);
-      } else {
-        console.error('No data received from Google Sheets, not even headers!');
+      if (rows.length === 0) {
+        console.error('No data received from Google Sheets');
         throw new Error('No data received from Google Sheets');
       }
       
       // Skip header row
-      const rows = rawData.slice(1);
-      console.log('Raw rows before processing:', rows.length);
+      const dataRows = rows.slice(1);
+      console.log('Raw data rows:', dataRows.length);
       
-      // Debug: Log a few rows to see what we're getting
-      if (rows.length > 0) {
-        console.log('Sample row 1:', rows[0]);
-        if (rows.length > 1) console.log('Sample row 2:', rows[1]);
-      }
-      
-      collections = rows.map(row => {
-        // Debug: Log the raw row
-        console.log('Processing row:', row);
-        
-        const collection = {
-          address: row[0] || '',
-          name: row[1] || '',
-          image: row[2] || '',
-          description: row[3] || '',
-          addedAt: row[4] ? Number(row[4]) : Date.now(),
-          creationDate: row[5] || new Date().toISOString(),
-          ultimates: row[6] === 'TRUE' || row[6] === 'true',
-          collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
-        };
-        console.log('Processed collection:', collection);
-        return collection;
-      }).filter(collection => {
-        const isValid = collection.address && collection.name;
-        if (!isValid) {
-          console.log('Filtered out invalid collection:', collection);
-        }
-        return isValid;
-      });
+      // Process the data - EXACTLY like in the test
+      const collections = dataRows.map(row => ({
+        address: row[0] || '',
+        name: row[1] || '',
+        image: row[2] || '',
+        description: row[3] || '',
+        addedAt: row[4] ? Number(row[4]) : Date.now(),
+        creationDate: row[5] || new Date().toISOString(),
+        ultimates: row[6] === 'TRUE' || row[6] === 'true',
+        collectionId: row[0] || ''
+      })).filter(collection => collection.address && collection.name);
       
       // Separate collections into ultimates and regular for logging
       const ultimateCollections = collections.filter(c => c.ultimates === true);
@@ -234,9 +173,6 @@ async function getAllCollections(req, res) {
       
       console.log(`Found ${collections.length} valid collections in Google Sheets`);
       console.log(`Ultimate collections: ${ultimateCollections.length}, Regular collections: ${regularCollections.length}`);
-      
-      // Cache the collections
-      setCachedData('collections', collections);
       
       // Return the collections from Google Sheets
       return res.status(200).json({
@@ -247,12 +183,16 @@ async function getAllCollections(req, res) {
         ultimateCount: ultimateCollections.length,
         regularCount: regularCollections.length
       });
-      
     } catch (sheetError) {
       console.error('Error fetching collections from Google Sheets:', sheetError);
       console.error('Stack trace:', sheetError.stack);
-      // Continue execution to try fetching from Helius as fallback
-      return await getHeliusCollections(req, res, heliusApiKey);
+      // If Google Sheets fails, try the Helius API
+      const heliusApiKey = process.env.HELIUS_API_KEY;
+      if (heliusApiKey) {
+        return await getHeliusCollections(req, res, heliusApiKey);
+      } else {
+        throw sheetError; // Re-throw if no fallback available
+      }
     }
   } catch (error) {
     console.error('Collections endpoint error:', error);
