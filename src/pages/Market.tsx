@@ -125,28 +125,6 @@ interface DisplayNameMapping {
 
 const ITEMS_PER_PAGE = 40;
 
-// Helper function to validate collection data
-const validateCollection = (collection: any): Collection | null => {
-  // Check if collection has required fields
-  if (!collection || !collection.address) return null;
-
-  // Convert ultimates to boolean, handling various input formats
-  const ultimatesValue = collection.ultimates === true || 
-    (typeof collection.ultimates === 'string' && 
-      collection.ultimates.toLowerCase() === 'true');
-
-  return {
-    address: collection.address,
-    name: collection.name || 'Unknown Collection',
-    image: collection.image || '',
-    description: collection.description || '',
-    addedAt: collection.addedAt || Date.now(),
-    creationDate: collection.creationDate || new Date().toISOString(),
-    ultimates: ultimatesValue
-  };
-};
-
-// Add retry logic for collection NFT fetching
 const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number, maxRetries = 3) => {
   let lastError;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -157,9 +135,10 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         collectionId: collection.address,
         page: page,
         limit: 1000
+      }, {
+        timeout: 15000 // 15-second timeout
       });
 
-      // Log successful response
       console.log(`Collection ${collection.name} response:`, {
         status: response.status,
         hasData: !!response.data,
@@ -168,7 +147,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
       });
 
       if (!response.data?.result?.items) {
-        throw new Error('Invalid response format');
+        throw new Error('Invalid response format from server');
       }
 
       return response.data.result.items;
@@ -178,29 +157,70 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         message: error.message,
         status: error.response?.status,
         data: error.response?.data,
-        details: error.response?.data?.details
+        details: error.response?.data?.details,
+        request: {
+          url: '/api/nft/helius/collection',
+          payload: { collectionId: collection.address, page, limit: 1000 }
+        }
       });
 
-      // If we get a 400 error, it means the request was invalid, so don't retry
+      // Fail fast on bad request
       if (error.response?.status === 400) {
         throw error;
       }
 
-      // If we get a rate limit error, wait longer
+      // Fail fast on server error (500)
+      if (error.response?.status === 500) {
+        throw new Error('Server error, retries exhausted');
+      }
+
+      // Handle rate limiting
       if (error.response?.status === 429) {
         await delay(5000 * Math.pow(2, attempt));
         continue;
       }
 
-      // For other errors, use exponential backoff
+      // Exponential backoff for other errors
       if (attempt < maxRetries - 1) {
         await delay(2000 * Math.pow(2, attempt));
       }
     }
   }
 
-  // If we've exhausted all retries, throw the last error
-  throw lastError;
+  throw lastError || new Error('Unknown error after retries');
+};
+
+// Helper function to validate collection objects
+const validateCollection = (collection: any): Collection | null => {
+  if (!collection || typeof collection !== 'object') return null;
+  if (!collection.address || !collection.name) return null;
+  
+  return {
+    address: collection.address,
+    name: collection.name,
+    image: collection.image || '',
+    description: collection.description || '',
+    addedAt: collection.addedAt || Date.now(),
+    creationDate: collection.creationDate || '',
+    ultimates: collection.ultimates || false
+  };
+};
+
+// Fix testFetch function to use a valid Collection object
+const testFetch = async () => {
+  try {
+    const collection = { 
+      name: 'Test Collection', 
+      address: 'YOUR_TEST_ADDRESS',
+      addedAt: Date.now(),
+      description: '',
+      creationDate: ''
+    };
+    const nfts = await fetchCollectionNFTsWithRetry(collection, 1);
+    console.log('Fetched NFTs:', nfts);
+  } catch (error) {
+    console.error('Final error:', error);
+  }
 };
 
 const Market: React.FC = () => {
