@@ -322,15 +322,9 @@ const Market: React.FC = () => {
           try {
             console.log(`Fetching page ${page} for collection ${collection.name}`);
             const response = await axios.post('/api/nft/helius/collection', {
-              jsonrpc: '2.0',
-              id: 'collection-nfts',
-              method: 'getAssetsByGroup',
-              params: {
-                groupKey: 'collection',
-                groupValue: collection.address,
-                page: page,
-                limit: 1000
-              }
+              collectionId: collection.address,
+              page: page,
+              limit: 1000
             });
 
             if (!response.data?.result?.items) {
@@ -339,7 +333,8 @@ const Market: React.FC = () => {
             }
 
             const nfts = response.data.result.items;
-            console.log(`Found ${nfts.length} NFTs on page ${page} for collection ${collection.name}`);
+            const total = response.data.result.total || 0;
+            console.log(`Found ${nfts.length} NFTs on page ${page} for collection ${collection.name} (Total: ${total})`);
 
             // Process each NFT in the collection
             for (const nft of nfts) {
@@ -352,20 +347,37 @@ const Market: React.FC = () => {
 
                 // Get image from the correct location in the data structure
                 let imageUrl = '';
-                if (nft.content.files && nft.content.files.length > 0 && nft.content.files[0].uri) {
+                if (nft.content?.files?.[0]?.uri) {
                   imageUrl = nft.content.files[0].uri;
-                } else if (nft.content.links && nft.content.links.image) {
+                } else if (nft.content?.links?.image) {
                   imageUrl = nft.content.links.image;
-                } else if (nft.content.metadata && nft.content.metadata.image) {
+                } else if (nft.content?.metadata?.image) {
                   imageUrl = nft.content.metadata.image;
+                } else if (nft.content?.json?.image) {
+                  imageUrl = nft.content.json.image;
+                }
+
+                // Clean and validate the image URL
+                if (imageUrl) {
+                  // Convert ipfs:// URLs to HTTPS
+                  if (imageUrl.startsWith('ipfs://')) {
+                    imageUrl = `https://ipfs.io/ipfs/${imageUrl.slice(7)}`;
+                  }
+                  // Ensure URL is valid
+                  try {
+                    new URL(imageUrl);
+                  } catch {
+                    console.warn(`Invalid image URL for NFT ${nft.id}: ${imageUrl}`);
+                    imageUrl = '';
+                  }
                 }
 
                 const processedNFT = {
                   mint: nft.id,
-                  name: nft.content?.metadata?.name || 'Unknown NFT',
-                  description: nft.content?.metadata?.description || '',
+                  name: nft.content?.metadata?.name || nft.content?.json?.name || 'Unknown NFT',
+                  description: nft.content?.metadata?.description || nft.content?.json?.description || '',
                   image: imageUrl,
-                  attributes: nft.content?.metadata?.attributes || [],
+                  attributes: nft.content?.metadata?.attributes || nft.content?.json?.attributes || [],
                   owner: {
                     publicKey: nft.ownership?.owner || '',
                     ownershipModel: nft.ownership?.ownershipModel || 'single',
@@ -378,7 +390,7 @@ const Market: React.FC = () => {
                   collectionAddress: collection.address,
                   creators: nft.creators || [],
                   royalty: nft.royalty || null,
-                  tokenStandard: nft.content?.metadata?.token_standard || null,
+                  tokenStandard: nft.tokenStandard || null,
                 };
 
                 console.log(`Processing NFT: ${processedNFT.name} (${processedNFT.mint})`);
@@ -388,12 +400,12 @@ const Market: React.FC = () => {
               }
             }
 
-            // Check if we should continue to next page
-            hasMore = nfts.length === 1000;
+            // Check if we have more pages
+            hasMore = nfts.length === 1000 && (page * 1000) < total;
             if (hasMore) {
               page++;
-              // Add delay between pages
-              await delay(500);
+              // Add delay between pages to avoid rate limits
+              await delay(1000);
             }
 
           } catch (error) {
