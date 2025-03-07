@@ -124,7 +124,7 @@ module.exports = async (req, res) => {
     console.error('[serverless] Error in config endpoint:', error);
     
     // Return error response with debugging information
-    return res.status(200).json({
+    return res.status(500).json({
       success: false,
       message: error instanceof Error ? error.message : 'Unknown error',
       error: {

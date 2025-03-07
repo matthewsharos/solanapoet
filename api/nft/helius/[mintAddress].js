@@ -32,7 +32,7 @@ module.exports = async (req, res) => {
     
     if (!mintAddress) {
       console.log('[serverless] No mint address provided');
-      return res.status(200).json({
+      return res.status(400).json({
         success: false,
         message: 'No mint address provided'
       });
@@ -66,7 +66,8 @@ module.exports = async (req, res) => {
       hasHeliusKey: true,
       heliusKeyLength: HELIUS_API_KEY.length,
       environment: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV
+      vercelEnv: process.env.VERCEL_ENV,
+      rpcUrl: HELIUS_RPC_URL.replace(HELIUS_API_KEY, '***')
     });
 
     // Prepare RPC request body
@@ -94,7 +95,7 @@ module.exports = async (req, res) => {
 
     if (!data || !data.result) {
       console.log('[serverless] No NFT data found');
-      return res.status(200).json({
+      return res.status(404).json({
         success: false,
         message: 'No NFT data found',
         debug: {
