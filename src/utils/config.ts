@@ -1,4 +1,14 @@
-import { CONFIG_API_URL } from '../api/config';
+// Constants for configuration
+export const CONFIG_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+// Other config exports
+export const MARKETPLACE_PROGRAM_ID = process.env.NEXT_PUBLIC_MARKETPLACE_PROGRAM_ID;
+export const MARKETPLACE_AUTHORITY = process.env.NEXT_PUBLIC_MARKETPLACE_AUTHORITY;
+export const MARKETPLACE_FEE_ACCOUNT = process.env.NEXT_PUBLIC_MARKETPLACE_FEE_ACCOUNT;
+export const MARKETPLACE_TREASURY = process.env.NEXT_PUBLIC_MARKETPLACE_TREASURY;
+export const MARKETPLACE_MINT = process.env.NEXT_PUBLIC_MARKETPLACE_MINT;
+
+// Add any other configuration constants here
 
 // Configuration interface
 interface ServerConfig {

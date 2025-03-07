@@ -21,7 +21,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { NFT } from '../types/nft';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
-import { getCollection } from '../api/collections';
+import { collections } from '../api/client';
 
 // Gallery-inspired styled components
 const DetailDialog = styled(Dialog)(({ theme }) => ({
@@ -885,14 +885,14 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   // Effect to handle collection name updates
   React.useEffect(() => {
     const updateCollectionName = async () => {
-      if (!nft.collection) {
+      if (!nft.collection?.address) {
         setCollectionName(nft.collectionName || "Unknown Collection");
         return;
       }
 
       setIsLoadingCollection(true);
       try {
-        const collection = await getCollection(nft.collection);
+        const collection = await collections.get(nft.collection.address);
         setCollectionName(collection?.name || nft.collectionName || "Unknown Collection");
       } catch (error) {
         console.error('Error fetching collection name:', error);
@@ -905,7 +905,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     if (open) {
       updateCollectionName();
     }
-  }, [open, nft.collection, nft.collectionName]);
+  }, [open, nft.collection?.address, nft.collectionName]);
 
   return (
     <DetailDialog

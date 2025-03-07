@@ -245,7 +245,7 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { publicKey, connecting, connected, isAuthorizedMinter, connectWallet, disconnectWallet } = useWalletContext();
+  const { publicKey, connected, isAuthorizedMinter, connect, disconnect } = useWalletContext();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
   const logoRef = useRef<HTMLDivElement>(null);
@@ -254,14 +254,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   
   const isActive = (path: string) => {
     return location.pathname === path;
-  };
-
-  const handleWalletClick = () => {
-    if (connected) {
-      disconnectWallet();
-    } else {
-      connectWallet();
-    }
   };
 
   const handleLogoClick = () => {
@@ -327,8 +319,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               />
             </MonkeyContainer>
             
-            <WalletButton onClick={handleWalletClick} disabled={connecting}>
-              {connecting ? 'Connecting...' : connected ? `Disconnect (${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)})` : 'Connect'}
+            <WalletButton onClick={disconnect} disabled={!connected}>
+              {connected ? `Disconnect (${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)})` : 'Connect'}
             </WalletButton>
             
             <ThemeToggle />
@@ -375,7 +367,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Button
             fullWidth
             variant="contained"
-            onClick={connectWallet}
+            onClick={connect}
             sx={{
               backgroundColor: '#e8e8e8',
               color: '#333333',

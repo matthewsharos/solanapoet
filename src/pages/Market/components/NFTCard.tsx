@@ -1,91 +1,69 @@
-import React from 'react';
-import { NFTListing } from '../../../types/market';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { purchaseNFT } from '../../../api/market/transactions';
+import React, { useState } from 'react';
+import { Box, Button, Card, CardContent, CardMedia, Typography } from '@mui/material';
 import { showErrorNotification } from '../../../utils/notifications';
-import { useConnection } from '@solana/wallet-adapter-react';
-import { Tooltip } from '@mui/material';
-import { formatWalletAddress } from '../../../utils/helpers';
+import { market } from '../../../api/client';
+import { NFT } from '../../../types/nft';
 
 interface NFTCardProps {
-  listing: NFTListing;
-  onPurchase?: () => void;
+  nft: NFT;
+  onPurchaseComplete: () => void;
 }
 
-export const NFTCard: React.FC<NFTCardProps> = ({ listing, onPurchase }) => {
-  const { connection } = useConnection();
-  const wallet = useWallet();
-  const [loading, setLoading] = React.useState(false);
+const NFTCard: React.FC<NFTCardProps> = ({ nft, onPurchaseComplete }) => {
+  const [loading, setLoading] = useState(false);
 
   const handlePurchase = async () => {
-    if (!wallet.connected) {
-      showErrorNotification('Please connect your wallet');
-      return;
-    }
-
     setLoading(true);
     try {
-      const result = await purchaseNFT(wallet, connection, listing);
-      if (result) {
-        onPurchase?.();
-      }
+      await market.transactions.purchase({
+        nftAddress: nft.mint,
+        price: nft.price || 0,
+        seller: typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey,
+      });
+      onPurchaseComplete();
+    } catch (error) {
+      showErrorNotification('Failed to purchase NFT');
+      console.error('Error purchasing NFT:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Get seller's address
-  const sellerAddress = listing.seller.toString();
-
   return (
-    <div className="relative bg-[#f4e4bc] rounded-lg overflow-hidden transform transition-all duration-300 hover:scale-[1.02] hover:shadow-xl"
-         style={{
-           boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-           border: '1px solid #d4b483',
-         }}>
-      <div className="relative aspect-square">
-        {/* Vintage photo effect wrapper */}
-        <div className="absolute inset-0 bg-black/10 z-10 pointer-events-none"
-             style={{
-               boxShadow: 'inset 0 0 30px rgba(0,0,0,0.3)',
-             }} />
-        <img
-          src={listing.nft.uri}
-          alt={listing.nft.name}
-          className="w-full h-full object-cover"
-          style={{
-            filter: 'sepia(20%) contrast(105%)',
-          }}
-        />
-        {/* Vintage border overlay */}
-        <div className="absolute inset-0 pointer-events-none"
-             style={{
-               border: '12px solid #f4e4bc',
-               boxShadow: 'inset 0 0 20px rgba(0,0,0,0.2)',
-             }} />
-      </div>
-      <div className="p-4 bg-gradient-to-b from-[#f4e4bc] to-[#e6d5b1]">
-        <h3 className="text-lg font-serif mb-2 text-[#5c4b37]"
-            style={{
-              textShadow: '1px 1px 0 rgba(255,255,255,0.5)',
-            }}>
-          {listing.nft.name}
-        </h3>
-        <div className="flex justify-between items-center mb-2">
-          <Tooltip title={sellerAddress} placement="top">
-            <span className="text-sm text-[#8b7355] cursor-help font-mono"
-                  style={{
-                    textShadow: '0.5px 0.5px 0 rgba(255,255,255,0.5)',
-                  }}>
-              Owned by {formatWalletAddress(sellerAddress, 4)}
-            </span>
-          </Tooltip>
-        </div>
-        <div className="flex justify-between items-center">
-          <span className="text-[#8b7355] font-serif">{listing.nft.symbol}</span>
-          <span className="text-[#8b7355] font-serif">{listing.price} SOL</span>
-        </div>
-      </div>
-    </div>
+    <Card sx={{ maxWidth: 345, m: 1 }}>
+      <CardMedia
+        component="img"
+        height="200"
+        image={nft.image}
+        alt={nft.name}
+      />
+      <CardContent>
+        <Typography gutterBottom variant="h5" component="div">
+          {nft.name}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {nft.description}
+        </Typography>
+        {nft.price && (
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="h6" color="primary">
+              {nft.price} SOL
+            </Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handlePurchase}
+              disabled={loading}
+              fullWidth
+              sx={{ mt: 1 }}
+            >
+              {loading ? 'Purchasing...' : 'Purchase'}
+            </Button>
+          </Box>
+        )}
+      </CardContent>
+    </Card>
   );
-}; 
+};
+
+export default NFTCard; 

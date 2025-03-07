@@ -9,6 +9,7 @@ export interface NFTOwner {
   ownershipModel?: string;
   frozen?: boolean;
   delegated?: boolean;
+  displayName?: string;
 }
 
 export interface NFT {
@@ -28,4 +29,15 @@ export interface NFT {
   }>;
   royalty: number | null;
   tokenStandard: string | null;
+  price?: number;
+  createdAt?: string;
+  collection?: {
+    name?: string;
+    address?: string;
+    image?: string;
+    description?: string;
+  };
+  imageWidth?: number;
+  imageHeight?: number;
+  lastSoldPrice?: number;
 } 

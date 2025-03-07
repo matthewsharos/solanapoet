@@ -11,8 +11,8 @@ import {
   CircularProgress
 } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
-import { getDisplayNameForWallet, setDisplayNameForWallet } from '../utils/displayNames';
 import { formatWalletAddress } from '../utils/helpers';
+import { displayNames } from '../api/client';
 
 interface DisplayNameEditorProps {
   open: boolean;
@@ -49,8 +49,7 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
       const walletAddress = publicKey.toString();
       console.log('Fetching display name for wallet:', walletAddress);
       
-      const { getDisplayName } = await import('../api/displayNames');
-      const existingName = await getDisplayName(walletAddress);
+      const existingName = await displayNames.get(walletAddress);
       
       console.log('Fetched display name result:', existingName);
       
@@ -70,7 +69,7 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
     }
   };
 
-  // Save the display name to Google Sheets
+  // Save the display name
   const handleSave = async () => {
     if (!publicKey) {
       setError('You must connect your wallet to set a display name');
@@ -91,8 +90,7 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
     setLoading(true);
     try {
       const walletAddress = publicKey.toString();
-      const { updateDisplayName } = await import('../api/displayNames');
-      await updateDisplayName(walletAddress, displayName.trim());
+      await displayNames.update(walletAddress, displayName.trim());
       
       setSuccess(true);
       setError(null);

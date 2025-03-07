@@ -3,14 +3,20 @@
  * These names are stored in localStorage for persistence
  */
 
+import { displayNames } from '../api/client';
+import type { DisplayNameMapping } from '../types/api';
+
 const STORAGE_KEY = 'wallet_display_names';
 let syncInProgress = false;
 let syncPromise: Promise<void> | null = null;
 let lastSyncTime = 0;
-const SYNC_COOLDOWN = 5000; // 5 seconds cooldown between syncs
+const SYNC_COOLDOWN = 5 * 60 * 1000; // 5 minutes
 
 // Event name constant to ensure consistency
 const DISPLAY_NAMES_UPDATED_EVENT = 'displayNamesUpdated';
+
+// Cache display names in memory
+let displayNamesCache: Map<string, string> = new Map();
 
 /**
  * Dispatch display name update event
@@ -27,57 +33,33 @@ const dispatchDisplayNamesUpdate = (names: Record<string, string>) => {
  * @param force If true, bypass the cooldown check
  * @returns A promise that resolves when the sync is complete
  */
-export const syncDisplayNamesFromSheets = async (force: boolean = false): Promise<void> => {
+export const syncDisplayNamesFromSheets = async (force = false): Promise<void> => {
   const now = Date.now();
-  
-  // If a sync is already in progress, return the existing promise
-  if (syncPromise) {
-    return syncPromise;
-  }
-
-  // If we recently synced and not forcing, don't sync again
   if (!force && now - lastSyncTime < SYNC_COOLDOWN) {
-    console.log('Recent sync detected, using cached data...');
+    console.log('Skipping sync due to cooldown');
     return;
   }
 
   try {
-    console.log('Starting display names sync from Google Sheets...');
-    syncInProgress = true;
-    
-    // Create a new sync promise
-    syncPromise = (async () => {
-      const { getDisplayNames } = await import('../api/displayNames');
-      const displayNames = await getDisplayNames(true); // Always get fresh data
-      
-      // Convert to a map for easier lookup, maintaining case sensitivity
-      const namesMap: Record<string, string> = {};
-      displayNames.forEach(entry => {
-        if (entry && entry.wallet_address && entry.display_name) {
-          // Store with original case
-          namesMap[entry.wallet_address] = entry.display_name;
-        }
-      });
-      
-      // Store the new display names
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(namesMap));
-      
-      // Update last sync time
-      lastSyncTime = now;
-      
-      // Dispatch event with the updated names
-      dispatchDisplayNamesUpdate(namesMap);
-      
-      console.log('Display names synced from Google Sheets:', namesMap);
-    })();
+    const fetchedNames = await displayNames.getAll();
+    const newCache = new Map<string, string>();
 
-    await syncPromise;
+    fetchedNames.forEach((entry: DisplayNameMapping) => {
+      newCache.set(entry.walletAddress.toLowerCase(), entry.displayName);
+    });
+
+    displayNamesCache = newCache;
+    lastSyncTime = now;
+
+    // Dispatch event to notify components
+    const event = new CustomEvent('displayNamesUpdated', {
+      detail: {
+        displayNames: Object.fromEntries(displayNamesCache),
+      },
+    });
+    window.dispatchEvent(event);
   } catch (error) {
-    console.error('Error syncing display names from Google Sheets:', error);
-    throw error;
-  } finally {
-    syncInProgress = false;
-    syncPromise = null;
+    console.error('Error syncing display names:', error);
   }
 };
 
@@ -86,30 +68,22 @@ export const syncDisplayNamesFromSheets = async (force: boolean = false): Promis
  * @param walletAddress The wallet address to get the display name for
  * @returns The display name if found, undefined otherwise
  */
-export const getDisplayNameForWallet = async (walletAddress: string): Promise<string | undefined> => {
+export const getDisplayNameForWallet = async (address: string): Promise<string | null> => {
+  // Check cache first
+  const cachedName = displayNamesCache.get(address.toLowerCase());
+  if (cachedName) {
+    return cachedName;
+  }
+
   try {
-    // First check localStorage
-    const storedNames = localStorage.getItem(STORAGE_KEY);
-    if (storedNames) {
-      const namesMap = JSON.parse(storedNames);
-      // Use exact case-sensitive match
-      if (namesMap[walletAddress]) {
-        return namesMap[walletAddress];
-      }
+    const name = await displayNames.get(address);
+    if (name) {
+      displayNamesCache.set(address.toLowerCase(), name);
     }
-    
-    // If not found in cache, sync with sheets (respecting cooldown)
-    await syncDisplayNamesFromSheets(false);
-    
-    // Check localStorage again after sync
-    const updatedNames = localStorage.getItem(STORAGE_KEY);
-    const namesMap = updatedNames ? JSON.parse(updatedNames) : {};
-    
-    // Use exact case-sensitive match
-    return namesMap[walletAddress];
+    return name;
   } catch (error) {
-    console.error('Error getting display name for wallet:', error);
-    return undefined;
+    console.error('Error fetching display name:', error);
+    return null;
   }
 };
 
@@ -118,33 +92,14 @@ export const getDisplayNameForWallet = async (walletAddress: string): Promise<st
  * @param walletAddress The wallet address to set the display name for
  * @param displayName The display name to associate with the wallet address
  */
-export const setDisplayNameForWallet = async (walletAddress: string, displayName: string): Promise<void> => {
+export const setDisplayNameForWallet = async (address: string, name: string): Promise<boolean> => {
   try {
-    // Update Google Sheets first
-    const { updateDisplayName } = await import('../api/displayNames');
-    const success = await updateDisplayName(walletAddress, displayName);
-    
-    if (!success) {
-      throw new Error('Failed to update display name in Google Sheets');
-    }
-
-    // Force sync from sheets to ensure we have the latest data
-    await syncDisplayNamesFromSheets(true);
-    
-    // Double check the update was successful
-    const storedNames = localStorage.getItem(STORAGE_KEY);
-    const namesMap = storedNames ? JSON.parse(storedNames) : {};
-    
-    if (namesMap[walletAddress] !== displayName) {
-      console.warn('Display name mismatch after update, retrying sync...');
-      await syncDisplayNamesFromSheets(true);
-    }
-    
+    await displayNames.update(address, name);
+    displayNamesCache.set(address.toLowerCase(), name);
+    return true;
   } catch (error) {
-    console.error('Error setting display name for wallet:', error);
-    // On error, sync from sheets to ensure consistency
-    await syncDisplayNamesFromSheets(true);
-    throw error;
+    console.error('Error setting display name:', error);
+    return false;
   }
 };
 

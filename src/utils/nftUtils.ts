@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import { API_BASE_URL } from '../api/config';
+import { API_BASE_URL } from '../types/api';
 
 export interface NFTMetadata {
   name: string;

@@ -29,8 +29,8 @@ import AddIcon from '@mui/icons-material/Add';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import axios from 'axios';
 import { useWalletContext } from '../contexts/WalletContext';
-// Import collections API functions
-import { fetchCollections as fetchCollectionsFromApi, addCollection, removeCollection, updateCollection, Collection as ApiCollection, updateCollectionUltimates } from '../api/collections';
+import { Collection } from '../types/api';
+import { collections } from '../api/client';
 
 // Styled components for vintage look
 const ManagerContainer = styled(Paper)({
@@ -120,28 +120,15 @@ const StyledTableRow = styled(TableRow)({
   },
 });
 
-// Define local Collection type that matches the API Collection type
-interface Collection {
-  collectionId: string;
-  name: string;
-  firstNftDate: string;
-  createdAt: string;
-  ultimates: boolean;
+interface CollectionManagerProps {
+  onCollectionsUpdate?: () => void;
 }
 
-interface CollectionResponse {
-  collectionId: string;
-  name: string;
-  firstNftDate: string;
-  createdAt: string;
-  ultimates: string | boolean | string[];
-}
-
-const CollectionManager: React.FC = () => {
+const CollectionManager: React.FC<CollectionManagerProps> = ({ onCollectionsUpdate }) => {
   const { publicKey, isAuthorizedMinter } = useWalletContext();
   
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [collectionList, setCollectionList] = useState<Collection[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0); // Add a refresh key to force re-fetch
@@ -181,7 +168,7 @@ const CollectionManager: React.FC = () => {
     
     try {
       // Fetch collections from the API with cache-busting query param
-      const collectionsData = await fetchCollectionsFromApi();
+      const collectionsData = await collections.fetch();
       
       console.log(`Fetched ${collectionsData.length} collections from API:`, collectionsData);
       
@@ -201,9 +188,9 @@ const CollectionManager: React.FC = () => {
       });
       
       // Ensure we're not setting the same collections array reference
-      if (JSON.stringify(collections) !== JSON.stringify(formattedCollections)) {
+      if (JSON.stringify(collectionList) !== JSON.stringify(formattedCollections)) {
         console.log('Collections have changed, updating state');
-        setCollections(formattedCollections);
+        setCollectionList(formattedCollections);
       } else {
         console.log('Collections unchanged');
       }
@@ -239,7 +226,9 @@ const CollectionManager: React.FC = () => {
   }, [refreshKey]);
   
   // Format date
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'N/A'; // Handle undefined case
+    
     try {
       console.log(`Formatting date: ${dateString}`);
       const date = new Date(dateString);
@@ -466,6 +455,7 @@ const CollectionManager: React.FC = () => {
       
       // Create new collection object
       const newCollection: Collection = {
+        address: newCollectionId,
         collectionId: newCollectionId,
         name: collectionName,
         firstNftDate: firstNftDate,
@@ -474,7 +464,7 @@ const CollectionManager: React.FC = () => {
       };
       
       // Check if collection already exists
-      const existingCollection = collections.find(c => c.collectionId === newCollectionId);
+      const existingCollection = collectionList.find(c => c.collectionId === newCollectionId);
       if (existingCollection) {
         setError('This collection ID already exists in your list.');
         setAddingCollection(false);
@@ -482,48 +472,46 @@ const CollectionManager: React.FC = () => {
       }
       
       // Add directly to Google Sheets API
-      const apiCollection: ApiCollection = {
+      const apiCollection: Collection = {
         address: newCollectionId,
         name: collectionName,
         description: '',
         addedAt: Date.now(),
         creationDate: firstNftDate,
-        ultimates: false
+        ultimates: false,
+        collectionId: newCollectionId
       };
       
       console.log('Adding collection to API:', apiCollection);
-      const success = await addCollection(apiCollection);
+      await collections.add(apiCollection);
       
-      if (success) {
-        // Run the ultimate NFT search script
-        try {
-          const response = await fetch('/api/search-ultimates', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              collectionId: newCollectionId
-            })
-          });
+      // Run the ultimate NFT search script
+      try {
+        const response = await fetch('/api/search-ultimates', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            collectionId: newCollectionId
+          })
+        });
 
-          if (response.ok) {
-            const { ultimateNfts } = await response.json();
-            if (ultimateNfts?.length > 0) {
-              // Update the collection with found ultimate NFTs
-              await updateCollectionUltimates(newCollectionId, ultimateNfts.map((nft: any) => nft.id));
-            }
+        if (response.ok) {
+          const { ultimateNfts } = await response.json();
+          if (ultimateNfts?.length > 0) {
+            // Update the collection with found ultimate NFTs
+            await collections.updateUltimates(newCollectionId, ultimateNfts.length > 0);
           }
-        } catch (searchError) {
-          console.error('Error searching for ultimate NFTs:', searchError);
-          // Continue anyway - the collection is added, we just couldn't find ultimates
         }
-
-        setSuccess('Collection added successfully!');
-        setCollections([...collections, newCollection]);
-      } else {
-        setError('Failed to add collection to Google Sheets.');
+      } catch (searchError) {
+        console.error('Error searching for ultimate NFTs:', searchError);
+        // Continue anyway - the collection is added, we just couldn't find ultimates
       }
+
+      setSuccess('Collection added successfully!');
+      const updatedCollections = await collections.fetch();
+      setCollectionList(updatedCollections);
     } catch (error) {
       console.error('Error adding collection:', error);
       setError('Failed to add collection. Please try again.');
@@ -536,7 +524,7 @@ const CollectionManager: React.FC = () => {
   const handleEditOpen = (collection: Collection) => {
     setEditCollection(collection);
     setEditName(collection.name);
-    setEditUltimates(collection.ultimates);
+    setEditUltimates(collection.ultimates || false);
     setEditDialogOpen(true);
   };
   
@@ -565,31 +553,34 @@ const CollectionManager: React.FC = () => {
     try {
       console.log(`Updating collection: ${editCollection.collectionId} with name: ${editName} and ultimates: ${editUltimates}`);
       
-      const success = await updateCollection(editCollection.collectionId, editName, editUltimates);
+      // Create updated collection object
+      const updatedCollection: Collection = {
+        ...editCollection,
+        name: editName,
+        ultimates: editUltimates
+      };
       
-      if (success) {
-        console.log('Collection updated successfully, refreshing data...');
-        
-        // Show immediate success message
-        setSuccess('Collection updated successfully!');
-        handleEditClose();
-        
-        // Force immediate refresh first
+      await collections.update(updatedCollection);
+      
+      console.log('Collection updated successfully, refreshing data...');
+      
+      // Show immediate success message
+      setSuccess('Collection updated successfully!');
+      handleEditClose();
+      
+      // Force immediate refresh first
+      await fetchCollections(false, true);
+      
+      // Then do a second refresh after delay to catch any backend propagation delays
+      setTimeout(async () => {
         await fetchCollections(false, true);
-        
-        // Then do a second refresh after delay to catch any backend propagation delays
-        setTimeout(async () => {
-          await fetchCollections(false, true);
-          console.log('Collections refreshed after update (delayed refresh)');
-        }, 1000);
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => {
-          setSuccess(null);
-        }, 3000);
-      } else {
-        throw new Error('Failed to update collection in API');
-      }
+        console.log('Collections refreshed after update (delayed refresh)');
+      }, 1000);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
     } catch (err) {
       console.error('Error updating collection:', err);
       setError('Failed to update collection. Please try again.');
@@ -608,31 +599,27 @@ const CollectionManager: React.FC = () => {
     try {
       console.log(`Deleting collection: ${deleteCollection.collectionId}`);
       // Delete collection directly from Google Sheets API
-      const success = await removeCollection(deleteCollection.collectionId);
+      await collections.remove(deleteCollection.collectionId);
       
-      if (success) {
-        console.log('Collection deleted successfully, refreshing data...');
-        
-        // Show immediate success message
-        setSuccess('Collection deleted successfully!');
-        handleDeleteClose();
-        
-        // Force immediate refresh first
+      console.log('Collection deleted successfully, refreshing data...');
+      
+      // Show immediate success message
+      setSuccess('Collection deleted successfully!');
+      handleDeleteClose();
+      
+      // Force immediate refresh first
+      await fetchCollections(false, true);
+      
+      // Then do a second refresh after delay to catch any backend propagation delays
+      setTimeout(async () => {
         await fetchCollections(false, true);
-        
-        // Then do a second refresh after delay to catch any backend propagation delays
-        setTimeout(async () => {
-          await fetchCollections(false, true);
-          console.log('Collections refreshed after deletion (delayed refresh)');
-        }, 1000);
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => {
-          setSuccess(null);
-        }, 3000);
-      } else {
-        throw new Error('Failed to delete collection from API');
-      }
+        console.log('Collections refreshed after deletion (delayed refresh)');
+      }, 1000);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
     } catch (err) {
       console.error('Error deleting collection:', err);
       setError('Failed to delete collection. Please try again.');
@@ -653,14 +640,14 @@ const CollectionManager: React.FC = () => {
       };
 
       // Update local state
-      setCollections(collections.map(c =>
+      setCollectionList(collectionList.map(c =>
         c.collectionId === collection.collectionId
           ? updatedCollection
           : c
       ));
 
       // Update backend
-      await updateCollectionUltimates(collection.collectionId, ultimates);
+      await collections.updateUltimates(collection.collectionId, ultimates.length > 0);
       setSuccess('Collection updated successfully');
     } catch (error) {
       console.error('Error updating collection:', error);
@@ -668,10 +655,17 @@ const CollectionManager: React.FC = () => {
     }
   };
   
-  const handleUpdateCollection = (collection: Collection) => {
-    setCollections(collections.map(c => 
-      c.collectionId === collection.collectionId ? collection : c
-    ));
+  const handleUpdateCollection = async (collection: Collection) => {
+    try {
+      await collections.update(collection);
+      const updatedCollections = await collections.fetch();
+      setCollectionList(updatedCollections);
+      if (onCollectionsUpdate) {
+        onCollectionsUpdate();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update collection');
+    }
   };
   
   if (!isAuthorizedMinter) {
@@ -731,14 +725,14 @@ const CollectionManager: React.FC = () => {
               </TableRow>
             </StyledTableHead>
             <TableBody>
-              {collections.length === 0 ? (
+              {collectionList.length === 0 ? (
                 <StyledTableRow>
                   <StyledTableCell colSpan={5} align="center">
                     No collections found. Add a collection to get started.
                   </StyledTableCell>
                 </StyledTableRow>
               ) : (
-                collections.map((collection) => (
+                collectionList.map((collection) => (
                   <StyledTableRow key={collection.collectionId}>
                     <StyledTableCell>{collection.name}</StyledTableCell>
                     <StyledTableCell>{formatDate(collection.firstNftDate)}</StyledTableCell>

@@ -1,213 +1,115 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Connection, PublicKey } from '@solana/web3.js';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import axios from 'axios';
-import { getApiBaseUrl } from '../api/marketplace';
+import { API_BASE_URL } from '../types/api';
 
 interface WalletContextType {
-  publicKey: PublicKey | null;
-  connecting: boolean;
+  publicKey: string | null;
   connected: boolean;
-  isAuthorizedMinter: boolean;
-  connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
   wallet: PhantomWalletAdapter | null;
+  isAuthorizedMinter: boolean;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType>({
   publicKey: null,
-  connecting: false,
   connected: false,
-  isAuthorizedMinter: false,
-  connectWallet: async () => {},
-  disconnectWallet: () => {},
   wallet: null,
+  isAuthorizedMinter: false,
+  connect: async () => {},
+  disconnect: async () => {},
 });
 
 export const useWalletContext = () => useContext(WalletContext);
 
-interface WalletProviderProps {
-  children: ReactNode;
-}
-
-export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
-  const [adapter, setAdapter] = useState<PhantomWalletAdapter | null>(null);
-  const [publicKey, setPublicKey] = useState<PublicKey | null>(null);
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [publicKey, setPublicKey] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [wallet, setWallet] = useState<PhantomWalletAdapter | null>(null);
   const [isAuthorizedMinter, setIsAuthorizedMinter] = useState(false);
 
-  // Initialize wallet adapter
   useEffect(() => {
-    const initWallet = async () => {
+    const initializeWallet = async () => {
       try {
-        console.log('Initializing wallet adapter...');
-        const phantomAdapter = new PhantomWalletAdapter();
-        
-        console.log('PhantomWalletAdapter initialized with methods:', Object.keys(phantomAdapter));
-        console.log('PhantomWalletAdapter prototype methods:', 
-          Object.getOwnPropertyNames(Object.getPrototypeOf(phantomAdapter)));
-        
-        if (!phantomAdapter.signTransaction) {
-          console.warn('Warning: PhantomWalletAdapter does not have signTransaction method');
-        }
-        
-        if (!phantomAdapter.signAllTransactions) {
-          console.warn('Warning: PhantomWalletAdapter does not have signAllTransactions method');
-        }
-        
-        setAdapter(phantomAdapter);
+        const phantomWallet = new PhantomWalletAdapter();
+        setWallet(phantomWallet);
 
-        phantomAdapter.on('connect', () => {
-          if (phantomAdapter.publicKey) {
-            console.log('Wallet connected with public key:', phantomAdapter.publicKey.toString());
-            console.log('Available wallet methods after connection:', Object.keys(phantomAdapter));
-            
-            const hasSignTransaction = typeof phantomAdapter.signTransaction === 'function';
-            const hasSignAllTransactions = typeof phantomAdapter.signAllTransactions === 'function';
-            
-            console.log('Has signTransaction:', hasSignTransaction);
-            console.log('Has signAllTransactions:', hasSignAllTransactions);
-            
-            if (!hasSignTransaction && !hasSignAllTransactions) {
-              console.error('Your wallet does not support transaction signing. This will prevent you from purchasing NFTs.');
-              alert('Warning: Your wallet does not have the required signing methods. You will not be able to purchase NFTs. Please try reconnecting or using a different wallet.');
-            }
-            
-            setPublicKey(phantomAdapter.publicKey);
+        phantomWallet.on('connect', () => {
+          if (phantomWallet.publicKey) {
+            setPublicKey(phantomWallet.publicKey.toString());
             setConnected(true);
-            localStorage.setItem('walletConnected', 'true');
+            checkMinterAuthorization(phantomWallet.publicKey.toString());
           }
         });
 
-        phantomAdapter.on('disconnect', () => {
-          console.log('Wallet disconnected');
+        phantomWallet.on('disconnect', () => {
           setPublicKey(null);
           setConnected(false);
-          localStorage.removeItem('walletConnected');
+          setIsAuthorizedMinter(false);
         });
 
-        if (localStorage.getItem('walletConnected') === 'true') {
-          setTimeout(() => {
-            connectWallet();
-          }, 500);
+        // Try to eagerly connect
+        try {
+          await phantomWallet.connect();
+        } catch (err) {
+          // Handle connection error silently
+          console.log('No pre-existing Phantom connection');
         }
       } catch (error) {
-        console.error('Failed to initialize wallet adapter:', error);
+        console.error('Error initializing wallet:', error);
       }
     };
 
-    initWallet();
+    initializeWallet();
 
     return () => {
-      if (adapter) {
-        adapter.disconnect();
+      if (wallet) {
+        wallet.disconnect();
       }
     };
   }, []);
 
-  // Check if wallet is authorized to mint
-  useEffect(() => {
-    const checkAuthorization = async () => {
-      if (publicKey) {
-        try {
-          const apiBaseUrl = await getApiBaseUrl();
-          const response = await axios.get(`${apiBaseUrl}/api/auth/check-minter/${publicKey.toString()}`);
-          setIsAuthorizedMinter(response.data.isAuthorized);
-        } catch (error) {
-          console.error('Failed to check minter authorization:', error);
-          setIsAuthorizedMinter(false);
-        }
-      } else {
-        setIsAuthorizedMinter(false);
-      }
-    };
-
-    checkAuthorization();
-  }, [publicKey]);
-
-  const connectWallet = async () => {
-    if (!adapter) {
-      console.error('Wallet adapter not initialized');
-      return;
-    }
-
-    if (connecting) {
-      console.log('Already attempting to connect wallet');
-      return;
-    }
-
+  const checkMinterAuthorization = async (walletAddress: string) => {
     try {
-      setConnecting(true);
-      
-      // Check if already connected
-      if (adapter.connected) {
-        console.log('Wallet already connected');
-        if (adapter.publicKey) {
-          setPublicKey(adapter.publicKey);
-          setConnected(true);
-          localStorage.setItem('walletConnected', 'true');
-        }
-        return;
-      }
-      
-      // Connect to wallet
-      await adapter.connect();
-      
-      if (adapter.publicKey) {
-        console.log('Wallet connected successfully', {
-          publicKey: adapter.publicKey.toString(),
-          hasSignTransaction: !!adapter.signTransaction,
-          hasSignAllTransactions: !!adapter.signAllTransactions,
-          methods: Object.keys(adapter)
-        });
-        
-        // Check if wallet supports transaction signing
-        if (!adapter.signTransaction && !adapter.signAllTransactions) {
-          console.error('Connected wallet does not support transaction signing');
-          alert('Your wallet does not support transaction signing. Please use a different wallet or update your wallet extension.');
-        }
-        
-        setPublicKey(adapter.publicKey);
-        setConnected(true);
-        localStorage.setItem('walletConnected', 'true');
-      }
+      const response = await axios.get(`${API_BASE_URL}/api/mint/auth/${walletAddress}`);
+      setIsAuthorizedMinter(response.data.isAuthorized || false);
     } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      // Clean up on error
-      setPublicKey(null);
-      setConnected(false);
-      localStorage.removeItem('walletConnected');
-    } finally {
-      setConnecting(false);
+      console.error('Error checking minter authorization:', error);
+      setIsAuthorizedMinter(false);
     }
   };
 
-  const disconnectWallet = () => {
-    if (adapter) {
+  const connect = async () => {
+    if (wallet) {
       try {
-        adapter.disconnect();
+        await wallet.connect();
       } catch (error) {
-        console.error('Failed to disconnect wallet:', error);
+        console.error('Error connecting wallet:', error);
       }
     }
-    
-    setPublicKey(null);
-    setConnected(false);
-    setIsAuthorizedMinter(false);
-    localStorage.removeItem('walletConnected');
+  };
+
+  const disconnect = async () => {
+    if (wallet) {
+      try {
+        await wallet.disconnect();
+      } catch (error) {
+        console.error('Error disconnecting wallet:', error);
+      }
+    }
   };
 
   return (
     <WalletContext.Provider
       value={{
         publicKey,
-        connecting,
         connected,
+        wallet,
         isAuthorizedMinter,
-        connectWallet,
-        disconnectWallet,
-        wallet: adapter,
+        connect,
+        disconnect,
       }}
     >
       {children}
