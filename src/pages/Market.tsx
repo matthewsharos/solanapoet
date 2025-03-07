@@ -278,7 +278,6 @@ const Market: React.FC = () => {
       // Filter out invalid collections and transform array data
       console.log('3. Processing collections data...');
       const validCollections = (collectionsData as unknown as string[][])
-        .slice(1)
         .map(validateCollection)
         .filter((collection): collection is Collection => collection !== null);
       
@@ -327,7 +326,7 @@ const Market: React.FC = () => {
       }
 
       // Process ultimates in optimized batches with error tracking
-      const ultimateChunks = chunk(ultimates.slice(1), BATCH_SIZE);
+      const ultimateChunks = chunk(ultimates, BATCH_SIZE);
       const failedNFTs: string[] = [];
       
       for (const batch of ultimateChunks) {
