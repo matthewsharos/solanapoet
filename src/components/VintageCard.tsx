@@ -5,7 +5,7 @@ import { formatWalletAddress } from '../utils/helpers';
 import NFTDetailModal from './NFTDetailModal';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useWalletContext } from '../contexts/WalletContext';
-import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
+import { getDisplayNameForWallet, syncDisplayNamesFromSheets, getAllDisplayNames } from '../utils/displayNames';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 
 // Styled components for vintage card
@@ -220,38 +220,39 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
           return;
         }
 
-        // Check localStorage cache first
-        const storedNames = localStorage.getItem('wallet_display_names');
-        if (storedNames) {
-          const namesMap = JSON.parse(storedNames);
-          if (namesMap[ownerAddress]) {
-            setOwnerDisplayName(namesMap[ownerAddress]);
+        // Use the modified getAllDisplayNames function to get from cache
+        const displayNamesMap = getAllDisplayNames();
+        
+        if (displayNamesMap.has(ownerAddress.toLowerCase())) {
+          const cachedName = displayNamesMap.get(ownerAddress.toLowerCase());
+          if (cachedName) {
+            setOwnerDisplayName(cachedName);
             return;
           }
         }
-
-        // If no cached name found, sync with Google Sheets
-        await syncDisplayNamesFromSheets(false); // Don't force sync, respect cooldown
-        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
         
-        if (freshDisplayName) {
-          console.log('Found fresh display name:', freshDisplayName, 'for address:', ownerAddress);
-          setOwnerDisplayName(freshDisplayName);
-        } else {
-          // Show abbreviated wallet address in VintageCard display
-          console.log('No display name found for address:', ownerAddress);
+        // If no cached name found, try to get it just once but don't retry if it fails
+        try {
+          const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
+          
+          if (freshDisplayName) {
+            console.log('Found display name:', freshDisplayName, 'for address:', ownerAddress);
+            setOwnerDisplayName(freshDisplayName);
+          } else {
+            // Show abbreviated wallet address in VintageCard display
+            console.log('No display name found for address:', ownerAddress);
+            setOwnerDisplayName(formatWalletAddress(ownerAddress));
+          }
+        } catch (error) {
+          // Don't log the error, just use formatted address
           setOwnerDisplayName(formatWalletAddress(ownerAddress));
         }
-      } catch (error) {
-        console.error('Error fetching owner display name:', error);
-        // Show abbreviated wallet address on error
-        setOwnerDisplayName(formatWalletAddress(ownerAddress));
       } finally {
         setIsUpdatingDisplayName(false);
       }
     };
 
-    // Update immediately and also listen for display name updates
+    // Update immediately
     void updateOwnerDisplay();
 
     interface DisplayNamesUpdateEvent extends CustomEvent {
@@ -261,8 +262,12 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     }
 
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
-      console.log('Display names updated, refreshing with:', event.detail.displayNames);
-      void updateOwnerDisplay();
+      if (!event.detail?.displayNames || !ownerAddress) return;
+      
+      const updatedName = event.detail.displayNames[ownerAddress.toLowerCase()];
+      if (updatedName) {
+        setOwnerDisplayName(updatedName);
+      }
     };
 
     // Listen for display name updates
@@ -271,7 +276,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     return () => {
       window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
     };
-  }, [ownerAddress, displayName, nft.owner, isUpdatingDisplayName]);
+  }, [ownerAddress, displayName, nft.owner]);
 
   // Check if the current user is the owner
   const isOwner = React.useMemo(() => {
