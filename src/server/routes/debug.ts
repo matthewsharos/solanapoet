@@ -3,86 +3,95 @@ import axios from 'axios';
 
 const router = express.Router();
 
-// Debug API route to check environment variables and server status
-router.get('/', async (req: Request, res: Response) => {
+// Helper function to safely get environment variable info
+const getEnvVarInfo = (name: string) => {
   try {
-    console.log('Debug API route called');
+    const value = process.env[name];
+    return {
+      exists: !!value,
+      length: value?.length || 0,
+      prefix: value ? value.substring(0, 4) : null,
+      isDefined: name in process.env
+    };
+  } catch (error) {
+    return {
+      exists: false,
+      error: 'Error accessing variable'
+    };
+  }
+};
 
+// Debug API route to check environment variables and server status
+router.get('/', async (_req: Request, res: Response) => {
+  try {
+    // Basic environment info
     const envInfo = {
-      GOOGLE_CLIENT_EMAIL_exists: !!process.env.GOOGLE_CLIENT_EMAIL,
-      GOOGLE_CLIENT_EMAIL_length: process.env.GOOGLE_CLIENT_EMAIL?.length,
-      GOOGLE_PRIVATE_KEY_exists: !!process.env.GOOGLE_PRIVATE_KEY,
-      GOOGLE_PRIVATE_KEY_length: process.env.GOOGLE_PRIVATE_KEY?.length,
-      GOOGLE_PRIVATE_KEY_starts: process.env.GOOGLE_PRIVATE_KEY?.substring(0, 27),
-      GOOGLE_PRIVATE_KEY_has_newlines: process.env.GOOGLE_PRIVATE_KEY?.includes('\\n'),
-      GOOGLE_PRIVATE_KEY_has_real_newlines: process.env.GOOGLE_PRIVATE_KEY?.includes('\n'),
-      GOOGLE_SHEETS_SPREADSHEET_ID_exists: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'Not set',
       NODE_ENV: process.env.NODE_ENV || 'Not set',
       VERCEL_ENV: process.env.VERCEL_ENV || 'Not set',
-      VERCEL_URL: process.env.VERCEL_URL || 'Not set',
-      HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
-      VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY,
-      HELIUS_API_KEY_prefix: process.env.HELIUS_API_KEY ? process.env.HELIUS_API_KEY.substring(0, 4) : null,
-      VITE_HELIUS_API_KEY_prefix: process.env.VITE_HELIUS_API_KEY ? process.env.VITE_HELIUS_API_KEY.substring(0, 4) : null,
-      SOLANA_RPC_URL_exists: !!process.env.SOLANA_RPC_URL,
-      VITE_SOLANA_RPC_URL_exists: !!process.env.VITE_SOLANA_RPC_URL
+      VERCEL_URL: process.env.VERCEL_URL || 'Not set'
     };
 
-    // Test Helius API if key exists
-    let heliusTest = null;
-    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
-    
-    if (heliusApiKey) {
-      try {
-        const testMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // USDC mint
-        const response = await axios.post(
-          `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-          {
-            jsonrpc: '2.0',
-            id: 'debug-test',
-            method: 'getAsset',
-            params: {
-              id: testMint
-            }
-          },
-          { timeout: 5000 }
-        );
-        
-        heliusTest = {
-          success: true,
-          responseStatus: response.status,
-          hasData: !!response.data,
-          hasResult: !!response.data?.result
-        };
-      } catch (heliusError: any) {
-        heliusTest = {
-          success: false,
-          error: heliusError.message,
-          responseStatus: heliusError.response?.status,
-          responseData: heliusError.response?.data
-        };
-      }
-    }
+    // Google credentials info
+    const googleInfo = {
+      GOOGLE_CLIENT_EMAIL: getEnvVarInfo('GOOGLE_CLIENT_EMAIL'),
+      GOOGLE_PRIVATE_KEY: getEnvVarInfo('GOOGLE_PRIVATE_KEY'),
+      GOOGLE_SHEETS_SPREADSHEET_ID: getEnvVarInfo('GOOGLE_SHEETS_SPREADSHEET_ID')
+    };
 
-    return res.status(200).json({
+    // Helius info
+    const heliusInfo = {
+      HELIUS_API_KEY: getEnvVarInfo('HELIUS_API_KEY'),
+      VITE_HELIUS_API_KEY: getEnvVarInfo('VITE_HELIUS_API_KEY'),
+      SOLANA_RPC_URL: getEnvVarInfo('SOLANA_RPC_URL'),
+      VITE_SOLANA_RPC_URL: getEnvVarInfo('VITE_SOLANA_RPC_URL')
+    };
+
+    return res.json({
       status: 'ok',
       time: new Date().toISOString(),
       environment: envInfo,
-      heliusTest
+      google: googleInfo,
+      helius: heliusInfo
     });
   } catch (error: any) {
-    console.error('Debug API route error:', error);
     return res.status(500).json({
       status: 'error',
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      type: error.constructor.name,
+      time: new Date().toISOString()
     });
   }
 });
 
-// Add a separate endpoint for testing Helius API
-router.get('/helius-test', async (req: Request, res: Response) => {
+// Simple Helius key check
+router.get('/helius-check', async (_req: Request, res: Response) => {
+  try {
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    
+    // Basic check without making API call
+    return res.json({
+      success: true,
+      keyInfo: {
+        exists: !!heliusApiKey,
+        length: heliusApiKey?.length || 0,
+        prefix: heliusApiKey ? heliusApiKey.substring(0, 4) : null
+      },
+      environment: {
+        HELIUS_API_KEY: getEnvVarInfo('HELIUS_API_KEY'),
+        VITE_HELIUS_API_KEY: getEnvVarInfo('VITE_HELIUS_API_KEY')
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      type: error.constructor.name
+    });
+  }
+});
+
+// Test Helius API connection
+router.get('/helius-test', async (_req: Request, res: Response) => {
   try {
     const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
     
@@ -91,8 +100,8 @@ router.get('/helius-test', async (req: Request, res: Response) => {
         success: false,
         message: 'No Helius API key found',
         environment: {
-          HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
-          VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY
+          HELIUS_API_KEY: getEnvVarInfo('HELIUS_API_KEY'),
+          VITE_HELIUS_API_KEY: getEnvVarInfo('VITE_HELIUS_API_KEY')
         }
       });
     }
@@ -119,42 +128,25 @@ router.get('/helius-test', async (req: Request, res: Response) => {
 
     return res.json({
       success: true,
-      apiKeyPrefix: heliusApiKey.substring(0, 4),
-      responseStatus: response.status,
-      hasData: !!response.data,
-      hasResult: !!response.data?.result
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      responseStatus: error.response?.status,
-      responseData: error.response?.data
-    });
-  }
-});
-
-// Add a simple Helius key check endpoint
-router.get('/helius-key', async (req: Request, res: Response) => {
-  try {
-    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
-    
-    return res.json({
-      success: true,
-      environment: {
-        HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
-        VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY,
-        HELIUS_API_KEY_prefix: process.env.HELIUS_API_KEY ? process.env.HELIUS_API_KEY.substring(0, 4) : null,
-        VITE_HELIUS_API_KEY_prefix: process.env.VITE_HELIUS_API_KEY ? process.env.VITE_HELIUS_API_KEY.substring(0, 4) : null,
-        SOLANA_RPC_URL_exists: !!process.env.SOLANA_RPC_URL,
-        VITE_SOLANA_RPC_URL_exists: !!process.env.VITE_SOLANA_RPC_URL,
-        NODE_ENV: process.env.NODE_ENV
+      keyInfo: {
+        prefix: heliusApiKey.substring(0, 4),
+        length: heliusApiKey.length
+      },
+      apiResponse: {
+        status: response.status,
+        hasData: !!response.data,
+        hasResult: !!response.data?.result
       }
     });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
+      type: error.constructor.name,
+      response: {
+        status: error.response?.status,
+        data: error.response?.data
+      }
     });
   }
 });
