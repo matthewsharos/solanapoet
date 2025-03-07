@@ -64,53 +64,31 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       ...nftData,
       mint: nftAddress,
       name: nftData.name || (ultimate?.name || 'Unknown NFT'),
-      image: nftData.imageUrl || nftData.image || '',
+      image: nftData.image || '',
       owner: typeof nftData.owner === 'string' 
         ? { publicKey: nftData.owner }
         : nftData.owner,
       listed: false,
-      collectionName: collectionName,
-      collectionAddress: collectionAddress
+      collectionName: collectionName || nftData.collection?.name || '',
+      collectionAddress: collectionAddress || nftData.collection?.address || ''
     };
-  } catch (error: any) {
-    // Handle server response with retry information
-    const status = error.response?.status;
-    const responseData = error.response?.data;
-    
-    if (retries > 0 && responseData?.shouldRetry) {
-      const retryDelay = responseData.retryAfter || Math.min(2000 * Math.pow(2, 3 - retries), 8000);
-      console.log(`Retrying fetch for NFT ${nftAddress}, ${retries} attempts remaining. Waiting ${retryDelay}ms...`);
-      await delay(retryDelay);
+  } catch (error) {
+    console.error(`Error fetching NFT ${nftAddress}:`, error);
+    if (retries > 0) {
+      console.log(`Retrying fetch for NFT ${nftAddress}, ${retries} attempts remaining...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
       return fetchNFTWithRetries(nftAddress, ultimate, collections, retries - 1);
     }
-
-    // If we're out of retries but have ultimate data, return a minimal NFT object
-    if (ultimate) {
-      console.warn(`Failed to fetch NFT ${nftAddress} after retries, using fallback data`);
-      // Find collection name for fallback data
-      let collectionName = '';
-      let collectionAddress = '';
-      if (ultimate.collection_id) {
-        const collection = collections.find(c => c.address === ultimate.collection_id);
-        if (collection) {
-          collectionName = collection.name;
-          collectionAddress = collection.address;
-        }
-      }
-      
-      return {
-        mint: nftAddress,
-        name: ultimate.name || 'Unknown NFT',
-        image: '',
-        owner: { publicKey: ultimate.owner },
-        listed: false,
-        collectionName: collectionName,
-        collectionAddress: collectionAddress
-      } as NFT;
-    }
-
-    console.error('Failed to fetch NFT after retries:', error);
-    return null;
+    console.log(`Failed to fetch NFT ${nftAddress} after retries, using fallback data`);
+    return {
+      mint: nftAddress,
+      name: ultimate?.name || 'Unknown NFT',
+      image: '',
+      owner: { publicKey: '' },
+      listed: false,
+      collectionName: '',
+      collectionAddress: ultimate?.collection_id || ''
+    };
   }
 };
 
