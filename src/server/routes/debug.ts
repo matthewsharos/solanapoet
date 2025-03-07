@@ -81,4 +81,57 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// Add a separate endpoint for testing Helius API
+router.get('/helius-test', async (req: Request, res: Response) => {
+  try {
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    
+    if (!heliusApiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'No Helius API key found',
+        environment: {
+          HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
+          VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY
+        }
+      });
+    }
+
+    // Test mint address (USDC)
+    const testMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    
+    // Create an axios instance with timeout
+    const heliusClient = axios.create({
+      timeout: 5000 // 5 second timeout
+    });
+
+    const response = await heliusClient.post(
+      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+      {
+        jsonrpc: '2.0',
+        id: 'helius-test',
+        method: 'getAsset',
+        params: {
+          id: testMint
+        }
+      }
+    );
+
+    return res.json({
+      success: true,
+      apiKeyPrefix: heliusApiKey.substring(0, 4),
+      responseStatus: response.status,
+      hasData: !!response.data,
+      hasResult: !!response.data?.result
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data
+    });
+  }
+});
+
 export default router; 
