@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { google } from 'googleapis';
+import { isRateLimited, recordApiCall, getCachedData, setCachedData } from '../utils/googleSheetsCache';
 
 // Helper function to initialize Google Sheets client
 async function getGoogleSheetsClient() {
@@ -111,6 +112,24 @@ async function getAllCollections(req, res) {
       throw new Error('Helius API key not configured');
     }
 
+    // Check cache first
+    const cachedCollections = getCachedData('collections');
+    if (cachedCollections) {
+      console.log('Returning collections from cache');
+      return res.status(200).json({
+        success: true,
+        length: cachedCollections.length,
+        sample: cachedCollections[0] || null,
+        collections: cachedCollections
+      });
+    }
+
+    // Check rate limits before making API call
+    if (isRateLimited()) {
+      console.log('Rate limit reached, using Helius fallback...');
+      return await getHeliusCollections(req, res, heliusApiKey);
+    }
+
     // Try to get collection data from Google Sheets first
     console.log('Attempting to fetch collections directly from Google Sheets...');
     let collections = [];
@@ -123,6 +142,9 @@ async function getAllCollections(req, res) {
       if (!spreadsheetId) {
         throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
       }
+      
+      // Record this API call
+      recordApiCall();
       
       // Get data from the collections sheet
       const response = await sheets.spreadsheets.values.get({
@@ -149,64 +171,100 @@ async function getAllCollections(req, res) {
       })).filter(collection => collection.address && collection.name);
       
       console.log(`Found ${collections.length} collections in Google Sheets`);
+      
+      // Cache the collections
+      setCachedData('collections', collections);
+      
     } catch (sheetError) {
       console.error('Error fetching collections from Google Sheets:', sheetError);
       // Continue execution to try fetching from Helius as fallback
+      return await getHeliusCollections(req, res, heliusApiKey);
     }
     
-    // If we couldn't get collections from Google Sheets, try Helius as fallback
-    if (collections.length === 0) {
-      console.log('No collections found in Google Sheets, using Helius as fallback...');
-      
-      // Use Helius to get top collections 
-      const heliusResponse = await axios.post(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        {
-          jsonrpc: "2.0",
-          id: "top-collections",
-          method: "getTopCollections",
-          params: { limit: 10 }
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 15000
-        }
-      );
-      
-      if (heliusResponse.data.result) {
-        collections = heliusResponse.data.result.map(collection => ({
-          address: collection.id,
-          name: collection.name,
-          description: collection.description || '',
-          image: collection.image || '',
-          website: collection.externalUrl || '',
-          twitter: collection.twitter || '',
-          discord: collection.discord || '',
-          isFeatured: false,
-          ultimates: false,
-          collectionId: collection.id // Ensure collectionId is set to id for compatibility
-        }));
-        
-        console.log(`Found ${collections.length} collections from Helius`);
-      }
+    // If we got collections from Google Sheets, return them
+    if (collections.length > 0) {
+      return res.status(200).json({
+        success: true,
+        length: collections.length,
+        sample: collections[0] || null,
+        collections: collections
+      });
     }
     
-    // Return either the Google Sheets collections or Helius collections
-    // Include a sample collection for debugging
-    const sampleCollection = collections.length > 0 ? collections[0] : null;
-    
-    return res.status(200).json({
-      success: true,
-      length: collections.length,
-      sample: sampleCollection,
-      collections: collections
-    });
+    // If we get here, try Helius as fallback
+    return await getHeliusCollections(req, res, heliusApiKey);
 
   } catch (error) {
     console.error('Collections endpoint error:', error);
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching collections',
+      error: error.message
+    });
+  }
+}
+
+// Helper function to get collections from Helius
+async function getHeliusCollections(req, res, heliusApiKey) {
+  console.log('Fetching collections from Helius...');
+  
+  try {
+    // Use Helius to get top collections 
+    const heliusResponse = await axios.post(
+      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+      {
+        jsonrpc: "2.0",
+        id: "my-id",
+        method: "getTopCollections",
+        params: { limit: 10 }
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      }
+    );
+    
+    if (heliusResponse.data.result) {
+      const collections = heliusResponse.data.result.map(collection => ({
+        address: collection.id,
+        name: collection.name,
+        description: collection.description || '',
+        image: collection.image || '',
+        website: collection.externalUrl || '',
+        twitter: collection.twitter || '',
+        discord: collection.discord || '',
+        isFeatured: false,
+        ultimates: false,
+        collectionId: collection.id
+      }));
+      
+      console.log(`Found ${collections.length} collections from Helius`);
+      
+      // Cache these results too
+      setCachedData('collections', collections);
+      
+      return res.status(200).json({
+        success: true,
+        length: collections.length,
+        sample: collections[0] || null,
+        collections: collections,
+        source: 'helius'
+      });
+    }
+    
+    // If we get here, return empty results
+    return res.status(200).json({
+      success: true,
+      length: 0,
+      sample: null,
+      collections: []
+    });
+    
+  } catch (error) {
+    console.error('Error fetching from Helius:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error fetching collections from Helius',
       error: error.message
     });
   }
