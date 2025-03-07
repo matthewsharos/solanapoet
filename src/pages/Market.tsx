@@ -49,8 +49,12 @@ interface ApiResponse<T> {
   data?: T;
 }
 
-interface CollectionApiResponse extends ApiResponse<string[][]> {
-  data: string[][];
+interface CollectionApiResponse {
+  success: boolean;
+  message?: string;
+  length?: number;
+  sample?: Collection | null;
+  collections: Collection[];
 }
 
 interface UltimatesApiResponse extends ApiResponse<UltimateNFT[]> {}
@@ -170,8 +174,8 @@ const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
 // Helper function to fetch collections
 const fetchCollections = async (): Promise<Collection[]> => {
   try {
-    console.log('Fetching collections from sheets API...');
-    const response = await axios.get<CollectionApiResponse>('/api/sheets?sheet=collections');
+    console.log('Fetching collections from API...');
+    const response = await axios.get<CollectionApiResponse>('/api/collection');
     console.log('Raw API response:', response.data);
     
     if (!response.data.success) {
@@ -179,42 +183,20 @@ const fetchCollections = async (): Promise<Collection[]> => {
       throw new Error('Failed to fetch collections');
     }
     
-    // Transform the raw sheet data into Collection objects
-    const rawData = response.data.data || [];
-    console.log('Raw sheet data:', rawData);
+    // Get collections directly from the response
+    const collections = response.data.collections || [];
+    console.log('Collections from API:', collections);
     
-    if (rawData.length === 0) {
-      console.warn('No data received from sheets API');
+    if (collections.length === 0) {
+      console.warn('No collections received from API');
       return [];
     }
     
-    console.log('First row (headers):', rawData[0]);
+    // Log collection breakdown
+    const ultimates = collections.filter((c: Collection) => c.ultimates).length;
+    const regular = collections.filter((c: Collection) => !c.ultimates).length;
+    console.log('Collections breakdown:', { total: collections.length, ultimates, regular });
     
-    const collections = rawData
-      .slice(1) // Skip header row
-      .map(row => {
-        const collection = {
-          address: row[0] || '',
-          name: row[1] || '',
-          image: row[2] || '',
-          description: row[3] || '',
-          addedAt: row[4] ? Number(row[4]) : Date.now(),
-          creationDate: row[5] || new Date().toISOString(),
-          ultimates: row[6] === 'TRUE' || row[6] === 'true',
-          collectionId: row[0] || '' // Set collectionId to address for compatibility
-        };
-        console.log('Processed collection:', collection);
-        return collection;
-      })
-      .filter(c => {
-        const isValid = c.address && c.name;
-        if (!isValid) {
-          console.warn('Filtered out invalid collection:', c);
-        }
-        return isValid;
-      });
-
-    console.log('Final processed collections:', collections);
     return collections;
   } catch (error) {
     console.error('Error in fetchCollections:', error);
