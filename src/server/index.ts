@@ -73,13 +73,9 @@ if (!process.env.HELIUS_API_KEY && process.env.VITE_HELIUS_API_KEY) {
 }
 
 if (!process.env.SOLANA_RPC_URL && process.env.VITE_SOLANA_RPC_URL) {
-  // Remove '@' prefix if present
-  let rpcUrl = process.env.VITE_SOLANA_RPC_URL;
-  if (rpcUrl.startsWith('@')) {
-    rpcUrl = rpcUrl.substring(1);
-  }
+  // Use the URL directly without any special handling
+  process.env.SOLANA_RPC_URL = process.env.VITE_SOLANA_RPC_URL;
   console.log('Using VITE_SOLANA_RPC_URL as SOLANA_RPC_URL');
-  process.env.SOLANA_RPC_URL = rpcUrl;
 }
 
 // Hardcode API key as fallback if not set

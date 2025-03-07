@@ -431,21 +431,11 @@ export const getConnection = () => {
     
     // 1. Try process.env.VITE_SOLANA_RPC_URL
     if (process.env.VITE_SOLANA_RPC_URL) {
-      let url = process.env.VITE_SOLANA_RPC_URL;
-      // Remove @ prefix if present
-      if (url.startsWith('@')) {
-        url = url.substring(1);
-      }
-      rpcUrl = url;
+      rpcUrl = process.env.VITE_SOLANA_RPC_URL;
     } 
     // 2. Try import.meta.env.VITE_SOLANA_RPC_URL
     else if (import.meta.env.VITE_SOLANA_RPC_URL) {
-      let url = import.meta.env.VITE_SOLANA_RPC_URL;
-      // Remove @ prefix if present
-      if (url.startsWith('@')) {
-        url = url.substring(1);
-      }
-      rpcUrl = url;
+      rpcUrl = import.meta.env.VITE_SOLANA_RPC_URL;
     } 
     // 3. Build URL with Helius API key
     else if (import.meta.env.VITE_HELIUS_API_KEY) {
