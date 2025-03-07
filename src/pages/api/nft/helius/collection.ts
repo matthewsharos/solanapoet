@@ -28,37 +28,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasApiKey: !!heliusApiKey
     });
 
-    // Try getAssetsByGroup first as it's more reliable for collections
+    // Try REST API first as it's more reliable for collections
     try {
-      const requestPayload = {
-        jsonrpc: '2.0',
-        id: 'collection-nfts',
-        method: 'getAssetsByGroup',
-        params: {
-          groupKey: 'collection',
-          groupValue: collectionId,
-          page: Number(page),
-          limit: Number(limit),
-          displayOptions: {
-            showCollectionMetadata: true,
-            showUnverifiedCollections: true
-          },
-          sortBy: {
-            sortBy: 'created',
-            sortDirection: 'desc'
-          }
-        }
-      };
-
-      console.log('Making Helius API request:', {
-        url: 'https://mainnet.helius-rpc.com',
-        method: 'POST',
-        payload: JSON.stringify(requestPayload)
+      console.log('Making Helius REST API request:', {
+        url: 'https://api.helius.xyz/v1/nfts',
+        method: 'POST'
       });
 
       const response = await axios.post(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        requestPayload,
+        `https://api.helius.xyz/v1/nfts?api-key=${heliusApiKey}`,
+        {
+          ownerAddress: null,
+          collectionAddress: collectionId,
+          pageNumber: Number(page),
+          limit: Number(limit)
+        },
         {
           headers: {
             'Content-Type': 'application/json',
@@ -71,10 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         status: response.status,
         statusText: response.statusText,
         hasData: !!response.data,
-        hasResult: !!response.data?.result,
-        resultType: response.data?.result ? typeof response.data.result : 'undefined',
-        isArray: Array.isArray(response.data?.result),
-        hasItems: !!response.data?.result?.items,
+        resultCount: Array.isArray(response.data) ? response.data.length : 0,
         error: response.data?.error,
         rawResponse: JSON.stringify(response.data)
       });
@@ -87,24 +68,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error(`Helius API error: ${JSON.stringify(response.data.error)}`);
       }
 
-      if (!response.data.result) {
-        throw new Error('No result field in Helius API response');
+      if (!Array.isArray(response.data)) {
+        throw new Error('Expected array response from Helius API');
       }
 
-      const result = response.data.result;
-      let items = [];
-      let total = 0;
-
-      // Handle different response formats
-      if (Array.isArray(result)) {
-        items = result;
-        total = result.length;
-      } else if (typeof result === 'object' && result.items) {
-        items = result.items;
-        total = result.total || items.length;
-      } else {
-        throw new Error(`Unexpected result format: ${JSON.stringify(result)}`);
-      }
+      const items = response.data;
+      const total = items.length; // REST API doesn't provide total count
 
       const normalizedResponse = {
         jsonrpc: '2.0',
@@ -129,7 +98,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       return res.status(200).json(normalizedResponse);
     } catch (error: any) {
-      console.error('Error using getAssetsByGroup:', {
+      console.error('Error using REST API:', {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
@@ -139,22 +108,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // If this is a Helius API error, try the fallback
       if (error.response?.status === 400 || error.response?.status === 404) {
-        console.log('Helius API error, trying fallback...');
+        console.log('Helius REST API error, trying fallback...');
       } else {
         // For other errors, throw immediately
         throw error;
       }
     }
 
-    // Fallback to searchAssets if getAssetsByGroup fails
+    // Fallback to RPC API if REST fails
     try {
       const searchPayload = {
         jsonrpc: '2.0',
         id: 'collection-search',
-        method: 'searchAssets',
+        method: 'getAssetsByGroup',
         params: {
-          ownerAddress: null,
-          grouping: ['collection', collectionId],
+          groupKey: 'collection',
+          groupValue: collectionId,
           page: Number(page),
           limit: Number(limit),
           displayOptions: {
@@ -164,7 +133,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       };
 
-      console.log('Trying searchAssets fallback:', {
+      console.log('Trying RPC fallback:', {
         url: 'https://mainnet.helius-rpc.com',
         method: 'POST',
         payload: JSON.stringify(searchPayload)
@@ -181,7 +150,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       );
 
-      console.log('Raw searchAssets response:', {
+      console.log('Raw RPC response:', {
         status: searchResponse.status,
         statusText: searchResponse.statusText,
         hasData: !!searchResponse.data,
@@ -192,15 +161,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       if (!searchResponse.data) {
-        throw new Error('No data received from Helius searchAssets API');
+        throw new Error('No data received from Helius RPC API');
       }
 
       if (searchResponse.data.error) {
-        throw new Error(`Helius searchAssets API error: ${JSON.stringify(searchResponse.data.error)}`);
+        throw new Error(`Helius RPC API error: ${JSON.stringify(searchResponse.data.error)}`);
       }
 
       if (!searchResponse.data.result) {
-        throw new Error('No result field in Helius searchAssets API response');
+        throw new Error('No result field in Helius RPC API response');
       }
 
       const result = searchResponse.data.result;
@@ -217,7 +186,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       };
 
-      console.log('Normalized searchAssets response:', {
+      console.log('Normalized RPC response:', {
         itemCount: normalizedResponse.result.items.length,
         total: normalizedResponse.result.total,
         page: normalizedResponse.result.page,
@@ -230,7 +199,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       return res.status(200).json(normalizedResponse);
     } catch (searchError: any) {
-      console.error('Error using searchAssets:', {
+      console.error('Error using RPC API:', {
         message: searchError.message,
         status: searchError.response?.status,
         statusText: searchError.response?.statusText,
