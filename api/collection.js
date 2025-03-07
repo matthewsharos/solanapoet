@@ -186,22 +186,35 @@ async function getAllCollections(req, res) {
       const rawData = response.data.values || [];
       console.log(`Received ${rawData.length} rows from Google Sheets`);
       
+      // Log the header row to verify column order
+      if (rawData.length > 0) {
+        console.log('Header row:', rawData[0]);
+      }
+      
       // Skip header row
       const rows = rawData.slice(1);
+      console.log('Raw rows before processing:', rows);
       
-      collections = rows.map(row => ({
-        address: row[0] || '',
-        name: row[1] || '',
-        image: row[2] || '',
-        description: row[3] || '',
-        addedAt: row[4] ? Number(row[4]) : Date.now(),
-        creationDate: row[5] || new Date().toISOString(),
-        ultimates: row[6] === 'TRUE' || row[6] === 'true',
-        collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
-      })).filter(collection => 
-        collection.address && 
-        collection.name
-      );
+      collections = rows.map(row => {
+        const collection = {
+          address: row[0] || '',
+          name: row[1] || '',
+          image: row[2] || '',
+          description: row[3] || '',
+          addedAt: row[4] ? Number(row[4]) : Date.now(),
+          creationDate: row[5] || new Date().toISOString(),
+          ultimates: row[6] === 'TRUE' || row[6] === 'true',
+          collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
+        };
+        console.log('Processed collection:', collection);
+        return collection;
+      }).filter(collection => {
+        const isValid = collection.address && collection.name;
+        if (!isValid) {
+          console.log('Filtered out invalid collection:', collection);
+        }
+        return isValid;
+      });
       
       console.log(`Found ${collections.length} valid collections in Google Sheets`);
       
