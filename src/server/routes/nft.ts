@@ -886,4 +886,23 @@ router.get('/simple-test', async (_req: Request, res: Response) => {
   }
 });
 
+// Minimal env var test endpoint
+router.get('/env-check', (_req: Request, res: Response) => {
+  const envVars = {
+    hasViteHeliusKey: !!process.env.VITE_HELIUS_API_KEY,
+    hasHeliusKey: !!process.env.HELIUS_API_KEY,
+    hasViteRpcUrl: !!process.env.VITE_SOLANA_RPC_URL,
+    hasRpcUrl: !!process.env.SOLANA_RPC_URL,
+    viteHeliusKeyPrefix: process.env.VITE_HELIUS_API_KEY ? process.env.VITE_HELIUS_API_KEY.substring(0, 4) : null,
+    viteRpcUrlPrefix: process.env.VITE_SOLANA_RPC_URL ? process.env.VITE_SOLANA_RPC_URL.substring(0, 30) : null,
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV
+  };
+
+  return res.json({
+    success: true,
+    envVars
+  });
+});
+
 export default router; 
