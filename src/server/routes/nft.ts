@@ -121,37 +121,66 @@ const cacheNFTData = (mintAddress: string, data: HeliusNFTData): void => {
 // Helper function to fetch NFT data from Helius with retries
 const fetchHeliusData = async (mintAddress: string, retries = 3): Promise<HeliusNFTData> => {
   try {
-    // First try the RPC API
-    const rpcResponse = await axios.post<HeliusResponse>(`https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`, {
-      jsonrpc: "2.0",
-      id: "my-id",
-      method: "getAsset",
-      params: {
-        id: mintAddress
-      }
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    if (!heliusApiKey) {
+      throw new Error('Helius API key not configured');
+    }
+
+    // Create an axios instance with timeout
+    const heliusClient = axios.create({
+      timeout: 8000 // 8 second timeout
     });
+
+    // First try the RPC API
+    console.log(`Fetching NFT data for ${mintAddress} from Helius RPC API...`);
+    const rpcResponse = await heliusClient.post<HeliusResponse>(
+      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+      {
+        jsonrpc: "2.0",
+        id: "helius-fetch",
+        method: "getAsset",
+        params: {
+          id: mintAddress
+        }
+      }
+    );
     
     if (rpcResponse.data.result) {
+      console.log(`Successfully fetched NFT data for ${mintAddress} from RPC API`);
       return rpcResponse.data.result;
     }
 
     // If RPC API returns no data, try the metadata API
-    const metadataResponse = await axios.post<HeliusResponse>(`https://api.helius.xyz/v0/tokens/metadata?api-key=${HELIUS_API_KEY}`, {
-      mintAccounts: [mintAddress]
-    });
+    console.log(`No data from RPC API, trying metadata API for ${mintAddress}...`);
+    const metadataResponse = await heliusClient.post<HeliusResponse>(
+      `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
+      {
+        mintAccounts: [mintAddress]
+      }
+    );
 
     if (!metadataResponse.data.data?.[0]) {
-      throw new Error('No metadata found');
+      throw new Error('No metadata found from either API');
     }
 
+    console.log(`Successfully fetched NFT data for ${mintAddress} from metadata API`);
     return metadataResponse.data.data[0];
-  } catch (error) {
+  } catch (error: any) {
     if (retries > 0) {
       const delay = Math.min(2000 * Math.pow(2, 3 - retries), 8000);
       console.log(`Retrying Helius API fetch for ${mintAddress}, ${retries} attempts remaining. Waiting ${delay}ms...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return fetchHeliusData(mintAddress, retries - 1);
     }
+    
+    // Add detailed error logging
+    console.error('Helius API fetch failed:', {
+      error: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      mintAddress
+    });
+    
     throw error;
   }
 };
@@ -792,6 +821,63 @@ router.get('/test-helius', async (req: Request, res: Response) => {
       config: {
         hasHeliusApiKey: !!process.env.HELIUS_API_KEY || !!process.env.VITE_HELIUS_API_KEY,
         hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL || !!process.env.VITE_SOLANA_RPC_URL
+      }
+    });
+  }
+});
+
+// Simple Helius test endpoint
+router.get('/simple-test', async (_req: Request, res: Response) => {
+  try {
+    // Get API key from environment variables
+    const apiKey = process.env.VITE_HELIUS_API_KEY;
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'No API key found',
+        envVars: {
+          hasViteHeliusKey: !!process.env.VITE_HELIUS_API_KEY,
+          hasHeliusKey: !!process.env.HELIUS_API_KEY,
+          hasViteRpcUrl: !!process.env.VITE_SOLANA_RPC_URL,
+          hasRpcUrl: !!process.env.SOLANA_RPC_URL
+        }
+      });
+    }
+
+    // Test mint address (USDC)
+    const testMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+    
+    // Make a simple request to Helius
+    const response = await axios({
+      method: 'post',
+      url: `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
+      data: {
+        jsonrpc: '2.0',
+        id: 'simple-test',
+        method: 'getAsset',
+        params: {
+          id: testMint
+        }
+      },
+      timeout: 5000 // 5 second timeout
+    });
+
+    return res.json({
+      success: true,
+      data: response.data,
+      apiKeyUsed: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+      response: error.response?.data,
+      config: {
+        hasViteHeliusKey: !!process.env.VITE_HELIUS_API_KEY,
+        hasHeliusKey: !!process.env.HELIUS_API_KEY,
+        hasViteRpcUrl: !!process.env.VITE_SOLANA_RPC_URL,
+        hasRpcUrl: !!process.env.SOLANA_RPC_URL
       }
     });
   }
