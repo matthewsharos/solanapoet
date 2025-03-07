@@ -134,4 +134,29 @@ router.get('/helius-test', async (req: Request, res: Response) => {
   }
 });
 
+// Add a simple Helius key check endpoint
+router.get('/helius-key', async (req: Request, res: Response) => {
+  try {
+    const heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    
+    return res.json({
+      success: true,
+      environment: {
+        HELIUS_API_KEY_exists: !!process.env.HELIUS_API_KEY,
+        VITE_HELIUS_API_KEY_exists: !!process.env.VITE_HELIUS_API_KEY,
+        HELIUS_API_KEY_prefix: process.env.HELIUS_API_KEY ? process.env.HELIUS_API_KEY.substring(0, 4) : null,
+        VITE_HELIUS_API_KEY_prefix: process.env.VITE_HELIUS_API_KEY ? process.env.VITE_HELIUS_API_KEY.substring(0, 4) : null,
+        SOLANA_RPC_URL_exists: !!process.env.SOLANA_RPC_URL,
+        VITE_SOLANA_RPC_URL_exists: !!process.env.VITE_SOLANA_RPC_URL,
+        NODE_ENV: process.env.NODE_ENV
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export default router; 
