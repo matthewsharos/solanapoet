@@ -18,9 +18,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    // Use the getAsset endpoint for NFT data
-    const response = await axios.get(
-      `https://api.helius.xyz/v0/assets?api-key=${heliusApiKey}&ids=${mint}`
+    // Use the DAS API endpoint for NFT data
+    const response = await axios.post(
+      `https://api.helius.xyz/v0/token-metadata?api-key=${heliusApiKey}`,
+      { mintAccounts: [mint] }
     );
 
     const nftData = response.data[0];
@@ -31,16 +32,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Transform the data to match expected format
     const transformedData = {
-      mint: nftData.id,
-      name: nftData.content?.metadata?.name || nftData.content?.metadata?.symbol || 'Unknown',
-      symbol: nftData.content?.metadata?.symbol,
-      description: nftData.content?.metadata?.description,
-      image: nftData.content?.files?.[0]?.uri || nftData.content?.metadata?.image || '',
-      attributes: nftData.content?.metadata?.attributes,
-      owner: nftData.ownership?.owner,
+      mint: nftData.mint,
+      name: nftData.onChainMetadata?.metadata?.data?.name || 'Unknown',
+      symbol: nftData.onChainMetadata?.metadata?.data?.symbol,
+      description: nftData.onChainMetadata?.metadata?.data?.uri,
+      image: nftData.offChainMetadata?.image || '',
+      attributes: nftData.offChainMetadata?.attributes,
+      owner: nftData.account,
       collection: {
-        address: nftData.grouping?.[0]?.group_value || '',
-        name: nftData.content?.metadata?.collection?.name || ''
+        address: nftData.onChainMetadata?.metadata?.collection?.key || '',
+        name: nftData.onChainMetadata?.metadata?.collection?.verified ? 
+          nftData.onChainMetadata?.metadata?.collection?.key : ''
       },
       tokenMetadata: nftData
     };
