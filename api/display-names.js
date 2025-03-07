@@ -25,7 +25,7 @@ async function getGoogleSheetsClient() {
         client_email: process.env.GOOGLE_CLIENT_EMAIL,
         private_key: privateKey,
       },
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
     });
 
     console.log('[serverless] Google Auth client initialized for display names');
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PUT');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
     // Handle OPTIONS request
@@ -88,29 +88,21 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // Parse the URL to determine the action
+    // Parse the URL path
     const url = new URL(req.url, `https://${req.headers.host}`);
     const pathParts = url.pathname.split('/').filter(Boolean);
     
-    // Log the path parts for debugging
-    console.log('[serverless] Path parts:', pathParts);
-    
-    // Main display-names endpoint
-    if (pathParts.length === 2 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
+    // Handle display-names requests based on path and method
+    if (pathParts.length === 2 && pathParts[1] === 'display-names') {
       // GET: List all display names
       if (req.method === 'GET') {
         return await getAllDisplayNames(req, res);
-      }
-      // POST: Add/update a display name
-      else if (req.method === 'POST') {
-        return await updateDisplayName(req, res);
-      }
-      else {
+      } else {
         return res.status(405).json({ success: false, message: 'Method not allowed' });
       }
-    }
+    } 
     // Display name by address endpoint
-    else if (pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'display-names') {
+    else if (pathParts.length === 3 && pathParts[1] === 'display-names') {
       const address = pathParts[2];
       
       // GET: Get a specific display name
@@ -119,7 +111,7 @@ export default async function handler(req, res) {
       }
       // PUT: Update a display name
       else if (req.method === 'PUT') {
-        return await updateDisplayNameByAddress(req, res, address);
+        return await updateDisplayName(req, res, address);
       }
       else {
         return res.status(405).json({ success: false, message: 'Method not allowed' });
@@ -142,27 +134,7 @@ export default async function handler(req, res) {
 // Get all display names
 async function getAllDisplayNames(req, res) {
   try {
-    // Check if we have cached data
-    const cachedDisplayNames = getCachedData('displayNames');
-    if (cachedDisplayNames) {
-      console.log('Returning display names from cache');
-      return res.status(200).json({
-        success: true,
-        displayNames: cachedDisplayNames
-      });
-    }
-
-    // Check rate limits before making API call
-    if (isRateLimited()) {
-      console.log('Rate limit reached, returning empty results');
-      return res.status(200).json({
-        success: true,
-        displayNames: [],
-        rateLimited: true
-      });
-    }
-    
-    console.log('Fetching display names directly from Google Sheets');
+    console.log('[serverless] Fetching all display names from Google Sheets');
     
     // Initialize Google Sheets client
     const sheets = await getGoogleSheetsClient();
@@ -172,73 +144,38 @@ async function getAllDisplayNames(req, res) {
       throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
     }
     
-    // Record this API call
-    recordApiCall();
-    
     // Get data from the display_names sheet
-    console.log('Fetching data from display_names sheet...');
+    console.log('[serverless] Fetching data from display_names sheet...');
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'display_names!A:C', // Update range to include updated_at column
+      range: 'display_names!A:C',
     });
     
     const rawData = response.data.values || [];
-    console.log(`Received ${rawData.length} rows from Google Sheets`);
-    
-    // Log the header row to verify column order
-    if (rawData.length > 0) {
-      console.log('Header row:', rawData[0]);
-    }
+    console.log(`[serverless] Received ${rawData.length} rows from display_names sheet`);
     
     // Skip header row
     const rows = rawData.slice(1);
-    console.log('Raw rows before processing:', rows);
     
     // Process rows into display names
-    const displayNames = rows.map(row => {
-      const entry = {
-        wallet_address: row[0] || '',
-        display_name: row[1] || '',
-        updated_at: row[2] || new Date().toISOString()
-      };
-      console.log('Processed display name entry:', entry);
-      return entry;
-    }).filter(entry => {
-      const isValid = entry.wallet_address;
-      if (!isValid) {
-        console.log('Filtered out invalid display name entry:', entry);
-      }
-      return isValid;
-    });
+    const displayNames = rows.map(row => ({
+      walletAddress: (row[0] || '').toLowerCase(),
+      displayName: row[1] || '',
+      updated_at: row[2] || new Date().toISOString()
+    })).filter(entry => entry.walletAddress && entry.displayName);
     
-    console.log(`Found ${displayNames.length} valid display names in Google Sheets`);
-    
-    // Cache the results
-    setCachedData('displayNames', displayNames);
+    console.log(`[serverless] Found ${displayNames.length} valid display names`);
     
     return res.status(200).json({
       success: true,
       displayNames: displayNames
     });
   } catch (error) {
-    console.error('Error fetching display names:', error);
-    console.error('Stack trace:', error.stack);
-    
-    // If we hit rate limits, return empty results instead of an error
-    if (error.message && error.message.includes('Quota exceeded')) {
-      console.warn('Google Sheets API rate limit exceeded, returning empty results');
-      return res.status(200).json({
-        success: true,
-        displayNames: [],
-        rateLimited: true
-      });
-    }
-    
+    console.error('[serverless] Error fetching all display names:', error);
     return res.status(500).json({ 
       success: false, 
-      error: 'Error fetching display names',
-      message: error.message,
-      stack: error.stack
+      message: 'Error fetching display names',
+      error: error.message
     });
   }
 }
@@ -246,28 +183,66 @@ async function getAllDisplayNames(req, res) {
 // Get a specific display name by address
 async function getDisplayName(req, res, address) {
   try {
-    console.log(`Fetching display name for address: ${address}`);
+    console.log(`[serverless] Fetching display name for address: ${address}`);
     
-    // Check cache first
-    const cachedDisplayNames = getCachedData('displayNames');
-    if (cachedDisplayNames) {
-      const cachedName = cachedDisplayNames.find(entry => entry.wallet_address === address);
-      if (cachedName) {
-        console.log(`Found display name for ${address} in cache`);
-        return res.status(200).json({
-          success: true,
-          displayName: cachedName.display_name
-        });
+    // Initialize Google Sheets client
+    const sheets = await getGoogleSheetsClient();
+    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    
+    if (!spreadsheetId) {
+      throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
+    }
+    
+    // Get data from the display_names sheet
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'display_names!A:C',
+    });
+    
+    const rows = response.data.values || [];
+    
+    // Skip header row and find the matching address
+    let displayName = null;
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] && rows[i][0].toLowerCase() === address.toLowerCase()) {
+        displayName = rows[i][1] || '';
+        break;
       }
     }
     
-    // Check rate limits before making API call
-    if (isRateLimited()) {
-      console.log('Rate limit reached, returning empty display name');
+    if (displayName) {
+      console.log(`[serverless] Found display name "${displayName}" for address ${address}`);
       return res.status(200).json({
         success: true,
-        displayName: '',
-        rateLimited: true
+        displayName: displayName
+      });
+    } else {
+      console.log(`[serverless] No display name found for address ${address}`);
+      return res.status(200).json({
+        success: true,
+        displayName: null
+      });
+    }
+  } catch (error) {
+    console.error(`[serverless] Error fetching display name for ${address}:`, error);
+    return res.status(500).json({ 
+      success: false, 
+      message: `Error fetching display name for ${address}`,
+      error: error.message
+    });
+  }
+}
+
+// Update a display name by address
+async function updateDisplayName(req, res, address) {
+  try {
+    console.log(`[serverless] Updating display name for address: ${address}`);
+    const { displayName } = req.body;
+    
+    if (!displayName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Display name is required'
       });
     }
     
@@ -279,206 +254,62 @@ async function getDisplayName(req, res, address) {
       throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID environment variable is not configured');
     }
     
-    // Record this API call
-    recordApiCall();
-    
-    // Get data from the display_names sheet
+    // Get data from the display_names sheet to find the row
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'display_names!A:B', // Get all display names
+      range: 'display_names!A:C',
     });
     
     const rows = response.data.values || [];
+    let rowIndex = -1;
     
-    // Skip header row and find matching address
-    const matchingRow = rows.slice(1).find(row => row[0] === address);
-    
-    if (!matchingRow) {
-      return res.status(200).json({
-        success: true,
-        displayName: ''
-      });
+    // Skip header row and find the matching address
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] && rows[i][0].toLowerCase() === address.toLowerCase()) {
+        rowIndex = i + 1; // 1-indexed for sheets API
+        break;
+      }
     }
     
-    const displayName = matchingRow[1] || '';
+    const updatedAt = new Date().toISOString();
     
-    // Cache this individual result in the main cache
-    if (cachedDisplayNames) {
-      const updatedCache = [...cachedDisplayNames];
-      const existingIndex = updatedCache.findIndex(entry => entry.wallet_address === address);
-      if (existingIndex >= 0) {
-        updatedCache[existingIndex].display_name = displayName;
-      } else {
-        updatedCache.push({ wallet_address: address, display_name: displayName });
-      }
-      setCachedData('displayNames', updatedCache);
+    if (rowIndex > 0) {
+      // Update existing row
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `display_names!B${rowIndex}:C${rowIndex}`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[displayName, updatedAt]]
+        }
+      });
+      
+      console.log(`[serverless] Updated display name for ${address} to "${displayName}"`);
+    } else {
+      // Add new row
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'display_names!A:C',
+        valueInputOption: 'RAW',
+        insertDataOption: 'INSERT_ROWS',
+        resource: {
+          values: [[address, displayName, updatedAt]]
+        }
+      });
+      
+      console.log(`[serverless] Added new display name for ${address}: "${displayName}"`);
     }
     
     return res.status(200).json({
       success: true,
-      displayName: displayName
-    });
-  } catch (error) {
-    console.error(`Error fetching display name for ${address}:`, error);
-    console.error('Stack trace:', error.stack);
-    
-    // If we hit rate limits, return empty results instead of an error
-    if (error.message && error.message.includes('Quota exceeded')) {
-      console.warn('Google Sheets API rate limit exceeded, returning empty display name');
-      return res.status(200).json({
-        success: true,
-        displayName: '',
-        rateLimited: true
-      });
-    }
-    
-    return res.status(500).json({
-      success: false,
-      error: `Error fetching display name for ${address}`,
-      message: error.message,
-      stack: error.stack
-    });
-  }
-}
-
-// Update a display name (POST to /api/display-names)
-async function updateDisplayName(req, res) {
-  try {
-    const { walletAddress, displayName } = req.body;
-    
-    if (!walletAddress || !displayName) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Wallet address and display name are required'
-      });
-    }
-    
-    console.log(`Updating display name for ${walletAddress} to "${displayName}"`);
-    
-    // Initialize Google Sheets client
-    const sheets = await getGoogleSheetsClient();
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    
-    // Find the row for the wallet address
-    const rowIndex = await findWalletAddressRow(sheets, walletAddress);
-    
-    if (rowIndex === -1) {
-      // Wallet address not found, append a new row
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: 'display_names!A:B',
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[walletAddress, displayName]]
-        }
-      });
-      
-      console.log(`Added new display name for ${walletAddress}`);
-    } else {
-      // Update existing row
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `display_names!B${rowIndex}`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[displayName]]
-        }
-      });
-      
-      console.log(`Updated display name for ${walletAddress} at row ${rowIndex}`);
-    }
-    
-    // Update cache
-    const now = Date.now();
-    const existingIndex = displayNamesCache.data.findIndex(entry => entry.wallet_address === walletAddress);
-    if (existingIndex >= 0) {
-      displayNamesCache.data[existingIndex].display_name = displayName;
-    } else {
-      displayNamesCache.data.push({ wallet_address: walletAddress, display_name });
-    }
-    displayNamesCache.timestamp = now;
-    
-    return res.status(200).json({ 
-      success: true, 
       message: 'Display name updated successfully'
     });
   } catch (error) {
-    console.error('Error updating display name:', error);
+    console.error(`[serverless] Error updating display name for ${address}:`, error);
     return res.status(500).json({ 
       success: false, 
-      error: 'Error updating display name',
-      message: error.message
-    });
-  }
-}
-
-// Update a display name by address (PUT to /api/display-names/:address)
-async function updateDisplayNameByAddress(req, res, address) {
-  try {
-    const { displayName } = req.body;
-    
-    if (!displayName) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Display name is required'
-      });
-    }
-    
-    console.log(`Updating display name for ${address} to "${displayName}"`);
-    
-    // Initialize Google Sheets client
-    const sheets = await getGoogleSheetsClient();
-    const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    
-    // Find the row for the wallet address
-    const rowIndex = await findWalletAddressRow(sheets, address);
-    
-    if (rowIndex === -1) {
-      // Wallet address not found, append a new row
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: 'display_names!A:B',
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[address, displayName]]
-        }
-      });
-      
-      console.log(`Added new display name for ${address}`);
-    } else {
-      // Update existing row
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `display_names!B${rowIndex}`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[displayName]]
-        }
-      });
-      
-      console.log(`Updated display name for ${address} at row ${rowIndex}`);
-    }
-    
-    // Update cache
-    const now = Date.now();
-    const existingIndex = displayNamesCache.data.findIndex(entry => entry.wallet_address === address);
-    if (existingIndex >= 0) {
-      displayNamesCache.data[existingIndex].display_name = displayName;
-    } else {
-      displayNamesCache.data.push({ wallet_address: address, display_name });
-    }
-    displayNamesCache.timestamp = now;
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Display name updated successfully'
-    });
-  } catch (error) {
-    console.error(`Error updating display name for ${address}:`, error);
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Error updating display name',
-      message: error.message
+      message: `Error updating display name for ${address}`,
+      error: error.message
     });
   }
 }
