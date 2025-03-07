@@ -22,13 +22,22 @@ const uploadFileToDrive = async (file: File) => {
   try {
     console.log('Uploading file to Google Drive:', file.name);
     
+    // Check file size client-side (4MB limit for Vercel)
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+    }
+    
+    // Create form data
     const formData = new FormData();
     formData.append('file', file);
     
+    // Send the request with timeout and proper error handling
     const response = await axios.post('/api/drive/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 30000, // 30 seconds timeout
     });
 
     console.log('Google Drive upload response:', response.data);
@@ -38,10 +47,26 @@ const uploadFileToDrive = async (file: File) => {
       throw new Error(response.data.message || 'Failed to upload file');
     }
 
+    if (!response.data.fileUrl) {
+      throw new Error('No file URL returned from server');
+    }
+
     return response.data.fileUrl;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in uploadFileToDrive:', error);
-    throw error;
+    
+    // More descriptive error messages
+    if (error.response) {
+      // Server responded with an error status code
+      const serverError = error.response.data?.message || 'Server error';
+      throw new Error(`Upload failed: ${serverError}`);
+    } else if (error.request) {
+      // Request was made but no response received
+      throw new Error('Upload timed out or server did not respond');
+    } else {
+      // Something else happened while setting up the request
+      throw error;
+    }
   }
 };
 
@@ -81,6 +106,21 @@ const Requests: React.FC = () => {
     
     if (!connected || !publicKey || !imageFile) {
       setSubmitStatus('error');
+      alert('Please connect your wallet and select an image before submitting.');
+      return;
+    }
+
+    // Validate image file
+    if (imageFile.size === 0) {
+      setSubmitStatus('error');
+      alert('The selected file appears to be empty.');
+      return;
+    }
+
+    // Check file type (allow only images)
+    if (!imageFile.type.startsWith('image/')) {
+      setSubmitStatus('error');
+      alert('Please select an image file (JPEG, PNG, etc.).');
       return;
     }
 
@@ -90,9 +130,25 @@ const Requests: React.FC = () => {
     try {
       console.log('Starting file upload process...');
       
-      // Upload image to Google Drive
-      const imageUrl = await uploadFileToDrive(imageFile);
-      console.log('Image uploaded successfully, URL:', imageUrl);
+      // Upload image to Google Drive with error handling
+      let imageUrl;
+      try {
+        imageUrl = await uploadFileToDrive(imageFile);
+        console.log('Image uploaded successfully, URL:', imageUrl);
+      } catch (uploadError: any) {
+        setShowAnimation(false);
+        setSubmitStatus('error');
+        alert(`Upload error: ${uploadError.message}`);
+        return;
+      }
+
+      // Only continue if we have an image URL
+      if (!imageUrl) {
+        setShowAnimation(false);
+        setSubmitStatus('error');
+        alert('Failed to get image URL after upload.');
+        return;
+      }
 
       // Submit to Google Sheets through server endpoint
       const formData = {
@@ -132,7 +188,8 @@ const Requests: React.FC = () => {
       setSubmitStatus('error');
       
       // Display more specific error information
-      alert(`Error submitting request: ${error.message || 'Unknown error'}. Please try again later.`);
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+      alert(`Error submitting request: ${errorMessage}. Please try again later.`);
     }
   };
 
