@@ -52,47 +52,50 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     // Find collection name and image if this is an ultimate NFT
     let collectionName = '';
     let collectionAddress = '';
-    let imageUrl = '';
+    let imageUrl = nftData.image || '';
     
     if (ultimate?.collection_id) {
       const collection = collections.find(c => c.address === ultimate.collection_id);
       if (collection) {
         collectionName = collection.name;
         collectionAddress = collection.address;
-        // For ultimates, prioritize collection image path
-        imageUrl = collection.image || nftData.image || '';
+        // For ultimates, use the NFT's image directly
+        imageUrl = nftData.image || '';
       }
     }
 
+    // Ensure we have all required data
     return {
       ...nftData,
       mint: nftAddress,
       name: nftData.name || (ultimate?.name || 'Unknown NFT'),
-      image: imageUrl || nftData.image || '',
+      description: nftData.description || '',
+      image: imageUrl,
+      attributes: nftData.attributes || [],
       owner: typeof nftData.owner === 'string' 
         ? { publicKey: nftData.owner }
-        : nftData.owner,
+        : {
+            publicKey: nftData.owner.publicKey || '',
+            delegate: nftData.owner.delegate || null,
+            ownershipModel: nftData.owner.ownershipModel || 'single',
+            frozen: nftData.owner.frozen || false,
+            delegated: nftData.owner.delegated || false,
+          },
       listed: false,
       collectionName: collectionName || nftData.collection?.name || '',
-      collectionAddress: collectionAddress || nftData.collection?.address || ''
+      collectionAddress: collectionAddress || nftData.collection?.address || '',
+      creators: nftData.creators || [],
+      royalty: nftData.royalty || null,
+      tokenStandard: nftData.tokenStandard || null,
     };
   } catch (error) {
-    console.error(`Error fetching NFT ${nftAddress}:`, error);
+    console.error(`Failed to fetch NFT ${nftAddress}:`, error);
     if (retries > 0) {
-      console.log(`Retrying fetch for NFT ${nftAddress}, ${retries} attempts remaining...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const delayTime = Math.pow(2, 3 - retries) * 1000; // Exponential backoff
+      await delay(delayTime);
       return fetchNFTWithRetries(nftAddress, ultimate, collections, retries - 1);
     }
-    console.log(`Failed to fetch NFT ${nftAddress} after retries, using fallback data`);
-    return {
-      mint: nftAddress,
-      name: ultimate?.name || 'Unknown NFT',
-      image: '',
-      owner: { publicKey: '' },
-      listed: false,
-      collectionName: '',
-      collectionAddress: ultimate?.collection_id || ''
-    };
+    return null;
   }
 };
 
