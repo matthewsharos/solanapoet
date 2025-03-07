@@ -130,6 +130,11 @@ const validateCollection = (collection: any): Collection | null => {
   // Check if collection has required fields
   if (!collection || !collection.address) return null;
 
+  // Convert ultimates to boolean, handling various input formats
+  const ultimatesValue = collection.ultimates === true || 
+    (typeof collection.ultimates === 'string' && 
+      collection.ultimates.toLowerCase() === 'true');
+
   return {
     address: collection.address,
     name: collection.name || 'Unknown Collection',
@@ -137,7 +142,7 @@ const validateCollection = (collection: any): Collection | null => {
     description: collection.description || '',
     addedAt: collection.addedAt || Date.now(),
     creationDate: collection.creationDate || new Date().toISOString(),
-    ultimates: collection.ultimates || false
+    ultimates: ultimatesValue
   };
 };
 
@@ -310,49 +315,94 @@ const Market: React.FC = () => {
       console.log('5. Fetching regular collection NFTs...');
       for (const collection of regularCollections) {
         console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
-        try {
-          const response = await axios.post(`/api/nft/helius/collection`, {
-            jsonrpc: '2.0',
-            id: 'collection-nfts',
-            method: 'getAssetsByGroup',
-            params: {
-              groupKey: 'collection',
-              groupValue: collection.address,
-              page: 1,
-              limit: 1000
-            }
-          });
+        let page = 1;
+        let hasMore = true;
 
-          if (response.data?.result?.items) {
+        while (hasMore) {
+          try {
+            console.log(`Fetching page ${page} for collection ${collection.name}`);
+            const response = await axios.post('/api/nft/helius/collection', {
+              jsonrpc: '2.0',
+              id: 'collection-nfts',
+              method: 'getAssetsByGroup',
+              params: {
+                groupKey: 'collection',
+                groupValue: collection.address,
+                page: page,
+                limit: 1000
+              }
+            });
+
+            if (!response.data?.result?.items) {
+              console.warn(`Invalid response format for collection ${collection.name}`);
+              break;
+            }
+
             const nfts = response.data.result.items;
-            console.log(`Found ${nfts.length} NFTs in collection ${collection.name}`);
-            
+            console.log(`Found ${nfts.length} NFTs on page ${page} for collection ${collection.name}`);
+
             // Process each NFT in the collection
             for (const nft of nfts) {
-              const processedNFT = {
-                mint: nft.id,
-                name: nft.content?.metadata?.name || 'Unknown NFT',
-                description: nft.content?.metadata?.description || '',
-                image: nft.content?.files?.[0]?.uri || nft.content?.links?.image || '',
-                attributes: nft.content?.metadata?.attributes || [],
-                owner: typeof nft.ownership?.owner === 'string' 
-                  ? { publicKey: nft.ownership.owner }
-                  : nft.ownership?.owner || { publicKey: '' },
-                listed: false,
-                collectionName: collection.name,
-                collectionAddress: collection.address,
-                creators: nft.creators || [],
-                royalty: nft.royalty || null,
-                tokenStandard: nft.content?.metadata?.token_standard || null,
-              };
-              updateNFTs(processedNFT);
+              try {
+                // Make sure we have content and metadata
+                if (!nft.content || !nft.content.metadata) {
+                  console.warn(`Skipping NFT ${nft.id} - missing content or metadata`);
+                  continue;
+                }
+
+                // Get image from the correct location in the data structure
+                let imageUrl = '';
+                if (nft.content.files && nft.content.files.length > 0 && nft.content.files[0].uri) {
+                  imageUrl = nft.content.files[0].uri;
+                } else if (nft.content.links && nft.content.links.image) {
+                  imageUrl = nft.content.links.image;
+                } else if (nft.content.metadata && nft.content.metadata.image) {
+                  imageUrl = nft.content.metadata.image;
+                }
+
+                const processedNFT = {
+                  mint: nft.id,
+                  name: nft.content?.metadata?.name || 'Unknown NFT',
+                  description: nft.content?.metadata?.description || '',
+                  image: imageUrl,
+                  attributes: nft.content?.metadata?.attributes || [],
+                  owner: {
+                    publicKey: nft.ownership?.owner || '',
+                    ownershipModel: nft.ownership?.ownershipModel || 'single',
+                    delegated: nft.ownership?.delegated || false,
+                    delegate: nft.ownership?.delegate || null,
+                    frozen: nft.ownership?.frozen || false,
+                  },
+                  listed: false,
+                  collectionName: collection.name,
+                  collectionAddress: collection.address,
+                  creators: nft.creators || [],
+                  royalty: nft.royalty || null,
+                  tokenStandard: nft.tokenStandard || null,
+                };
+
+                console.log(`Processing NFT: ${processedNFT.name} (${processedNFT.mint})`);
+                updateNFTs(processedNFT);
+              } catch (nftError) {
+                console.error(`Error processing NFT ${nft.id}:`, nftError);
+              }
             }
+
+            // Check if we should continue to next page
+            hasMore = nfts.length === 1000;
+            if (hasMore) {
+              page++;
+              // Add delay between pages
+              await delay(500);
+            }
+
+          } catch (error) {
+            console.error(`Error fetching NFTs for collection ${collection.name} page ${page}:`, error);
+            break;
           }
-        } catch (error) {
-          console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
         }
-        // Add delay between collection requests
-        await delay(500);
+        // Add delay between collections
+        await delay(1000);
       }
 
       // 3. Process Ultimate NFTs
@@ -367,13 +417,21 @@ const Market: React.FC = () => {
           return fetchNFTWithRetries(nftAddress, ultimate || null, validCollections);
         });
 
-        const batchResults = await Promise.all(batchPromises);
-        const validNFTs = batchResults.filter((nft): nft is NFT => nft !== null);
-        
-        validNFTs.forEach(updateNFTs);
+        try {
+          const batchResults = await Promise.all(batchPromises);
+          const validNFTs = batchResults.filter((nft): nft is NFT => nft !== null);
+          
+          console.log(`Batch ${batchIndex + 1}: Found ${validNFTs.length} valid NFTs out of ${batch.length}`);
+          validNFTs.forEach(nft => {
+            console.log(`Adding ultimate NFT: ${nft.name} (${nft.mint})`);
+            updateNFTs(nft);
+          });
 
-        if (batchIndex < ultimateBatches.length - 1) {
-          await delay(BATCH_DELAY);
+          if (batchIndex < ultimateBatches.length - 1) {
+            await delay(BATCH_DELAY);
+          }
+        } catch (batchError) {
+          console.error(`Error processing ultimate batch ${batchIndex + 1}:`, batchError);
         }
       }
 

@@ -12,6 +12,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
+    console.log('Forwarding request to Helius:', {
+      method: req.body.method,
+      params: req.body.params
+    });
+
     // Forward the request to Helius
     const response = await axios.post(
       `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
@@ -22,6 +27,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         },
       }
     );
+
+    console.log('Helius response received:', {
+      status: response.status,
+      itemCount: response.data?.result?.items?.length || 0
+    });
 
     return res.status(200).json(response.data);
   } catch (error: any) {

@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import formidable, { Fields, Files, File } from 'formidable';
+import formidable from 'formidable';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 import fs from 'fs';
@@ -11,55 +11,101 @@ export const config = {
   },
 };
 
+const initializeGoogleAuth = async () => {
+  try {
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Missing Google API credentials');
+    }
+
+    if (!process.env.GOOGLE_DRIVE_FOLDER_ID) {
+      throw new Error('Missing Google Drive folder ID');
+    }
+
+    // Process private key to handle escaped newlines
+    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+
+    const auth = new google.auth.GoogleAuth({
+      credentials: {
+        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        private_key: privateKey,
+      },
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    });
+
+    return auth;
+  } catch (error) {
+    console.error('Error initializing Google Auth:', error);
+    throw error;
+  }
+};
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  console.log('Starting file upload process...');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Initialize Google auth with drive.file scope
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      },
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
+    // Initialize Google auth
+    console.log('Initializing Google Auth...');
+    const auth = await initializeGoogleAuth();
+    console.log('Google Auth initialized successfully');
 
-    // Use memory storage for Vercel's read-only filesystem
+    // Parse form data
+    console.log('Parsing form data...');
     const form = formidable({
       maxFileSize: 10 * 1024 * 1024, // 10MB limit
       keepExtensions: true,
-      uploadDir: '/tmp', // This will be ignored since we're using memory storage
-      filename: (_name, _ext, part) => part.originalFilename || 'untitled',
+      multiples: false,
     });
 
-    const { fields, files } = await new Promise<{ fields: Fields; files: Files }>((resolve, reject) => {
+    const [fields, files] = await new Promise<[formidable.Fields, formidable.Files]>((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        resolve({ fields, files });
+        if (err) {
+          console.error('Error parsing form:', err);
+          reject(err);
+          return;
+        }
+        resolve([fields, files]);
       });
     });
 
-    // Check if we have any files - look for 'file' field
-    const uploadedFile = files['file'] as File | undefined;
-    if (!uploadedFile) {
+    console.log('Form data parsed successfully');
+
+    // Get the uploaded file
+    const fileArray = Object.values(files);
+    if (!fileArray.length) {
+      console.error('No file found in request');
       return res.status(400).json({ error: 'No file provided' });
     }
 
+    const uploadedFile = fileArray[0] as unknown as formidable.File;
+    console.log('File details:', {
+      name: uploadedFile.originalFilename,
+      size: uploadedFile.size,
+      type: uploadedFile.mimetype
+    });
+
+    // Initialize Drive client
+    console.log('Initializing Drive client...');
     const authClient = await auth.getClient() as OAuth2Client;
     const drive = google.drive({ version: 'v3', auth: authClient });
+    console.log('Drive client initialized');
 
+    // Prepare file metadata
     const metadata = fields.metadata ? JSON.parse(fields.metadata.toString()) : {};
     const fileMetadata = {
       name: metadata.name || uploadedFile.originalFilename || 'untitled',
       parents: [process.env.GOOGLE_DRIVE_FOLDER_ID as string],
     };
 
-    // Create a readable stream from the file buffer
+    console.log('File metadata:', fileMetadata);
+
+    // Create readable stream from file
     const fileBuffer = await fs.promises.readFile(uploadedFile.filepath);
     const fileStream = new Readable();
     fileStream.push(fileBuffer);
@@ -70,19 +116,18 @@ export default async function handler(
       body: fileStream,
     };
 
-    console.log('Uploading file to Google Drive:', {
-      name: fileMetadata.name,
-      mimeType: media.mimeType,
-      size: fileBuffer.length,
-    });
-
+    // Upload file to Google Drive
+    console.log('Uploading file to Google Drive...');
     const response = await drive.files.create({
       requestBody: fileMetadata,
       media: media,
       fields: 'id,name,webViewLink,webContentLink',
     });
 
-    // Set file permissions to anyone with the link can view
+    console.log('File uploaded successfully');
+
+    // Set file permissions
+    console.log('Setting file permissions...');
     await drive.permissions.create({
       fileId: response.data.id as string,
       requestBody: {
@@ -91,24 +136,31 @@ export default async function handler(
       },
     });
 
-    console.log('File uploaded successfully:', {
-      id: response.data.id,
-      name: response.data.name,
-      webViewLink: response.data.webViewLink,
-      webContentLink: response.data.webContentLink,
-    });
+    console.log('File permissions set successfully');
+
+    // Clean up temporary file
+    try {
+      await fs.promises.unlink(uploadedFile.filepath);
+    } catch (cleanupError) {
+      console.warn('Error cleaning up temporary file:', cleanupError instanceof Error ? cleanupError.message : 'Unknown error');
+    }
 
     return res.status(200).json({
       success: true,
       file: response.data,
     });
   } catch (error) {
-    console.error('Error uploading file:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return res.status(500).json({ 
+    console.error('Error in upload handler:', error instanceof Error ? error.message : 'Unknown error');
+    
+    // Detailed error response
+    const errorResponse = {
       error: 'Error uploading file',
-      details: errorMessage,
+      details: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString(),
-    });
+      type: error instanceof Error ? error.constructor.name : 'Unknown',
+      stack: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : undefined,
+    };
+
+    return res.status(500).json(errorResponse);
   }
 } 
