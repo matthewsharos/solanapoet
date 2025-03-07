@@ -831,42 +831,45 @@ router.get('/simple-test', async (_req: Request, res: Response) => {
   try {
     // Get API key from environment variables
     const apiKey = process.env.VITE_HELIUS_API_KEY;
+    const rpcUrl = process.env.VITE_SOLANA_RPC_URL;
     
+    // First, just check if we have the variables
+    const envStatus = {
+      hasViteHeliusKey: !!process.env.VITE_HELIUS_API_KEY,
+      hasHeliusKey: !!process.env.HELIUS_API_KEY,
+      hasViteRpcUrl: !!process.env.VITE_SOLANA_RPC_URL,
+      hasRpcUrl: !!process.env.SOLANA_RPC_URL,
+      viteHeliusKeyPrefix: apiKey ? apiKey.substring(0, 4) : null,
+      viteRpcUrlPrefix: rpcUrl ? rpcUrl.substring(0, 30) : null
+    };
+
     if (!apiKey) {
       return res.status(400).json({
         success: false,
         message: 'No API key found',
-        envVars: {
-          hasViteHeliusKey: !!process.env.VITE_HELIUS_API_KEY,
-          hasHeliusKey: !!process.env.HELIUS_API_KEY,
-          hasViteRpcUrl: !!process.env.VITE_SOLANA_RPC_URL,
-          hasRpcUrl: !!process.env.SOLANA_RPC_URL
-        }
+        envVars: envStatus
       });
     }
 
-    // Test mint address (USDC)
-    const testMint = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-    
-    // Make a simple request to Helius
-    const response = await axios({
-      method: 'post',
-      url: `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
-      data: {
-        jsonrpc: '2.0',
-        id: 'simple-test',
-        method: 'getAsset',
-        params: {
-          id: testMint
-        }
-      },
-      timeout: 5000 // 5 second timeout
+    // Create an axios instance with a very short timeout
+    const heliusClient = axios.create({
+      timeout: 3000 // 3 second timeout
     });
+
+    // Make a minimal request to Helius
+    const response = await heliusClient.post(
+      `https://mainnet.helius-rpc.com/?api-key=${apiKey}`,
+      {
+        jsonrpc: '2.0',
+        id: 'test',
+        method: 'ping'
+      }
+    );
 
     return res.json({
       success: true,
-      data: response.data,
-      apiKeyUsed: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+      envVars: envStatus,
+      heliusResponse: response.data
     });
   } catch (error: any) {
     return res.status(500).json({
