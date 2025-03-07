@@ -10,14 +10,8 @@
       }
     },
     {
-      "src": "src/server/index.ts",
-      "use": "@vercel/node@3.0.0",
-      "config": {
-        "includeFiles": ["src/server/**/*", "src/api/**/*", "dist/**/*", "public/**/*"],
-        "nodeVersion": "18.x",
-        "maxDuration": 10,
-        "memory": 1024
-      }
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     }
   ],
   "env": {
@@ -25,16 +19,12 @@
   },
   "routes": [
     {
+      "src": "/api/nft/helius/([^/]+)",
+      "dest": "/api/nft/helius/[mintAddress].js?mintAddress=$1"
+    },
+    {
       "src": "/api/(.*)",
-      "dest": "src/server/index.ts",
-      "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-      "headers": {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Max-Age": "86400"
-      }
+      "dest": "/api/nft-helius.js"
     },
     {
       "src": "^/assets/images/(.*)",
@@ -60,7 +50,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "src/server/index.ts"
+      "dest": "/"
     }
   ]
 } 

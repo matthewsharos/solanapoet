@@ -487,13 +487,17 @@ const checkSellerHandler = async (req: Request<{}, CheckSellerResponse, CheckSel
 
 app.post('/check-seller', checkSellerHandler);
 
-// Remove MongoDB connection code and middleware
-export default app;
-
-// Only start server in development
-if (process.env.NODE_ENV === 'development') {
+// Add a special handler for serverless environments
+if (process.env.VERCEL) {
+  console.log('Running in Vercel serverless environment - not starting HTTP server');
+  // Don't call app.listen() in serverless environment
+  
+  // Export the Express app for serverless functions
+  module.exports = app;
+} else {
+  // Start the server normally for local development
   app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Server listening on port ${PORT}`);
   });
 }
 
