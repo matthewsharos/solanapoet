@@ -18,7 +18,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    // First try the DAS API endpoint
     const response = await axios.post(
       `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
       {
@@ -31,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     );
 
-    if (!response.data.result) {
+    if (!response.data?.result) {
       throw new Error('NFT not found');
     }
 
@@ -39,26 +38,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     // Get the best available image URL
     const getImageUrl = (data: any) => {
-      // Try all possible image locations in order of preference
-      return data.content?.files?.[0]?.uri || // Original Arweave URL
-             data.content?.files?.[0]?.cdn_uri || // Helius CDN URL
-             data.content?.links?.image || // Fallback to links.image
-             data.content?.metadata?.image || // Try metadata image
-             ''; // Empty string if no image found
+      if (data.content?.files?.[0]?.uri) {
+        return data.content.files[0].uri;
+      }
+      if (data.content?.files?.[0]?.cdn_uri) {
+        return data.content.files[0].cdn_uri;
+      }
+      if (data.content?.links?.image) {
+        return data.content.links.image;
+      }
+      if (data.content?.metadata?.image) {
+        return data.content.metadata.image;
+      }
+      return '';
     };
 
     // Transform the data to match expected format
     const transformedData = {
       mint: nftData.id,
       name: nftData.content?.metadata?.name || 'Unknown',
-      symbol: nftData.content?.metadata?.symbol,
-      description: nftData.content?.metadata?.description,
+      symbol: nftData.content?.metadata?.symbol || '',
+      description: nftData.content?.metadata?.description || '',
       image: getImageUrl(nftData),
-      attributes: nftData.content?.metadata?.attributes,
-      owner: nftData.ownership?.owner,
+      attributes: nftData.content?.metadata?.attributes || [],
+      owner: nftData.ownership?.owner || '',
       collection: {
         address: nftData.grouping?.find((g: any) => g.group_key === 'collection')?.group_value || '',
-        name: nftData.grouping?.find((g: any) => g.group_key === 'collection')?.group_value || ''
+        name: nftData.content?.metadata?.collection?.name || 
+              nftData.grouping?.find((g: any) => g.group_key === 'collection')?.group_value || ''
       },
       tokenMetadata: nftData
     };
