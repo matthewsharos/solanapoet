@@ -67,23 +67,22 @@ export default async function handler(req, res) {
       throw new Error('Empty response from Helius API');
     }
     
-    // Format the response to match what the frontend expects
-    let formattedResponse = {
+    // Format the response to EXACTLY match what the frontend expects
+    // The frontend is looking for response.data.result.items
+    const formattedResponse = {
       status: 200,
-      hasData: true,
-      hasResult: false,
-      items: 0,
-      data: []
+      result: {
+        items: [],
+        total: 0
+      }
     };
     
     if (heliusResponse.data.result && Array.isArray(heliusResponse.data.result.items)) {
       const assets = heliusResponse.data.result.items;
       const total = heliusResponse.data.result.total || 0;
       
-      formattedResponse.hasResult = true;
-      formattedResponse.items = assets.length;
-      formattedResponse.total = total;
-      formattedResponse.data = assets;
+      formattedResponse.result.items = assets;
+      formattedResponse.result.total = total;
       
       console.log(`Found ${assets.length} assets for collection ${collectionId} (total: ${total})`);
     } else if (heliusResponse.data.error) {
@@ -92,17 +91,24 @@ export default async function handler(req, res) {
       formattedResponse.error = heliusResponse.data.error;
     } else {
       console.log('No assets found or unexpected response format');
+      // Still provide a valid result structure even if empty
+      formattedResponse.result = {
+        items: [],
+        total: 0
+      };
     }
     
     // Return the formatted response
-    return res.status(formattedResponse.status).json(formattedResponse);
+    return res.status(200).json(formattedResponse);
   } catch (error) {
     console.error('Collection assets endpoint error:', error);
-    return res.status(500).json({ 
+    // Even in error case, provide the expected structure
+    return res.status(200).json({ 
       status: 500,
-      hasData: true,
-      hasResult: false,
-      items: 0,
+      result: {
+        items: [],
+        total: 0
+      },
       error: error.message
     });
   }
