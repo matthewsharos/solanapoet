@@ -181,8 +181,6 @@ const fetchCollections = async (): Promise<Collection[]> => {
     const response = await axios.get<CollectionApiResponse>(`/api/collection?t=${timestamp}`);
     
     console.log('Raw API response:', response.data);
-    console.log('Response status:', response.status);
-    console.log('Response headers:', response.headers);
     
     if (!response.data.success) {
       console.error('API request failed:', response.data);
@@ -192,8 +190,6 @@ const fetchCollections = async (): Promise<Collection[]> => {
     // Get collections directly from the response
     const collections = response.data.collections || [];
     console.log('Collections from API (raw):', collections);
-    console.log('Collections type:', typeof collections);
-    console.log('Is array:', Array.isArray(collections));
     
     if (!Array.isArray(collections)) {
       console.error('Collections is not an array:', collections);
@@ -210,24 +206,9 @@ const fetchCollections = async (): Promise<Collection[]> => {
     const regular = collections.filter((c: Collection) => !c.ultimates).length;
     console.log('Collections breakdown (raw):', { total: collections.length, ultimates, regular });
     
-    // Validate each collection and log any issues
-    const validatedCollections = collections.map((c: any, index: number) => {
-      console.log(`Validating collection ${index}:`, c);
-      const validated = validateCollection(c);
-      if (!validated) {
-        console.warn('Collection failed validation:', c);
-      }
-      return validated;
-    }).filter(Boolean) as Collection[];
-    
-    console.log('Validated collections:', validatedCollections);
-    console.log('Validated collections breakdown:', { 
-      total: validatedCollections.length, 
-      ultimates: validatedCollections.filter(c => c.ultimates).length, 
-      regular: validatedCollections.filter(c => !c.ultimates).length 
-    });
-    
-    return validatedCollections;
+    // Return the collections directly without additional validation
+    // This ensures we're using exactly what the API returns
+    return collections;
   } catch (error) {
     console.error('Error in fetchCollections:', error);
     throw error;
@@ -614,11 +595,10 @@ const Market: React.FC = () => {
 
       // Process collections
       console.log('3. Processing collections data...');
-      const validCollections = (collectionsData || [])
-        .map(collection => validateCollection(collection))
-        .filter((c): c is Collection => c !== null);
+      // Use the collections directly without additional validation
+      const validCollections = collectionsData || [];
 
-      console.log('Valid collections processed:', {
+      console.log('Collections processed:', {
         total: validCollections.length,
         collections: validCollections
       });
