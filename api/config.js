@@ -1,5 +1,7 @@
 // Serverless function for configuration endpoint
 module.exports = async (req, res) => {
+  console.log('[serverless] Config endpoint called');
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,72 +15,91 @@ module.exports = async (req, res) => {
   
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({
+    return res.status(200).json({
       success: false,
       message: 'Method not allowed'
     });
   }
   
   try {
-    // Safely check for environment variables
-    let hasHeliusApiKey = false;
-    let hasSolanaRpcUrl = false;
-    let hasGoogleCredentials = false;
-    let hasSpreadsheetId = false;
+    console.log('[serverless] Checking environment variables...');
     
-    try {
-      hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
-    } catch (e) {
-      console.error('[serverless] Error checking HELIUS_API_KEY:', e);
-    }
+    // Get all environment variables safely
+    const envVars = {
+      HELIUS_API_KEY: process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY || '',
+      SOLANA_RPC_URL: process.env.SOLANA_RPC_URL || process.env.VITE_SOLANA_RPC_URL || '',
+      GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID || '',
+      GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || '',
+      GOOGLE_PRIVATE_KEY: process.env.GOOGLE_PRIVATE_KEY || '',
+      GOOGLE_CLIENT_EMAIL: process.env.GOOGLE_CLIENT_EMAIL || '',
+      NODE_ENV: process.env.NODE_ENV || 'production',
+      VERCEL_ENV: process.env.VERCEL_ENV || 'unknown'
+    };
+
+    console.log('[serverless] Environment variables loaded');
     
-    try {
-      hasSolanaRpcUrl = !!process.env.SOLANA_RPC_URL;
-    } catch (e) {
-      console.error('[serverless] Error checking SOLANA_RPC_URL:', e);
-    }
+    // Check for presence of required variables
+    const hasHeliusApiKey = !!envVars.HELIUS_API_KEY;
+    const hasSolanaRpcUrl = !!envVars.SOLANA_RPC_URL;
+    const hasGoogleDriveFolderId = !!envVars.GOOGLE_DRIVE_FOLDER_ID;
+    const hasSpreadsheetId = !!envVars.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const hasGooglePrivateKey = !!envVars.GOOGLE_PRIVATE_KEY;
+    const hasGoogleClientEmail = !!envVars.GOOGLE_CLIENT_EMAIL;
     
-    try {
-      hasGoogleCredentials = !!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
-    } catch (e) {
-      console.error('[serverless] Error checking GOOGLE_APPLICATION_CREDENTIALS_JSON:', e);
-    }
+    // Check if Google credentials are complete
+    const hasGoogleCredentials = hasGooglePrivateKey && hasGoogleClientEmail;
+
+    console.log('[serverless] Environment checks completed');
     
-    try {
-      hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    } catch (e) {
-      console.error('[serverless] Error checking GOOGLE_SHEETS_SPREADSHEET_ID:', e);
-    }
-    
-    // Return config information
+    // Return config information with debugging details
     return res.status(200).json({
-      hasGoogleCredentials: hasGoogleCredentials,
-      hasSpreadsheetId: hasSpreadsheetId,
-      hasHeliusApiKey: hasHeliusApiKey,
-      hasSolanaRpcUrl: hasSolanaRpcUrl,
-      isConfigured: hasHeliusApiKey && hasSolanaRpcUrl,
-      HELIUS_API_KEY: hasHeliusApiKey ? process.env.HELIUS_API_KEY.substring(0, 4) + '...' : null,
-      SOLANA_RPC_URL: hasSolanaRpcUrl ? process.env.SOLANA_RPC_URL : null,
-      environment: process.env.NODE_ENV || 'production',
+      success: true,
+      hasHeliusApiKey,
+      hasSolanaRpcUrl,
+      hasGoogleDriveFolderId,
+      hasSpreadsheetId,
+      hasGoogleCredentials,
+      isConfigured: hasHeliusApiKey && hasSolanaRpcUrl && hasGoogleCredentials && hasSpreadsheetId,
+      HELIUS_API_KEY: hasHeliusApiKey ? envVars.HELIUS_API_KEY.substring(0, 4) + '...' : null,
+      SOLANA_RPC_URL: hasSolanaRpcUrl ? envVars.SOLANA_RPC_URL : null,
+      environment: envVars.NODE_ENV,
+      vercelEnv: envVars.VERCEL_ENV,
       serverless: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      debug: {
+        envKeys: Object.keys(process.env),
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        googleAuth: {
+          hasPrivateKey: hasGooglePrivateKey,
+          hasClientEmail: hasGoogleClientEmail,
+          privateKeyLength: hasGooglePrivateKey ? envVars.GOOGLE_PRIVATE_KEY.length : 0,
+          clientEmailMask: hasGoogleClientEmail ? 
+            envVars.GOOGLE_CLIENT_EMAIL.replace(/^(.{4}).*(@.*)$/, '$1...$2') : null
+        }
+      }
     });
   } catch (error) {
     console.error('[serverless] Error in config endpoint:', error);
     
-    // Provide a more resilient response
+    // Always return 200 with error details
     return res.status(200).json({
-      hasGoogleCredentials: false,
-      hasSpreadsheetId: false,
+      success: false,
       hasHeliusApiKey: false,
       hasSolanaRpcUrl: false,
+      hasGoogleDriveFolderId: false,
+      hasSpreadsheetId: false,
+      hasGoogleCredentials: false,
       isConfigured: false,
       serverless: true,
       timestamp: new Date().toISOString(),
-      troubleshooting: {
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        errorStack: error instanceof Error ? error.stack : null,
-        vercelEnv: process.env.VERCEL_ENV || 'unknown'
+      error: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : null,
+        vercelEnv: process.env.VERCEL_ENV || 'unknown',
+        nodeVersion: process.version,
+        platform: process.platform
       }
     });
   }

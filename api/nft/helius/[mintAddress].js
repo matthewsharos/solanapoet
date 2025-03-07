@@ -3,9 +3,11 @@ const axios = require('axios');
 // Helper function to add delay between requests
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Serverless function handler
+// Serverless function for fetching NFT data from Helius
 module.exports = async (req, res) => {
-  // Basic CORS headers
+  console.log('[serverless] NFT endpoint called');
+  
+  // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -16,218 +18,100 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  const { mintAddress } = req.query;
-  
-  console.log(`[serverless] NFT Helius endpoint called for: ${mintAddress}`);
-  
+  // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({ 
-      success: false, 
-      message: 'Method not allowed',
-      error: 'METHOD_NOT_ALLOWED'
+    return res.status(200).json({
+      success: false,
+      message: 'Method not allowed'
     });
   }
-  
-  if (!mintAddress) {
-    return res.status(400).json({ 
-      success: false, 
-      message: 'Missing mint address', 
-      error: 'MISSING_MINT_ADDRESS'
-    });
-  }
-  
+
   try {
-    // Safely get the Helius API key with fallback
-    let heliusApiKey;
-    try {
-      heliusApiKey = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
-    } catch (error) {
-      console.error('[serverless] Error accessing environment variables:', error);
-      heliusApiKey = null;
-    }
+    console.log('[serverless] Extracting mint address...');
+    const { mintAddress } = req.query;
     
-    if (!heliusApiKey) {
-      console.error('[serverless] ERROR: Helius API key not configured');
-      // Return a fallback mock NFT response instead of error
-      return res.status(200).json({ 
-        success: true, 
-        nft: {
-          mint: mintAddress,
-          name: 'Mock NFT (API Key Missing)',
-          description: 'This is a mock NFT returned because the Helius API key is not configured.',
-          image: 'https://placehold.co/600x400?text=NFT+Preview+Unavailable',
-          owner: { publicKey: 'MOCK_OWNER_ADDRESS' }
-        },
-        mock: true
+    if (!mintAddress) {
+      console.log('[serverless] No mint address provided');
+      return res.status(200).json({
+        success: false,
+        message: 'No mint address provided'
       });
     }
+
+    console.log(`[serverless] Fetching NFT data for ${mintAddress}`);
     
-    // Create an axios instance with timeout
-    const heliusClient = axios.create({
-      timeout: 10000 // 10 second timeout
+    // Get Helius API key
+    const HELIUS_API_KEY = process.env.HELIUS_API_KEY || process.env.VITE_HELIUS_API_KEY;
+    
+    if (!HELIUS_API_KEY) {
+      console.error('[serverless] Helius API key not found');
+      return res.status(200).json({
+        success: false,
+        message: 'Helius API key not configured'
+      });
+    }
+
+    // Construct Helius API URL
+    const HELIUS_API_URL = `https://api.helius.xyz/v0/tokens/metadata?api-key=${HELIUS_API_KEY}`;
+
+    // Prepare request body
+    const requestBody = {
+      mintAccounts: [mintAddress],
+      includeOffChain: true,
+      disableCache: false
+    };
+
+    console.log('[serverless] Making request to Helius API...');
+    
+    // Make request to Helius API
+    const response = await fetch(HELIUS_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
     });
-    
-    // Make request to Helius RPC API
-    try {
-      const rpcResponse = await heliusClient.post(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        {
-          jsonrpc: "2.0",
-          id: "helius-fetch",
-          method: "getAsset",
-          params: {
-            id: mintAddress
-          }
-        }
-      );
-      
-      const nftData = rpcResponse.data.result;
-      
-      if (!nftData) {
-        // Return a fallback mock NFT response instead of error
-        return res.status(200).json({
-          success: true,
-          nft: {
-            mint: mintAddress,
-            name: 'NFT Not Found',
-            description: 'This NFT could not be found in the Helius API.',
-            image: 'https://placehold.co/600x400?text=NFT+Not+Found',
-            owner: { publicKey: '' }
-          },
-          mock: true
-        });
-      }
-      
-      // Safely process the data with fallbacks for every property
-      const processedData = {
-        mint: mintAddress,
-        name: 'Unknown NFT',
-        description: '',
-        image: 'https://placehold.co/600x400?text=Image+Not+Available',
-        owner: { publicKey: '' }
-      };
-      
-      // Carefully access nested properties with fallbacks
-      try {
-        processedData.name = nftData.content?.metadata?.name || nftData.name || 'Unknown NFT';
-      } catch (e) {
-        console.error('[serverless] Error processing NFT name:', e);
-      }
-      
-      try {
-        processedData.description = nftData.content?.metadata?.description || nftData.description || '';
-      } catch (e) {
-        console.error('[serverless] Error processing NFT description:', e);
-      }
-      
-      try {
-        processedData.image = nftData.content?.files?.[0]?.uri || 
-                             nftData.content?.links?.image || 
-                             nftData.image || 
-                             'https://placehold.co/600x400?text=Image+Not+Available';
-      } catch (e) {
-        console.error('[serverless] Error processing NFT image:', e);
-      }
-      
-      try {
-        if (typeof nftData.owner === 'string') {
-          processedData.owner = { publicKey: nftData.owner };
-        } else if (nftData.owner?.publicKey) {
-          processedData.owner = { publicKey: nftData.owner.publicKey };
-        } else if (nftData.ownership?.owner) {
-          processedData.owner = { publicKey: nftData.ownership.owner };
-        }
-      } catch (e) {
-        console.error('[serverless] Error processing NFT owner:', e);
-      }
+
+    if (!response.ok) {
+      console.error(`[serverless] Helius API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('[serverless] Error details:', errorText);
       
       return res.status(200).json({
-        success: true,
-        nft: processedData
+        success: false,
+        message: `Helius API error: ${response.status} ${response.statusText}`,
+        error: errorText
       });
-      
-    } catch (error) {
-      console.error(`[serverless] RPC API error: ${error.message}`);
-      
-      // Fallback to metadata API
-      try {
-        const metadataResponse = await heliusClient.post(
-          `https://api.helius.xyz/v0/tokens/metadata?api-key=${heliusApiKey}`,
-          {
-            mintAccounts: [mintAddress]
-          }
-        );
-        
-        let nftData = null;
-        try {
-          nftData = metadataResponse.data.data?.[0];
-        } catch (e) {
-          console.error('[serverless] Error accessing metadata response data:', e);
-        }
-        
-        if (!nftData) {
-          // Return a fallback mock NFT response instead of error
-          return res.status(200).json({
-            success: true,
-            nft: {
-              mint: mintAddress,
-              name: 'NFT Not Found (Metadata)',
-              description: 'This NFT could not be found in the Helius Metadata API.',
-              image: 'https://placehold.co/600x400?text=NFT+Not+Found',
-              owner: { publicKey: '' }
-            },
-            mock: true
-          });
-        }
-        
-        // Safe data extraction with defaults
-        const processedData = {
-          mint: mintAddress,
-          name: nftData.name || 'Unknown NFT',
-          description: nftData.description || '',
-          image: nftData.image || 'https://placehold.co/600x400?text=Image+Not+Available',
-          owner: { publicKey: nftData.owner || '' }
-        };
-        
-        return res.status(200).json({
-          success: true,
-          nft: processedData
-        });
-        
-      } catch (metadataError) {
-        console.error(`[serverless] Metadata API error: ${metadataError.message}`);
-        // Return a fallback mock NFT instead of error
-        return res.status(200).json({
-          success: true,
-          nft: {
-            mint: mintAddress,
-            name: 'API Error - Fallback NFT',
-            description: 'This is a fallback NFT returned because of an error fetching data from Helius API.',
-            image: 'https://placehold.co/600x400?text=API+Error',
-            owner: { publicKey: '' }
-          },
-          mock: true,
-          error: metadataError.message
-        });
-      }
     }
-  } catch (error) {
-    console.error(`[serverless] Overall error: ${error.message}`);
-    
-    // Always return a valid response, never an error
+
+    const data = await response.json();
+    console.log('[serverless] Successfully fetched NFT data');
+
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      console.log('[serverless] No NFT data found');
+      return res.status(200).json({
+        success: false,
+        message: 'No NFT data found'
+      });
+    }
+
+    // Return the NFT data
     return res.status(200).json({
       success: true,
-      nft: {
-        mint: mintAddress,
-        name: 'Error - Fallback NFT',
-        description: 'This is a fallback NFT returned because of a server error.',
-        image: 'https://placehold.co/600x400?text=Server+Error',
-        owner: { publicKey: '' }
-      },
-      mock: true,
-      troubleshooting: {
-        errorMessage: error.message,
-        timestamp: new Date().toISOString()
+      nft: data[0]
+    });
+
+  } catch (error) {
+    console.error('[serverless] Error in NFT endpoint:', error);
+    
+    return res.status(200).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      error: {
+        stack: error instanceof Error ? error.stack : null,
+        vercelEnv: process.env.VERCEL_ENV || 'unknown',
+        nodeVersion: process.version,
+        platform: process.platform
       }
     });
   }
