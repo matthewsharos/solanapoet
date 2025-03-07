@@ -33,34 +33,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json({ success: true, nfts: [] });
     }
 
-    // Use the getAssetsByGroup endpoint for collection NFTs
+    // Use the searchAssets endpoint for collection NFTs
     const response = await axios.post(
-      `https://api.helius.xyz/v0/addresses/${address}/nfts?api-key=${heliusApiKey}`,
+      `https://api.helius.xyz/v0/assets/search?api-key=${heliusApiKey}`,
       {
-        options: {
+        ownerAddress: address,
+        displayOptions: {
           showCollectionMetadata: true,
           showFungible: false,
         }
       }
     );
 
-    const nfts = response.data.filter((nft: any) => 
-      nft && 
-      nft.onChainMetadata?.metadata &&
-      !nft.onChainMetadata.metadata.name.includes('Metadata')
-    ).map((nft: any) => ({
-      mint: nft.mint,
-      name: nft.onChainMetadata?.metadata?.name || 'Unknown',
-      symbol: nft.onChainMetadata?.metadata?.symbol,
-      description: nft.onChainMetadata?.metadata?.description,
-      image: nft.onChainMetadata?.metadata?.image || '',
-      attributes: nft.onChainMetadata?.metadata?.attributes,
-      owner: nft.ownership?.owner,
-      collection: {
-        address: address,
-        name: collection[1] || 'Unknown Collection'
-      }
-    }));
+    const nfts = response.data.result
+      .filter((nft: any) => nft && !nft.content?.metadata?.name?.includes('Metadata'))
+      .map((nft: any) => ({
+        mint: nft.id,
+        name: nft.content?.metadata?.name || nft.content?.metadata?.symbol || 'Unknown',
+        symbol: nft.content?.metadata?.symbol,
+        description: nft.content?.metadata?.description,
+        image: nft.content?.files?.[0]?.uri || nft.content?.metadata?.image || '',
+        attributes: nft.content?.metadata?.attributes,
+        owner: nft.ownership?.owner,
+        collection: {
+          address: address,
+          name: collection[1] || 'Unknown Collection'
+        }
+      }));
 
     return res.status(200).json({ success: true, nfts });
   } catch (error: any) {

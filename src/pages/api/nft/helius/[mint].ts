@@ -18,14 +18,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('Helius API key not configured');
     }
 
-    // Use the getAsset endpoint for more complete metadata
+    // Use the getAsset endpoint for NFT data
     const response = await axios.get(
-      `https://api.helius.xyz/v1/mintlist?api-key=${heliusApiKey}`,
-      { 
-        params: { 
-          mints: [mint]
-        }
-      }
+      `https://api.helius.xyz/v0/assets?api-key=${heliusApiKey}&ids=${mint}`
     );
 
     const nftData = response.data[0];
@@ -36,14 +31,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Transform the data to match expected format
     const transformedData = {
-      mint: nftData.mint,
-      name: nftData.name,
-      symbol: nftData.symbol,
-      description: nftData.description,
-      image: nftData.image,
-      attributes: nftData.attributes,
+      mint: nftData.id,
+      name: nftData.content?.metadata?.name || nftData.content?.metadata?.symbol || 'Unknown',
+      symbol: nftData.content?.metadata?.symbol,
+      description: nftData.content?.metadata?.description,
+      image: nftData.content?.files?.[0]?.uri || nftData.content?.metadata?.image || '',
+      attributes: nftData.content?.metadata?.attributes,
       owner: nftData.ownership?.owner,
-      collection: nftData.collection,
+      collection: {
+        address: nftData.grouping?.[0]?.group_value || '',
+        name: nftData.content?.metadata?.collection?.name || ''
+      },
       tokenMetadata: nftData
     };
 
