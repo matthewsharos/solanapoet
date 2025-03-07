@@ -168,7 +168,10 @@ async function getAllCollections(req, res) {
         isFeatured: row[7] === 'TRUE' || row[7] === 'true',
         ultimates: row[8] === 'TRUE' || row[8] === 'true',
         collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
-      })).filter(collection => collection.address && collection.name);
+      })).filter(collection => 
+        collection.address && 
+        collection.name
+      );
       
       console.log(`Found ${collections.length} collections in Google Sheets`);
       
