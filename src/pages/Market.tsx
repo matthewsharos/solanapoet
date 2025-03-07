@@ -129,7 +129,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
   let lastError;
   let allItems: any[] = [];
   const pageSize = 1; // Helius API is working best with limit:1
-  const totalPages = 10; // Fetch 10 NFTs max for now
+  const totalPages = 100; // Fetch 100 NFTs max (increased from 10)
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -141,8 +141,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         
         const response = await axios.post('/api/nft/helius/collection', {
           collectionId: collection.address,
-          page: currentPage,
-          limit: pageSize
+          page: currentPage
         }, {
           timeout: 15000 // 15-second timeout
         });
@@ -181,7 +180,7 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
         details: error.response?.data?.details,
         request: {
           url: '/api/nft/helius/collection',
-          payload: { collectionId: collection.address, page, limit: pageSize }
+          payload: { collectionId: collection.address, page }
         }
       });
 
