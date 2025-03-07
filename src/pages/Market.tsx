@@ -32,6 +32,11 @@ interface Collection {
   addedAt?: number;
   creationDate?: string;
   ultimates?: boolean;
+  website?: string;
+  twitter?: string;
+  discord?: string;
+  isFeatured?: boolean;
+  collectionId?: string;
 }
 
 interface UltimateNFT {
@@ -48,10 +53,8 @@ interface ApiResponse<T> {
   data?: T;
 }
 
-interface CollectionApiResponse extends ApiResponse<never> {
-  collections: Collection[];
-  length: number;
-  sample?: Collection;
+interface CollectionApiResponse extends ApiResponse<string[][]> {
+  data: string[][];
 }
 
 interface UltimatesApiResponse extends ApiResponse<UltimateNFT[]> {}
@@ -170,11 +173,27 @@ const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
 
 // Helper function to fetch collections
 const fetchCollections = async (): Promise<Collection[]> => {
-  const response = await axios.get<CollectionApiResponse>('/api/collection');
+  const response = await axios.get<CollectionApiResponse>('/api/sheets?sheet=collections');
   if (!response.data.success) {
     throw new Error('Failed to fetch collections');
   }
-  return response.data.collections;
+  
+  // Transform the raw sheet data into Collection objects
+  const collections = (response.data.data || [])
+    .slice(1) // Skip header row
+    .map(row => ({
+      address: row[0] || '',
+      name: row[1] || '',
+      image: row[2] || '',
+      description: row[3] || '',
+      addedAt: row[4] ? Number(row[4]) : Date.now(),
+      creationDate: row[5] || '',
+      ultimates: row[6] === 'TRUE' || row[6] === 'true',
+      collectionId: row[0] || '' // Set collectionId to address for compatibility
+    }))
+    .filter(c => c.address && c.name); // Filter out invalid entries
+
+  return collections;
 };
 
 // Helper function to fetch ultimate NFTs
