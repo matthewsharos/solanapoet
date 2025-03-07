@@ -1,5 +1,4 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import axios from 'axios';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Enable CORS
@@ -42,23 +41,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     };
 
-    const response = await axios({
-      url: rpcEndpoint,
+    const response = await fetch(rpcEndpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/json'
       },
-      data: rpcPayload,
-      timeout: 30000,
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity
+      body: JSON.stringify(rpcPayload)
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
 
     // Set response headers for large JSON
     res.setHeader('Content-Type', 'application/json');
     
-    // Stream the response
-    return res.status(200).json(response.data);
+    // Return the response
+    return res.status(200).json(data);
 
   } catch (error: any) {
     console.error('Collection fetch error:', {
@@ -70,8 +71,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(500).json({
       message: 'Error fetching collection NFTs',
-      error: error.message,
-      details: error.response?.data
+      error: error.message
     });
   }
 } 
