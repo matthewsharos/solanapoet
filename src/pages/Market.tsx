@@ -173,27 +173,57 @@ const normalizeNFTData = (nft: GoogleSheetsNFTData): UltimateNFT => ({
 
 // Helper function to fetch collections
 const fetchCollections = async (): Promise<Collection[]> => {
-  const response = await axios.get<CollectionApiResponse>('/api/sheets?sheet=collections');
-  if (!response.data.success) {
-    throw new Error('Failed to fetch collections');
-  }
-  
-  // Transform the raw sheet data into Collection objects
-  const collections = (response.data.data || [])
-    .slice(1) // Skip header row
-    .map(row => ({
-      address: row[0] || '',
-      name: row[1] || '',
-      image: row[2] || '',
-      description: row[3] || '',
-      addedAt: row[4] ? Number(row[4]) : Date.now(),
-      creationDate: row[5] || '',
-      ultimates: row[6] === 'TRUE' || row[6] === 'true',
-      collectionId: row[0] || '' // Set collectionId to address for compatibility
-    }))
-    .filter(c => c.address && c.name); // Filter out invalid entries
+  try {
+    console.log('Fetching collections from sheets API...');
+    const response = await axios.get<CollectionApiResponse>('/api/sheets?sheet=collections');
+    console.log('Raw API response:', response.data);
+    
+    if (!response.data.success) {
+      console.error('API request failed:', response.data);
+      throw new Error('Failed to fetch collections');
+    }
+    
+    // Transform the raw sheet data into Collection objects
+    const rawData = response.data.data || [];
+    console.log('Raw sheet data:', rawData);
+    
+    if (rawData.length === 0) {
+      console.warn('No data received from sheets API');
+      return [];
+    }
+    
+    console.log('First row (headers):', rawData[0]);
+    
+    const collections = rawData
+      .slice(1) // Skip header row
+      .map(row => {
+        const collection = {
+          address: row[0] || '',
+          name: row[1] || '',
+          image: row[2] || '',
+          description: row[3] || '',
+          addedAt: row[4] ? Number(row[4]) : Date.now(),
+          creationDate: row[5] || '',
+          ultimates: row[6] === 'TRUE' || row[6] === 'true',
+          collectionId: row[0] || '' // Set collectionId to address for compatibility
+        };
+        console.log('Processed collection:', collection);
+        return collection;
+      })
+      .filter(c => {
+        const isValid = c.address && c.name;
+        if (!isValid) {
+          console.warn('Filtered out invalid collection:', c);
+        }
+        return isValid;
+      });
 
-  return collections;
+    console.log('Final processed collections:', collections);
+    return collections;
+  } catch (error) {
+    console.error('Error in fetchCollections:', error);
+    throw error;
+  }
 };
 
 // Helper function to fetch ultimate NFTs
