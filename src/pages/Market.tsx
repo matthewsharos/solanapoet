@@ -49,14 +49,18 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     }
     const nftData = response.data.nft;
 
-    // Find collection name if this is an ultimate NFT
+    // Find collection name and image if this is an ultimate NFT
     let collectionName = '';
     let collectionAddress = '';
+    let imageUrl = '';
+    
     if (ultimate?.collection_id) {
       const collection = collections.find(c => c.address === ultimate.collection_id);
       if (collection) {
         collectionName = collection.name;
         collectionAddress = collection.address;
+        // For ultimates, prioritize collection image path
+        imageUrl = collection.image || nftData.image || '';
       }
     }
 
@@ -64,7 +68,7 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       ...nftData,
       mint: nftAddress,
       name: nftData.name || (ultimate?.name || 'Unknown NFT'),
-      image: nftData.image || '',
+      image: imageUrl || nftData.image || '',
       owner: typeof nftData.owner === 'string' 
         ? { publicKey: nftData.owner }
         : nftData.owner,
@@ -256,6 +260,7 @@ const Market: React.FC = () => {
       // Filter out invalid collections and transform array data
       console.log('3. Processing collections data...');
       const validCollections = (collectionsData as unknown as string[][])
+        .slice(1) // Skip the header row
         .map(validateCollection)
         .filter((collection): collection is Collection => collection !== null);
       
@@ -304,7 +309,8 @@ const Market: React.FC = () => {
       }
 
       // Process ultimates in optimized batches with error tracking
-      const ultimateChunks = chunk(ultimates, BATCH_SIZE);
+      const ultimateChunks = chunk(ultimates.slice(1), BATCH_SIZE); // Skip header row
+      const processedNFTs = new Set<string>(); // Track processed NFTs
       const failedNFTs: string[] = [];
       
       for (const batch of ultimateChunks) {
@@ -318,10 +324,13 @@ const Market: React.FC = () => {
                 collection_id: ultimate[3]
               };
               
-              if (!ultimateNFT.nft_address || ultimateNFT.nft_address === 'NFT Address') {
+              if (!ultimateNFT.nft_address || 
+                  ultimateNFT.nft_address === 'NFT Address' || 
+                  processedNFTs.has(ultimateNFT.nft_address)) {
                 return;
               }
 
+              processedNFTs.add(ultimateNFT.nft_address);
               const nft = await fetchNFTWithRetries(ultimateNFT.nft_address, ultimateNFT, validCollections);
               if (nft) {
                 updateNFTs(nft);
@@ -346,7 +355,7 @@ const Market: React.FC = () => {
       
       // Process collections with optimized batches and error tracking
       for (const collection of validCollections) {
-        if (!collection.address || collection.ultimates === true) {
+        if (!collection.address || collection.ultimates === true || processedNFTs.has(collection.address)) {
           continue;
         }
 
@@ -358,8 +367,9 @@ const Market: React.FC = () => {
             const results = await Promise.allSettled(
               batch.map(async (nft: NFTMetadata) => {
                 try {
-                  if (!nft.mint) return;
+                  if (!nft.mint || processedNFTs.has(nft.mint)) return;
                   
+                  processedNFTs.add(nft.mint);
                   const nftData = await fetchNFTWithRetries(nft.mint, null, validCollections);
                   if (nftData) {
                     const enrichedNFT = {

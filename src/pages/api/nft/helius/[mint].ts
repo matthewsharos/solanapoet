@@ -53,6 +53,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return '';
     };
 
+    // Get attributes/traits from all possible locations
+    const getAttributes = (data: any) => {
+      if (data.content?.metadata?.attributes && Array.isArray(data.content.metadata.attributes)) {
+        return data.content.metadata.attributes;
+      }
+      if (data.content?.attributes && Array.isArray(data.content.attributes)) {
+        return data.content.attributes;
+      }
+      if (data.json?.attributes && Array.isArray(data.json.attributes)) {
+        return data.json.attributes;
+      }
+      return [];
+    };
+
     // Transform the data to match expected format
     const transformedData = {
       mint: nftData.id,
@@ -60,8 +74,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       symbol: nftData.content?.metadata?.symbol || '',
       description: nftData.content?.metadata?.description || '',
       image: getImageUrl(nftData),
-      attributes: nftData.content?.metadata?.attributes || [],
-      owner: nftData.ownership?.owner || '',
+      attributes: getAttributes(nftData),
+      owner: nftData.ownership?.owner ? {
+        publicKey: nftData.ownership.owner,
+        displayName: ''
+      } : {
+        publicKey: '',
+        displayName: ''
+      },
       collection: {
         address: nftData.grouping?.find((g: any) => g.group_key === 'collection')?.group_value || '',
         name: nftData.content?.metadata?.collection?.name || 
