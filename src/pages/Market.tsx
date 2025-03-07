@@ -43,7 +43,8 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
 // Helper function to fetch NFT data with retries and rate limiting
 const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | null = null, collections: Collection[], retries = 3): Promise<NFT | null> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/nft/helius/${nftAddress}`);
+    console.log(`Fetching NFT data for address: ${nftAddress}`);
+    const response = await axios.get(`/api/nft/helius/${nftAddress}`);
     if (!response.data.success) {
       throw new Error(response.data.message || 'Failed to fetch NFT data');
     }
@@ -276,9 +277,21 @@ const Market: React.FC = () => {
         sample: ultimateNFTs?.[0]
       });
 
+      // Filter out invalid NFT addresses
+      const validNftAddresses = ultimateNFTs
+        .filter(nft => nft && nft.nft_address && typeof nft.nft_address === 'string' && nft.nft_address.length > 0)
+        .map(nft => nft.nft_address);
+
+      console.log(`Found ${validNftAddresses.length} valid NFT addresses`);
+
+      if (validNftAddresses.length === 0) {
+        console.warn('No valid NFT addresses found in ultimates data');
+        setLoading(false);
+        return;
+      }
+
       // Process NFTs in batches
-      const nftAddresses = ultimateNFTs.map(nft => nft.nft_address);
-      const batches = chunk(nftAddresses, BATCH_SIZE);
+      const batches = chunk(validNftAddresses, BATCH_SIZE);
 
       for (const [batchIndex, batch] of batches.entries()) {
         console.log(`Processing batch ${batchIndex + 1}/${batches.length}...`);
