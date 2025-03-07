@@ -19,20 +19,30 @@ import SubmissionAnimation from '../components/SubmissionAnimation';
 
 // Helper function to upload file to Google Drive
 const uploadFileToDrive = async (file: File) => {
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  const response = await axios.post('/api/drive/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  });
+  try {
+    console.log('Uploading file to Google Drive:', file.name);
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await axios.post('/api/drive/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
 
-  if (!response.data.success) {
-    throw new Error('Failed to upload file');
+    console.log('Google Drive upload response:', response.data);
+    
+    if (!response.data.success) {
+      console.error('Upload failed:', response.data.message || 'Unknown error');
+      throw new Error(response.data.message || 'Failed to upload file');
+    }
+
+    return response.data.fileUrl;
+  } catch (error) {
+    console.error('Error in uploadFileToDrive:', error);
+    throw error;
   }
-
-  return response.data.fileUrl;
 };
 
 const FormContainer = styled(Paper)(({ theme }) => ({
@@ -78,8 +88,11 @@ const Requests: React.FC = () => {
     setShowAnimation(true);
 
     try {
+      console.log('Starting file upload process...');
+      
       // Upload image to Google Drive
       const imageUrl = await uploadFileToDrive(imageFile);
+      console.log('Image uploaded successfully, URL:', imageUrl);
 
       // Submit to Google Sheets through server endpoint
       const formData = {
@@ -90,7 +103,12 @@ const Requests: React.FC = () => {
         comment: comment
       };
 
-      await axios.post(`/api/sheets/values/1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0/${encodeURIComponent('art_requests!A:E')}/append`, {
+      console.log('Submitting art request to Google Sheets:', formData);
+      
+      // Use the sheets.js API endpoint directly
+      const sheetsResponse = await axios.post('/api/sheets', {
+        spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
+        range: 'art_requests!A:E',
         valueInputOption: 'RAW',
         values: [[
           formData.timestamp,
@@ -101,15 +119,20 @@ const Requests: React.FC = () => {
         ]]
       });
       
+      console.log('Google Sheets submission response:', sheetsResponse.data);
+      
       // Reset form
       setImageFile(null);
       setXHandle('');
       setComment('');
       setSubmitStatus('success');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting form:', error);
       setShowAnimation(false);
       setSubmitStatus('error');
+      
+      // Display more specific error information
+      alert(`Error submitting request: ${error.message || 'Unknown error'}. Please try again later.`);
     }
   };
 
