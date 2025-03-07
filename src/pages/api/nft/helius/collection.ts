@@ -28,186 +28,100 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       hasApiKey: !!heliusApiKey
     });
 
-    // Try REST API first as it's more reliable for collections
-    try {
-      console.log('Making Helius REST API request:', {
-        url: 'https://api.helius.xyz/v1/nfts',
-        method: 'POST'
-      });
+    const requestPayload = {
+      jsonrpc: '2.0',
+      id: 'collection-nfts',
+      method: 'getAssetsByGroup',
+      params: {
+        groupKey: 'collection',
+        groupValue: collectionId,
+        page: Number(page),
+        limit: Number(limit),
+        displayOptions: {
+          showCollectionMetadata: true,
+          showUnverifiedCollections: true
+        }
+      }
+    };
 
-      const response = await axios.post(
-        `https://api.helius.xyz/v1/nfts?api-key=${heliusApiKey}`,
-        {
-          ownerAddress: null,
-          collectionAddress: collectionId,
-          pageNumber: Number(page),
-          limit: Number(limit)
+    console.log('Making Helius RPC request:', {
+      url: 'https://mainnet.helius-rpc.com',
+      method: 'POST',
+      payload: JSON.stringify(requestPayload)
+    });
+
+    const response = await axios.post(
+      `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
+      requestPayload,
+      {
+        headers: {
+          'Content-Type': 'application/json',
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 30000
-        }
-      );
-
-      console.log('Raw Helius response:', {
-        status: response.status,
-        statusText: response.statusText,
-        hasData: !!response.data,
-        resultCount: Array.isArray(response.data) ? response.data.length : 0,
-        error: response.data?.error,
-        rawResponse: JSON.stringify(response.data)
-      });
-
-      if (!response.data) {
-        throw new Error('No data received from Helius API');
+        timeout: 30000
       }
+    );
 
-      if (response.data.error) {
-        throw new Error(`Helius API error: ${JSON.stringify(response.data.error)}`);
-      }
+    console.log('Raw Helius response:', {
+      status: response.status,
+      statusText: response.statusText,
+      hasData: !!response.data,
+      hasResult: !!response.data?.result,
+      resultType: response.data?.result ? typeof response.data.result : 'undefined',
+      isArray: Array.isArray(response.data?.result),
+      hasItems: !!response.data?.result?.items,
+      error: response.data?.error,
+      rawResponse: JSON.stringify(response.data)
+    });
 
-      if (!Array.isArray(response.data)) {
-        throw new Error('Expected array response from Helius API');
-      }
-
-      const items = response.data;
-      const total = items.length; // REST API doesn't provide total count
-
-      const normalizedResponse = {
-        jsonrpc: '2.0',
-        id: 'collection-nfts',
-        result: {
-          items,
-          total,
-          page: Number(page)
-        }
-      };
-
-      console.log('Normalized response:', {
-        itemCount: normalizedResponse.result.items.length,
-        total: normalizedResponse.result.total,
-        page: normalizedResponse.result.page,
-        sampleItem: normalizedResponse.result.items[0] ? {
-          id: normalizedResponse.result.items[0].id,
-          hasContent: !!normalizedResponse.result.items[0].content,
-          hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
-        } : null
-      });
-
-      return res.status(200).json(normalizedResponse);
-    } catch (error: any) {
-      console.error('Error using REST API:', {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        responseData: error.response?.data ? JSON.stringify(error.response.data) : undefined,
-        stack: error.stack
-      });
-
-      // If this is a Helius API error, try the fallback
-      if (error.response?.status === 400 || error.response?.status === 404) {
-        console.log('Helius REST API error, trying fallback...');
-      } else {
-        // For other errors, throw immediately
-        throw error;
-      }
+    if (!response.data) {
+      throw new Error('No data received from Helius API');
     }
 
-    // Fallback to RPC API if REST fails
-    try {
-      const searchPayload = {
-        jsonrpc: '2.0',
-        id: 'collection-search',
-        method: 'getAssetsByGroup',
-        params: {
-          groupKey: 'collection',
-          groupValue: collectionId,
-          page: Number(page),
-          limit: Number(limit),
-          displayOptions: {
-            showCollectionMetadata: true,
-            showUnverifiedCollections: true
-          }
-        }
-      };
-
-      console.log('Trying RPC fallback:', {
-        url: 'https://mainnet.helius-rpc.com',
-        method: 'POST',
-        payload: JSON.stringify(searchPayload)
-      });
-
-      const searchResponse = await axios.post(
-        `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`,
-        searchPayload,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 30000
-        }
-      );
-
-      console.log('Raw RPC response:', {
-        status: searchResponse.status,
-        statusText: searchResponse.statusText,
-        hasData: !!searchResponse.data,
-        hasResult: !!searchResponse.data?.result,
-        resultType: searchResponse.data?.result ? typeof searchResponse.data.result : 'undefined',
-        error: searchResponse.data?.error,
-        rawResponse: JSON.stringify(searchResponse.data)
-      });
-
-      if (!searchResponse.data) {
-        throw new Error('No data received from Helius RPC API');
-      }
-
-      if (searchResponse.data.error) {
-        throw new Error(`Helius RPC API error: ${JSON.stringify(searchResponse.data.error)}`);
-      }
-
-      if (!searchResponse.data.result) {
-        throw new Error('No result field in Helius RPC API response');
-      }
-
-      const result = searchResponse.data.result;
-      const items = Array.isArray(result) ? result : (result.items || []);
-      const total = result.total || items.length;
-
-      const normalizedResponse = {
-        jsonrpc: '2.0',
-        id: 'collection-nfts',
-        result: {
-          items,
-          total,
-          page: Number(page)
-        }
-      };
-
-      console.log('Normalized RPC response:', {
-        itemCount: normalizedResponse.result.items.length,
-        total: normalizedResponse.result.total,
-        page: normalizedResponse.result.page,
-        sampleItem: normalizedResponse.result.items[0] ? {
-          id: normalizedResponse.result.items[0].id,
-          hasContent: !!normalizedResponse.result.items[0].content,
-          hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
-        } : null
-      });
-
-      return res.status(200).json(normalizedResponse);
-    } catch (searchError: any) {
-      console.error('Error using RPC API:', {
-        message: searchError.message,
-        status: searchError.response?.status,
-        statusText: searchError.response?.statusText,
-        responseData: searchError.response?.data ? JSON.stringify(searchError.response.data) : undefined,
-        stack: searchError.stack
-      });
-      throw searchError;
+    if (response.data.error) {
+      throw new Error(`Helius API error: ${JSON.stringify(response.data.error)}`);
     }
+
+    if (!response.data.result) {
+      throw new Error('No result field in Helius API response');
+    }
+
+    const result = response.data.result;
+    let items = [];
+    let total = 0;
+
+    // Handle different response formats
+    if (Array.isArray(result)) {
+      items = result;
+      total = result.length;
+    } else if (typeof result === 'object' && result.items) {
+      items = result.items;
+      total = result.total || items.length;
+    } else {
+      throw new Error(`Unexpected result format: ${JSON.stringify(result)}`);
+    }
+
+    const normalizedResponse = {
+      jsonrpc: '2.0',
+      id: 'collection-nfts',
+      result: {
+        items,
+        total,
+        page: Number(page)
+      }
+    };
+
+    console.log('Normalized response:', {
+      itemCount: normalizedResponse.result.items.length,
+      total: normalizedResponse.result.total,
+      page: normalizedResponse.result.page,
+      sampleItem: normalizedResponse.result.items[0] ? {
+        id: normalizedResponse.result.items[0].id,
+        hasContent: !!normalizedResponse.result.items[0].content,
+        hasMetadata: !!normalizedResponse.result.items[0].content?.metadata
+      } : null
+    });
+
+    return res.status(200).json(normalizedResponse);
   } catch (error: any) {
     // Log the complete error for debugging
     console.error('Error fetching collection NFTs:', {
