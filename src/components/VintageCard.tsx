@@ -151,14 +151,19 @@ const TypewriterKeyButton = styled(IconButton)(({ theme }) => ({
   },
   '&:active': {
     transform: 'translateY(3px)',
-    boxShadow: 'none',
-    background: `
-      linear-gradient(135deg, #595959 0%, #666666 50%, #777777 100%)
+    boxShadow: `
+      0 0 0 #444444,
+      inset 0 1px 3px rgba(0,0,0,0.2)
     `,
   },
   '& svg': {
-    fontSize: '14px',
-    filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))',
+    fontSize: '16px',
+  },
+  '&.Mui-disabled': {
+    backgroundColor: '#999',
+    color: '#ccc',
+    boxShadow: 'none',
+    transform: 'none',
   }
 }));
 
@@ -373,22 +378,26 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
             Image not available
           </Box>
         )}
-        <TypewriterKeyButton onClick={handleDownload} disabled={!imageLoaded || imageError}>
-          <KeyboardArrowDownIcon />
-        </TypewriterKeyButton>
       </CardImageContainer>
       
       <CardContentStyled>
         <OwnerTypography>
-          {ownerDisplayName}
+          Owner: {ownerDisplayName || formatWalletAddress(ownerAddress)}
         </OwnerTypography>
       </CardContentStyled>
+      
+      <TypewriterKeyButton 
+        onClick={handleDownload} 
+        disabled={!imageLoaded || imageError}
+      >
+        <KeyboardArrowDownIcon />
+      </TypewriterKeyButton>
 
       <NFTDetailModal
         open={detailOpen}
         onClose={handleDetailClose}
         nft={nft}
-        displayName={displayName || ownerAddress}
+        displayName={ownerDisplayName}
       />
     </StyledCard>
   );
