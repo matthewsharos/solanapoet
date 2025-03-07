@@ -37,78 +37,44 @@ const uploadFileToDrive = async (file: File) => {
     // Create a File object with the new name
     const renamedFile = new File([file], fileName, { type: file.type });
     
-    try {
-      // First try the binary upload method
-      console.log('Trying binary upload endpoint...');
-      const fileBuffer = await renamedFile.arrayBuffer();
-      
-      // Send the binary data directly
-      console.log('Sending POST request to /api/upload-binary...');
-      const response = await axios.post('/api/upload-binary', fileBuffer, {
-        headers: {
-          'Content-Type': 'application/octet-stream',
-          'X-File-Name': renamedFile.name,
-          'X-File-Type': renamedFile.type
-        },
-        timeout: 60000, // 60 seconds timeout
-      });
-      
-      console.log('Google Drive upload response received:', response.status);
-      
-      if (!response.data) {
-        throw new Error('Empty response data');
-      }
-      
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to upload file');
-      }
-      
-      if (!response.data.fileUrl) {
-        throw new Error('No file URL returned from server');
-      }
-      
-      console.log('File successfully uploaded, URL:', response.data.fileUrl);
-      return response.data.fileUrl;
-    } catch (binaryUploadError: any) {
-      // If binary upload fails, fall back to form data upload
-      console.log('Binary upload failed, falling back to form data upload:', binaryUploadError.message);
-      
-      // Create form data
-      const formData = new FormData();
-      formData.append('file', renamedFile);
-      
-      console.log('Sending POST request to /api/drive/upload...');
-      const response = await axios.post('/api/drive/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 60000, // 60 seconds timeout
-      });
-      
-      console.log('Google Drive form upload response received:', response.status);
-      
-      if (!response.data) {
-        throw new Error('Empty response data from form upload');
-      }
-      
-      if (!response.data.success) {
-        throw new Error(response.data.message || 'Failed to upload file via form');
-      }
-      
-      if (!response.data.fileUrl) {
-        throw new Error('No file URL returned from server in form upload');
-      }
-      
-      console.log('File successfully uploaded via form, URL:', response.data.fileUrl);
-      return response.data.fileUrl;
+    // Create FormData object
+    const formData = new FormData();
+    formData.append('file', renamedFile);
+    
+    console.log('Sending form data upload to /api/drive/upload...');
+    
+    // Use the full URL for production or the relative path for development
+    const uploadUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://solanapoet.vercel.app/api/drive/upload'
+      : '/api/drive/upload';
+    
+    // Send the request using fetch for more native FormData handling
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Server response error:', response.status, errorText);
+      throw new Error(`Upload failed with status ${response.status}`);
     }
+    
+    const data = await response.json();
+    console.log('Upload response:', data);
+    
+    if (!data.success) {
+      throw new Error(data.message || 'Upload failed');
+    }
+    
+    if (!data.fileUrl) {
+      throw new Error('No file URL returned from server');
+    }
+    
+    console.log('File successfully uploaded, URL:', data.fileUrl);
+    return data.fileUrl;
   } catch (error: any) {
     console.error('Error in uploadFileToDrive:', error);
-    const responseData = error.response?.data || {};
-    console.log('Server response error:', {
-      status: error.response?.status,
-      data: responseData
-    });
     throw error;
   }
 };
