@@ -1,10 +1,10 @@
-const axios = require('axios');
+import axios from 'axios';
 
 // Helper function to add delay between requests
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Serverless function for fetching NFT data from Helius
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   console.log('[serverless] NFT endpoint called');
   
   // Set CORS headers
@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(200).json({
+    return res.status(400).json({
       success: false,
       message: 'Method not allowed'
     });
@@ -165,4 +165,4 @@ module.exports = async (req, res) => {
       }
     });
   }
-}; 
+} 

@@ -1,5 +1,5 @@
 // Serverless function for configuration endpoint
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   try {
     console.log('[serverless] Config endpoint called');
     
@@ -143,4 +143,4 @@ module.exports = async (req, res) => {
       }
     });
   }
-}; 
+} 

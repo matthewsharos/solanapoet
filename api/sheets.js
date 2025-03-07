@@ -1,4 +1,4 @@
-const { google } = require('googleapis');
+import { google } from 'googleapis';
 
 // Helper function to initialize Google Sheets client
 async function getGoogleSheetsClient() {
@@ -43,7 +43,7 @@ async function getSheetData(sheets, sheetName) {
 }
 
 // Serverless function handler for Google Sheets API
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -108,4 +108,4 @@ module.exports = async (req, res) => {
       }
     });
   }
-}; 
+} 
