@@ -215,4 +215,87 @@ const getCollectionsByCreator = async (req: GetCollectionsByCreatorRequest, res:
 
 router.get('/creator/:creator', getCollectionsByCreator);
 
+// Fetch all NFTs for a specific collection
+router.get('/:collectionAddress/nfts', async (req: Request, res: Response) => {
+  try {
+    const { collectionAddress } = req.params;
+    
+    if (!collectionAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Collection address is required'
+      });
+    }
+
+    const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+    
+    if (!HELIUS_API_KEY) {
+      console.error('Helius API key not configured');
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error: Helius API key not available'
+      });
+    }
+
+    console.log(`Fetching NFTs for collection ${collectionAddress}...`);
+    
+    const response = await fetch('https://mainnet.helius-rpc.com/?api-key=' + HELIUS_API_KEY, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'collection-nfts',
+        method: 'getAssetsByGroup',
+        params: {
+          groupKey: 'collection',
+          groupValue: collectionAddress,
+          page: 1,
+          limit: 1000,
+        },
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (data.error) {
+      console.error('Helius API error:', data.error);
+      return res.status(500).json({
+        success: false,
+        message: data.error.message || 'Error from Helius API'
+      });
+    }
+
+    if (!data.result || !data.result.items) {
+      return res.status(500).json({
+        success: false,
+        message: 'Invalid response from Helius API'
+      });
+    }
+
+    const nfts = data.result.items.map((item: any) => ({
+      mint: item.id,
+      name: item.content?.metadata?.name || 'Untitled',
+      image: item.content?.files?.[0]?.uri || item.content?.links?.image || '',
+      description: item.content?.metadata?.description || ''
+    }));
+
+    console.log(`Found ${nfts.length} NFTs for collection ${collectionAddress}`);
+    
+    return res.json({
+      success: true,
+      collectionAddress,
+      count: nfts.length,
+      nfts
+    });
+  } catch (error: any) {
+    console.error('Error fetching collection NFTs:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'An error occurred while fetching collection NFTs'
+    });
+  }
+});
+
 export default router; 
