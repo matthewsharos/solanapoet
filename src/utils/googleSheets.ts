@@ -6,7 +6,7 @@ import { sheets_v4 } from '@googleapis/sheets';
 dotenv.config();
 
 // Google Sheets API configuration
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+const SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'];
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 const LISTINGS_SHEET_NAME = process.env.GOOGLE_SHEETS_LISTINGS_SHEET_NAME || 'Listings';
 
@@ -26,53 +26,25 @@ interface NFTListing {
 // Authenticate with Google using service account credentials
 async function getAuthClient(): Promise<JWT> {
   try {
-    // First try using direct client email and private key from env variables
-    if (process.env.GOOGLE_CLIENT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
-      console.log('Using credentials from GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
-      
-      // Process private key to handle possible missing actual newlines
-      let privateKey = process.env.GOOGLE_PRIVATE_KEY;
-      if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
-        console.log('Converting escaped newlines in private key to actual newlines');
-        privateKey = privateKey.replace(/\\n/g, '\n');
-      }
-      
-      return new google.auth.JWT(
-        process.env.GOOGLE_CLIENT_EMAIL,
-        undefined,
-        privateKey, // Use the processed private key
-        SCOPES
-      );
-    }
-    
-    // Next try using JSON credentials from env
-    if (process.env.GOOGLE_SHEETS_CREDENTIALS) {
-      console.log('Using credentials from GOOGLE_SHEETS_CREDENTIALS');
-      const credentials: GoogleCredentials = JSON.parse(process.env.GOOGLE_SHEETS_CREDENTIALS);
-      
-      if (!credentials.client_email || !credentials.private_key) {
-        throw new Error('Invalid Google Sheets credentials in GOOGLE_SHEETS_CREDENTIALS');
-      }
-      
-      return new google.auth.JWT(
-        credentials.client_email,
-        undefined,
-        credentials.private_key,
-        SCOPES
-      );
-    }
-    
-    // Then try using credentials file
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      console.log('Using credentials file from GOOGLE_APPLICATION_CREDENTIALS');
-      const auth = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-        scopes: SCOPES,
-      });
-      return auth.getClient() as Promise<JWT>;
+    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+      throw new Error('Google credentials not found. Set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
     }
 
-    throw new Error('No Google credentials found. Set either GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY, GOOGLE_SHEETS_CREDENTIALS, or GOOGLE_APPLICATION_CREDENTIALS environment variables');
+    console.log('Using credentials from GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY');
+    
+    // Process private key to handle possible missing actual newlines
+    let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+    if (privateKey && !privateKey.includes('\n') && privateKey.includes('\\n')) {
+      console.log('Converting escaped newlines in private key to actual newlines');
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
+    return new google.auth.JWT(
+      process.env.GOOGLE_CLIENT_EMAIL,
+      undefined,
+      privateKey,
+      SCOPES
+    );
   } catch (error) {
     console.error('Error authenticating with Google:', error);
     throw error;
@@ -448,4 +420,6 @@ export async function getSellerAddress(nftAddress: string): Promise<string | nul
     console.error('Error getting seller address:', error);
     return null;
   }
-} 
+}
+
+export { getSheetsAPI, getAuthClient }; 

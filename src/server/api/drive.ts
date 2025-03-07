@@ -16,7 +16,11 @@ export const getDriveClient = async () => {
       throw new Error('Google credentials not set. Please set GOOGLE_CLIENT_EMAIL and GOOGLE_PRIVATE_KEY environment variables');
     }
 
-    console.log('Initializing Drive API client with individual credentials');
+    if (!process.env.GOOGLE_DRIVE_FOLDER_ID) {
+      throw new Error('Google Drive folder ID not set. Please set GOOGLE_DRIVE_FOLDER_ID environment variable');
+    }
+
+    console.log('Initializing Drive API client with credentials');
     
     // Process private key to handle escaped newlines
     let privateKey = process.env.GOOGLE_PRIVATE_KEY;
@@ -42,100 +46,42 @@ export const getDriveClient = async () => {
   }
 };
 
-// Handle file upload to Google Drive
-router.post('/upload', upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+// Upload file to Google Drive
+router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
   try {
-    console.log('File upload request received');
-    
     if (!req.file) {
-      console.error('No file in request');
-      res.status(400).json({ error: 'No file uploaded' });
-      return;
+      return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const { file } = req;
-    console.log('File received:', { name: file.originalname, size: file.size, type: file.mimetype });
-
-    let metadata;
-    try {
-      metadata = JSON.parse(req.body.metadata);
-      console.log('Metadata received:', metadata);
-    } catch (error) {
-      console.error('Error parsing metadata:', error);
-      res.status(400).json({ error: 'Invalid metadata format', details: error instanceof Error ? error.message : String(error) });
-      return;
-    }
-
-    console.log('Creating Google Drive instance...');
     const drive = await getDriveClient();
-    
-    // Create a readable stream from the buffer
-    const fileStream = new Readable();
-    fileStream.push(file.buffer);
-    fileStream.push(null);
+    const fileMetadata = {
+      name: req.file.originalname,
+      parents: [process.env.GOOGLE_DRIVE_FOLDER_ID!]
+    };
 
-    console.log('Uploading file to Google Drive...', {
-      name: metadata.name,
-      mimeType: metadata.mimeType,
-      parents: metadata.parents
-    });
-    
-    const response = await drive.files.create({
-      requestBody: {
-        name: metadata.name,
-        mimeType: metadata.mimeType,
-        parents: metadata.parents,
-      },
-      media: {
-        mimeType: metadata.mimeType,
-        body: fileStream,
-      },
-      fields: 'id, webViewLink, webContentLink',
+    const media = {
+      mimeType: req.file.mimetype,
+      body: Readable.from(req.file.buffer)
+    };
+
+    const file = await drive.files.create({
+      requestBody: fileMetadata,
+      media: media,
+      fields: 'id,name,webViewLink'
     });
 
-    if (!response.data.id) {
-      console.error('No file ID in Google Drive response');
-      throw new Error('Failed to get file ID from Google Drive response');
-    }
-
-    console.log('File uploaded successfully, ID:', response.data.id);
-
-    console.log('Setting file permissions...');
-    await drive.permissions.create({
-      fileId: response.data.id,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone',
-      },
-    });
-
-    console.log('Sending response to client...');
     res.json({
-      id: response.data.id,
-      webViewLink: response.data.webViewLink,
-      webContentLink: response.data.webContentLink,
+      success: true,
+      fileId: file.data.id,
+      fileName: file.data.name,
+      webViewLink: file.data.webViewLink
     });
   } catch (error) {
     console.error('Error uploading file:', error);
-    let errorMessage = 'Failed to upload file';
-    let errorDetails = '';
-    
-    if (error instanceof Error) {
-      errorMessage = error.message;
-      errorDetails = error.stack || '';
-    } else if (typeof error === 'object' && error !== null) {
-      // Handle Google API errors
-      const apiError = error as any;
-      if (apiError.errors && apiError.errors.length > 0) {
-        errorMessage = apiError.errors[0].message;
-        errorDetails = JSON.stringify(apiError.errors);
-      }
-    }
-    
     res.status(500).json({
-      error: errorMessage,
-      details: errorDetails,
-      timestamp: new Date().toISOString()
+      success: false,
+      error: 'Failed to upload file',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
