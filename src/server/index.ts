@@ -187,12 +187,15 @@ app.get('/api/config', (req: Request, res: Response) => {
       clientEmailLength: process.env.GOOGLE_CLIENT_EMAIL?.length || 0,
       privateKeyLength: process.env.GOOGLE_PRIVATE_KEY?.length || 0,
       hasSpreadsheetIdEnv: !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
-      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set'
+      spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID || 'not set',
+      hasHeliusApiKey: !!process.env.HELIUS_API_KEY,
+      hasSolanaRpcUrl: !!process.env.SOLANA_RPC_URL
     });
 
     // Check if required environment variables are present
     const hasGoogleCredentials = !!process.env.GOOGLE_CLIENT_EMAIL && !!process.env.GOOGLE_PRIVATE_KEY;
     const hasSpreadsheetId = !!process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+    const hasHeliusApiKey = !!process.env.HELIUS_API_KEY;
     const isConfigured = hasGoogleCredentials && hasSpreadsheetId;
 
     if (!isConfigured) {
@@ -213,6 +216,7 @@ app.get('/api/config', (req: Request, res: Response) => {
       return res.json({
         hasGoogleCredentials,
         hasSpreadsheetId,
+        hasHeliusApiKey,
         isConfigured,
         error: {
           code: errorCode,
@@ -243,8 +247,10 @@ app.get('/api/config', (req: Request, res: Response) => {
     res.json({
       hasGoogleCredentials: true,
       hasSpreadsheetId: true,
+      hasHeliusApiKey: hasHeliusApiKey,
       isConfigured: true,
       GOOGLE_SHEETS_SPREADSHEET_ID: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+      HELIUS_API_KEY: hasHeliusApiKey ? process.env.HELIUS_API_KEY : null, 
       environment: process.env.NODE_ENV || 'development'
     });
   } catch (error) {
@@ -252,6 +258,7 @@ app.get('/api/config', (req: Request, res: Response) => {
     res.status(500).json({
       hasGoogleCredentials: false,
       hasSpreadsheetId: false,
+      hasHeliusApiKey: false,
       isConfigured: false,
       error: {
         code: 'CONFIG_ERROR',

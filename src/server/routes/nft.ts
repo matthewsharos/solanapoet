@@ -18,27 +18,40 @@ interface HeliusResponse {
 }
 
 interface HeliusNFTData {
-  id: string;
-  content: {
-    metadata: {
-      name: string;
-      symbol: string;
-      description: string;
-      files: Array<{ uri: string; type: string }>;
-      attributes: Array<{ trait_type: string; value: string }>;
+  mint: string;
+  name?: string;
+  symbol?: string;
+  image?: string;
+  description?: string;
+  uri?: string;
+  json?: any;
+  content?: {
+    $schema?: string;
+    json?: any;
+    metadata?: {
+      name?: string;
+      symbol?: string;
+      description?: string;
+      image?: string;
+      attributes?: Array<{
+        trait_type: string;
+        value: string;
+      }>;
     };
-    files?: Array<{ uri: string; type: string }>;
-    links: {
-      image: string;
+    files?: Array<{
+      uri: string;
+      type: string;
+    }>;
+    links?: {
+      image?: string;
+      [key: string]: any;
     };
+    attributes?: Array<{
+      trait_type: string;
+      value: string;
+    }>;
   };
-  metadata: Record<string, unknown>;
-  owner: string;
-  ownership?: {
-    owner: string;
-    [key: string]: any;
-  };
-  grouping?: Array<any>;
+  [key: string]: any; // Allow for additional properties not explicitly defined
 }
 
 interface NFTCacheEntry {
@@ -637,6 +650,82 @@ router.get('/helius/:mintAddress', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error in Helius endpoint:', error);
     res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+// Debug endpoint to check NFT image resolution
+router.get('/debug/image/:mintAddress', async (req: Request, res: Response) => {
+  try {
+    const { mintAddress } = req.params;
+    console.log('Debug image endpoint called for mint address:', mintAddress);
+    
+    if (!HELIUS_API_KEY) {
+      console.error('Helius API key not configured');
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Helius API key not configured' 
+      });
+    }
+
+    // Fetch NFT data from Helius
+    try {
+      const nftData = await fetchHeliusData(mintAddress);
+      
+      // Extract image URL
+      const imageUrl = nftData.content?.files?.[0]?.uri || 
+                      nftData.content?.links?.image || 
+                      nftData.json?.image ||
+                      '';
+      
+      // Check standard metadata fields
+      const metadataImageUrl = nftData.content?.metadata?.image || '';
+      
+      // Check all possible image locations
+      const possibleImageUrls = [
+        imageUrl,
+        metadataImageUrl,
+        nftData.content?.files?.[0]?.uri,
+        nftData.content?.links?.image,
+        nftData.json?.image,
+        nftData.content?.metadata?.image,
+        nftData.image,
+        // Add any other potential locations
+      ].filter(url => !!url);
+      
+      // Check for image URLs in the raw JSON
+      const rawJson = JSON.stringify(nftData);
+      const imageUrlRegex = /(https?:\/\/[^"']+\.(jpg|jpeg|png|gif|webp))/g;
+      const extractedUrls = [...new Set([...rawJson.matchAll(imageUrlRegex)].map(match => match[0]))];
+      
+      return res.json({
+        success: true,
+        mintAddress,
+        primaryImageUrl: imageUrl,
+        metadataImageUrl,
+        possibleImageUrls,
+        extractedUrls,
+        nftData: {
+          name: nftData.content?.metadata?.name || 'Unknown',
+          symbol: nftData.content?.metadata?.symbol || '',
+          description: nftData.content?.metadata?.description || '',
+        },
+        rawResponse: nftData
+      });
+    } catch (error: any) {
+      console.error('Error fetching NFT data for debug:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error fetching NFT data',
+        error: error.message
+      });
+    }
+  } catch (error: any) {
+    console.error('Error in debug image endpoint:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message
+    });
   }
 });
 
