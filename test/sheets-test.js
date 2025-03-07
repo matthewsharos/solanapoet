@@ -40,8 +40,8 @@ async function testGoogleSheets() {
     console.log('Total rows:', rows.length);
     console.log('Headers:', rows[0]);
     
-    // Process the data
-    const collections = rows.slice(1).map(row => ({
+    // Process the data - get all collections but mark which ones are ultimates
+    const allCollections = rows.slice(1).map(row => ({
       address: row[0] || '',
       name: row[1] || '',
       image: row[2] || '',
@@ -50,15 +50,21 @@ async function testGoogleSheets() {
       creationDate: row[5] || new Date().toISOString(),
       ultimates: row[6] === 'TRUE' || row[6] === 'true',
       collectionId: row[0] || ''
-    })).filter(collection => 
-      collection.address && 
-      collection.name && 
-      !collection.ultimates  // Filter OUT collections where ultimates is TRUE
-    );
+    })).filter(collection => collection.address && collection.name);
 
-    console.log('\nProcessed collections:');
-    console.log(JSON.stringify(collections, null, 2));
-    console.log('\nTotal valid collections:', collections.length);
+    // Separate collections into ultimates and regular
+    const ultimateCollections = allCollections.filter(collection => collection.ultimates);
+    const regularCollections = allCollections.filter(collection => !collection.ultimates);
+
+    console.log('\nAll valid collections:', allCollections.length);
+    console.log('Ultimate collections (not to be fetched):', ultimateCollections.length);
+    console.log('Regular collections (to be fetched):', regularCollections.length);
+    
+    console.log('\nUltimate collections:');
+    console.log(JSON.stringify(ultimateCollections, null, 2));
+    
+    console.log('\nRegular collections:');
+    console.log(JSON.stringify(regularCollections, null, 2));
 
   } catch (error) {
     console.error('Error:', error);

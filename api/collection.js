@@ -209,14 +209,19 @@ async function getAllCollections(req, res) {
         console.log('Processed collection:', collection);
         return collection;
       }).filter(collection => {
-        const isValid = collection.address && collection.name && !collection.ultimates;
+        const isValid = collection.address && collection.name;
         if (!isValid) {
           console.log('Filtered out invalid collection:', collection);
         }
         return isValid;
       });
       
+      // Separate collections into ultimates and regular for logging
+      const ultimateCollections = collections.filter(c => c.ultimates === true);
+      const regularCollections = collections.filter(c => !c.ultimates);
+      
       console.log(`Found ${collections.length} valid collections in Google Sheets`);
+      console.log(`Ultimate collections: ${ultimateCollections.length}, Regular collections: ${regularCollections.length}`);
       
       // Cache the collections
       setCachedData('collections', collections);
@@ -226,7 +231,9 @@ async function getAllCollections(req, res) {
         success: true,
         length: collections.length,
         sample: collections[0] || null,
-        collections: collections
+        collections: collections,
+        ultimateCount: ultimateCollections.length,
+        regularCount: regularCollections.length
       });
       
     } catch (sheetError) {

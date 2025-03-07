@@ -185,7 +185,7 @@ const fetchCollections = async (): Promise<Collection[]> => {
     
     // Get collections directly from the response
     const collections = response.data.collections || [];
-    console.log('Collections from API:', collections);
+    console.log('Collections from API (raw):', collections);
     
     if (collections.length === 0) {
       console.warn('No collections received from API');
@@ -195,9 +195,25 @@ const fetchCollections = async (): Promise<Collection[]> => {
     // Log collection breakdown
     const ultimates = collections.filter((c: Collection) => c.ultimates).length;
     const regular = collections.filter((c: Collection) => !c.ultimates).length;
-    console.log('Collections breakdown:', { total: collections.length, ultimates, regular });
+    console.log('Collections breakdown (raw):', { total: collections.length, ultimates, regular });
     
-    return collections;
+    // Validate each collection and log any issues
+    const validatedCollections = collections.map((c: any) => {
+      const validated = validateCollection(c);
+      if (!validated) {
+        console.warn('Collection failed validation:', c);
+      }
+      return validated;
+    }).filter(Boolean) as Collection[];
+    
+    console.log('Validated collections:', validatedCollections);
+    console.log('Validated collections breakdown:', { 
+      total: validatedCollections.length, 
+      ultimates: validatedCollections.filter(c => c.ultimates).length, 
+      regular: validatedCollections.filter(c => !c.ultimates).length 
+    });
+    
+    return validatedCollections;
   } catch (error) {
     console.error('Error in fetchCollections:', error);
     throw error;
@@ -402,10 +418,14 @@ const fetchCollectionNFTsWithRetry = async (collection: Collection, page: number
 
 // Helper function to validate collection objects
 const validateCollection = (collection: any): Collection | null => {
-  if (!collection || typeof collection !== 'object') return null;
-  if (!collection.address || !collection.name) return null;
-  // Filter out collections with ultimates=true
-  if (collection.ultimates === true) return null;
+  if (!collection || typeof collection !== 'object') {
+    console.log('Invalid collection (not an object):', collection);
+    return null;
+  }
+  if (!collection.address || !collection.name) {
+    console.log('Invalid collection (missing address or name):', collection);
+    return null;
+  }
   
   return {
     address: collection.address,
@@ -414,7 +434,8 @@ const validateCollection = (collection: any): Collection | null => {
     description: collection.description || '',
     addedAt: collection.addedAt || Date.now(),
     creationDate: collection.creationDate || '',
-    ultimates: collection.ultimates || false
+    ultimates: collection.ultimates || false,
+    collectionId: collection.collectionId || collection.address
   };
 };
 
@@ -573,18 +594,22 @@ const Market: React.FC = () => {
 
       setCollections(validCollections);
 
-      // With our new API filtering, there should be no ultimates collections
-      // But we'll keep this code for safety, just with updated comments
+      // With our updated API, we should have both ultimates and regular collections
       const ultimateCollections = validCollections.filter(c => c.ultimates === true);
       const regularCollections = validCollections.filter(c => !c.ultimates);
 
       console.log('Collection breakdown:', {
-        ultimate: ultimateCollections.length, // Should be 0 with our new API filtering
-        regular: regularCollections.length
+        ultimate: ultimateCollections.length,
+        regular: regularCollections.length,
+        ultimateCollections,
+        regularCollections
       });
 
+      // Only fetch NFTs for regular collections, not ultimates
+      console.log('4. Fetching NFTs for regular collections only...');
+
       // 1. Handle Ultimate NFTs
-      console.log('4. Fetching ultimate NFTs...');
+      console.log('5. Fetching ultimate NFTs...');
       const ultimateNFTs = await getUltimateNFTs();
       console.log('Ultimates data received:', {
         success: !!ultimateNFTs,
@@ -602,117 +627,28 @@ const Market: React.FC = () => {
         .map(nft => nft["NFT Address"].trim());
 
       // 2. Handle Regular Collection NFTs
-      console.log('5. Fetching regular collection NFTs...');
+      console.log('6. Fetching regular collection NFTs...');
       for (const collection of regularCollections) {
-        console.log(`Starting fetch for collection: ${collection.name} (${collection.address})`);
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-          try {
-            const nfts = await fetchCollectionNFTsWithRetry(collection, page);
-            
-            console.log(`Processing ${nfts.length} NFTs from collection ${collection.name}`);
-
-            // Process each NFT in the collection
-            for (const nft of nfts) {
-              try {
-                // Validate NFT data structure
-                if (!nft || typeof nft !== 'object') {
-                  console.warn(`Invalid NFT data structure:`, nft);
-                  continue;
-                }
-
-                // Make sure we have content and metadata
-                if (!nft.content) {
-                  console.warn(`Skipping NFT ${nft.id} - missing content`);
-                  continue;
-                }
-
-                // Get image from the correct location in the data structure
-                let imageUrl = '';
-                if (nft.content?.files?.[0]?.uri) {
-                  imageUrl = nft.content.files[0].uri;
-                } else if (nft.content?.links?.image) {
-                  imageUrl = nft.content.links.image;
-                } else if (nft.content?.metadata?.image) {
-                  imageUrl = nft.content.metadata.image;
-                } else if (nft.content?.json?.image) {
-                  imageUrl = nft.content.json.image;
-                }
-
-                // Clean and validate the image URL
-                if (imageUrl) {
-                  // Convert ipfs:// URLs to HTTPS
-                  if (imageUrl.startsWith('ipfs://')) {
-                    imageUrl = `https://ipfs.io/ipfs/${imageUrl.slice(7)}`;
-                  }
-                  // Ensure URL is valid
-                  try {
-                    new URL(imageUrl);
-                  } catch {
-                    console.warn(`Invalid image URL for NFT ${nft.id}: ${imageUrl}`);
-                    imageUrl = '';
-                  }
-                }
-
-                const processedNFT = {
-                  mint: nft.id,
-                  name: nft.content?.metadata?.name || nft.content?.json?.name || 'Unknown NFT',
-                  description: nft.content?.metadata?.description || nft.content?.json?.description || '',
-                  image: imageUrl,
-                  attributes: nft.content?.metadata?.attributes || nft.content?.json?.attributes || [],
-                  owner: {
-                    publicKey: nft.ownership?.owner || '',
-                    ownershipModel: nft.ownership?.ownershipModel || 'single',
-                    delegated: nft.ownership?.delegated || false,
-                    delegate: nft.ownership?.delegate || null,
-                    frozen: nft.ownership?.frozen || false,
-                  },
-                  listed: false,
-                  collectionName: collection.name,
-                  collectionAddress: collection.address,
-                  creators: nft.creators || [],
-                  royalty: nft.royalty || null,
-                  tokenStandard: nft.tokenStandard || null,
-                };
-
-                console.log(`Processing NFT: ${processedNFT.name} (${processedNFT.mint})`);
-                updateNFTs(processedNFT);
-              } catch (nftError) {
-                console.error(`Error processing NFT ${nft.id}:`, nftError);
-                console.error('NFT data:', nft);
-              }
-            }
-
-            // Check if we have more pages
-            hasMore = nfts.length === 1000;
-            if (hasMore) {
-              page++;
-              // Add delay between pages to avoid rate limits
-              await delay(2000);
-            }
-
-          } catch (error: any) {
-            console.error(`Failed to fetch collection ${collection.name} NFTs:`, error);
-            
-            // If we get a fatal error, move to the next collection
-            if (error.response?.status === 400) {
-              console.error(`Invalid request for collection ${collection.name}, skipping...`);
-              break;
-            }
-            
-            // For other errors, try the next page
-            hasMore = false;
+        try {
+          console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
+          const collectionNFTs = await fetchCollectionNFTsWithRetry(collection, 1);
+          
+          if (collectionNFTs.length > 0) {
+            console.log(`Found ${collectionNFTs.length} NFTs for collection ${collection.name}`);
+            collectionNFTs.forEach(nft => updateNFTs(nft));
+          } else {
+            console.log(`No NFTs found for collection ${collection.name}`);
           }
+        } catch (error) {
+          console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
         }
         
-        // Add delay between collections to avoid rate limits
+        // Add delay between collection requests to avoid rate limiting
         await delay(3000);
       }
 
       // 3. Process Ultimate NFTs
-      console.log('6. Processing ultimate NFTs...');
+      console.log('7. Processing ultimate NFTs...');
       const ultimateBatches = chunk(validUltimateAddresses, BATCH_SIZE);
 
       for (const [batchIndex, batch] of ultimateBatches.entries()) {
