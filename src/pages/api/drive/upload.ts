@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import formidable, { Fields, Files, File } from 'formidable';
 import { google } from 'googleapis';
-import { Fields, Files, File, formidable } from 'formidable';
 import { getGoogleAuth } from '../../../utils/googleAuth';
+import fs from 'fs';
 
 export const config = {
   api: {
@@ -9,77 +10,63 @@ export const config = {
   },
 };
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
-    if (!folderId) {
-      throw new Error('GOOGLE_DRIVE_FOLDER_ID environment variable is not set');
-    }
-
-    const auth = await getGoogleAuth();
-    const drive = google.drive({ version: 'v3', auth });
-
-    const form = formidable({ 
+    const form = formidable({
       maxFileSize: 10 * 1024 * 1024, // 10MB limit
-      keepExtensions: true 
+      keepExtensions: true,
     });
 
-    const [fields, files]: [Fields, Files] = await new Promise((resolve, reject) => {
-      form.parse(req, (err: Error | null, fields: Fields, files: Files) => {
+    const { fields, files } = await new Promise<{ fields: Fields; files: Files }>((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
         if (err) reject(err);
-        resolve([fields, files]);
+        resolve({ fields, files });
       });
     });
 
-    const file = files.file as File;
-    if (!file || Array.isArray(file)) {
-      return res.status(400).json({ error: 'No file or multiple files uploaded' });
+    // Check if we have any files
+    const uploadedFiles = files['uploadedFile'] as File[] | undefined;
+    if (!uploadedFiles || uploadedFiles.length === 0) {
+      return res.status(400).json({ error: 'No file provided' });
     }
+
+    const file = uploadedFiles[0];
+    const auth = await getGoogleAuth();
+    const drive = google.drive({ version: 'v3', auth });
 
     const metadata = fields.metadata ? JSON.parse(fields.metadata.toString()) : {};
     const fileMetadata = {
       name: metadata.name || file.originalFilename || 'untitled',
-      mimeType: metadata.mimeType || file.mimetype || 'application/octet-stream',
-      parents: [folderId],
+      parents: [process.env.GOOGLE_DRIVE_FOLDER_ID as string],
     };
-
-    console.log('Uploading file to Google Drive:', {
-      name: fileMetadata.name,
-      mimeType: fileMetadata.mimeType,
-      folderId
-    });
 
     const media = {
-      mimeType: fileMetadata.mimeType,
-      body: require('fs').createReadStream(file.filepath),
+      mimeType: file.mimetype || 'application/octet-stream',
+      body: fs.createReadStream(file.filepath),
     };
 
-    const uploadedFile = await drive.files.create({
+    const response = await drive.files.create({
       requestBody: fileMetadata,
       media: media,
-      fields: 'id, webContentLink, webViewLink',
-    });
-
-    console.log('File uploaded successfully:', {
-      id: uploadedFile.data.id,
-      webContentLink: uploadedFile.data.webContentLink,
-      webViewLink: uploadedFile.data.webViewLink
+      fields: 'id,name,webViewLink',
     });
 
     // Clean up the temporary file
-    require('fs').unlinkSync(file.filepath);
+    fs.unlinkSync(file.filepath);
 
-    res.status(200).json({
-      id: uploadedFile.data.id,
-      webContentLink: uploadedFile.data.webContentLink,
-      webViewLink: uploadedFile.data.webViewLink,
+    return res.status(200).json({
+      success: true,
+      file: response.data,
     });
-  } catch (error: any) {
-    console.error('Error uploading to Google Drive:', error);
-    res.status(500).json({ error: 'Failed to upload file to Google Drive' });
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    return res.status(500).json({ error: 'Error uploading file' });
   }
 } 
