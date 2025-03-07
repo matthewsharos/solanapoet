@@ -231,7 +231,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
           }
         }
         
-        // If no cached name found, try to get it just once but don't retry if it fails
+        // If no cached name found, try to get it just once
         try {
           const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
           
@@ -239,12 +239,11 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
             console.log('Found display name:', freshDisplayName, 'for address:', ownerAddress);
             setOwnerDisplayName(freshDisplayName);
           } else {
-            // Show abbreviated wallet address in VintageCard display
-            console.log('No display name found for address:', ownerAddress);
+            // Show abbreviated wallet address if no display name found
             setOwnerDisplayName(formatWalletAddress(ownerAddress));
           }
         } catch (error) {
-          // Don't log the error, just use formatted address
+          // Use formatted wallet address on error
           setOwnerDisplayName(formatWalletAddress(ownerAddress));
         }
       } finally {

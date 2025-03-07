@@ -29,14 +29,6 @@ async function getGoogleSheetsClient() {
   }
 }
 
-// Hardcoded fallback display names in case the API fails
-const fallbackDisplayNames = [
-  { walletAddress: "ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD", displayName: "DegenPoet" },
-  { walletAddress: "CknhwzE3kKYFN24BapMeaWekCE9Fnj6dpGnRHJN2yWd7", displayName: "Jack" },
-  { walletAddress: "CoPufhAobbD9ChXEcZoUbEHPiJF3xvQ1JNXDf9cmh3xz", displayName: "Daniel" },
-  { walletAddress: "HhLJA5EWvJygtKksWp9xGYFYgdSdtrz4Mpd1VhPzC5Ae", displayName: "Mary" }
-];
-
 // Serverless function for display names API
 export default async function handler(req, res) {
   console.log('[serverless] Display names endpoint called');
@@ -66,7 +58,7 @@ export default async function handler(req, res) {
       const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
       
       if (!spreadsheetId) {
-        console.warn('[serverless] Missing spreadsheet ID, using fallback data');
+        console.warn('[serverless] Missing spreadsheet ID');
         throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID not configured');
       }
       
@@ -114,34 +106,20 @@ export default async function handler(req, res) {
       });
       
     } catch (sheetsError) {
-      console.error('[serverless] Error fetching from Google Sheets, using fallback data:', sheetsError);
+      console.error('[serverless] Error fetching from Google Sheets:', sheetsError);
       
-      // Use fallback data if Google Sheets fails
+      // Return empty results if Google Sheets fails
       if (address) {
-        const match = fallbackDisplayNames.find(entry => entry.walletAddress === address);
-        
-        if (match) {
-          console.log(`[serverless] Found fallback display name for address ${address}: ${match.displayName}`);
-          return res.status(200).json({
-            success: true,
-            displayName: match.displayName,
-            fromFallback: true
-          });
-        } else {
-          console.log(`[serverless] No fallback display name found for address ${address}`);
-          return res.status(200).json({
-            success: true,
-            displayName: null,
-            fromFallback: true
-          });
-        }
+        return res.status(200).json({
+          success: true,
+          displayName: null
+        });
       }
       
-      // Return fallback display names
+      // Return empty display names
       return res.status(200).json({
         success: true,
-        displayNames: fallbackDisplayNames,
-        fromFallback: true
+        displayNames: []
       });
     }
   } catch (error) {
@@ -150,8 +128,7 @@ export default async function handler(req, res) {
       success: false, 
       message: 'Error fetching display names',
       error: error.message,
-      displayNames: fallbackDisplayNames,
-      fromFallback: true
+      displayNames: []
     });
   }
 }

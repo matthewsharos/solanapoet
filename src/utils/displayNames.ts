@@ -12,14 +12,6 @@ const CACHE_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const ERROR_COOLDOWN_KEY = 'wallet_display_names_error_cooldown';
 const ERROR_COOLDOWN_TIME = 5 * 60 * 1000; // 5 minutes cooldown after error
 
-// Fallback display names in case the API fails
-const FALLBACK_DISPLAY_NAMES: Record<string, string> = {
-  "ART5dr4bDic2sQVZoFheEmUxwQq5VGSx9he7JxHcXNQD": "DegenPoet",
-  "CknhwzE3kKYFN24BapMeaWekCE9Fnj6dpGnRHJN2yWd7": "Jack",
-  "CoPufhAobbD9ChXEcZoUbEHPiJF3xvQ1JNXDf9cmh3xz": "Daniel",
-  "HhLJA5EWvJygtKksWp9xGYFYgdSdtrz4Mpd1VhPzC5Ae": "Mary"
-};
-
 // Cache display names in memory
 let displayNamesCache: Map<string, string> = new Map();
 let isSyncInProgress = false;
@@ -40,13 +32,13 @@ const dispatchDisplayNamesUpdate = (names: Record<string, string>) => {
 const loadDisplayNamesFromStorage = (): Map<string, string> => {
   try {
     const storedNames = localStorage.getItem(STORAGE_KEY);
-    if (!storedNames) return new Map(Object.entries(FALLBACK_DISPLAY_NAMES));
+    if (!storedNames) return new Map();
     
     const parsedNames = JSON.parse(storedNames) as Record<string, string>;
     return new Map(Object.entries(parsedNames));
   } catch (error) {
     console.error('Error loading display names from localStorage:', error);
-    return new Map(Object.entries(FALLBACK_DISPLAY_NAMES));
+    return new Map();
   }
 };
 
@@ -138,12 +130,7 @@ export const syncDisplayNamesFromSheets = async (force = false): Promise<void> =
     // Create a new cache with the fetched names
     const newCache = new Map<string, string>();
     
-    // First add all fallback names to ensure we always have them
-    Object.entries(FALLBACK_DISPLAY_NAMES).forEach(([address, name]) => {
-      newCache.set(address, name);
-    });
-    
-    // Then add any fetched names, which will override fallbacks if duplicates exist
+    // Add fetched names 
     fetchedNames.forEach((entry: DisplayNameMapping) => {
       if (entry.walletAddress && entry.displayName) {
         newCache.set(entry.walletAddress, entry.displayName);
@@ -164,18 +151,18 @@ export const syncDisplayNamesFromSheets = async (force = false): Promise<void> =
     console.error('Error syncing display names:', error);
     // Set error cooldown to prevent excessive retries
     setErrorCooldown();
-    
-    // Use fallback data from localStorage or fallback object
-    if (displayNamesCache.size === 0) {
-      displayNamesCache = new Map(Object.entries(FALLBACK_DISPLAY_NAMES));
-      saveDisplayNamesToStorage(displayNamesCache);
-    }
-    
-    // Still notify components with what we have
-    dispatchDisplayNamesUpdate(Object.fromEntries(displayNamesCache));
   } finally {
     isSyncInProgress = false;
   }
+};
+
+/**
+ * Format a wallet address for display (shortened)
+ */
+export const formatWalletAddress = (address: string): string => {
+  if (!address) return '';
+  if (address.length <= 10) return address;
+  return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
 };
 
 /**
@@ -195,15 +182,6 @@ export const getDisplayNameForWallet = async (address: string): Promise<string |
   const cachedName = displayNamesCache.get(address);
   if (cachedName) {
     return cachedName;
-  }
-  
-  // Check fallback data
-  const fallbackName = FALLBACK_DISPLAY_NAMES[address];
-  if (fallbackName) {
-    // Add to cache for future use
-    displayNamesCache.set(address, fallbackName);
-    saveDisplayNamesToStorage(displayNamesCache);
-    return fallbackName;
   }
   
   // Only try to fetch from API if we're not in the error cooldown period
