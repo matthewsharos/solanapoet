@@ -41,7 +41,7 @@ async function getGoogleSheetsClient() {
 async function findWalletAddressRow(sheets, walletAddress) {
   try {
     const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-    const range = 'display_names!A:B'; // Columns for wallet address and display name
+    const range = 'display_names!A:C'; // Update range to include updated_at column
     
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -160,16 +160,17 @@ async function getAllDisplayNames(req, res) {
     // Get data from the display_names sheet
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'display_names!A:B', // Columns for wallet address and display name
+      range: 'display_names!A:C', // Update range to include updated_at column
     });
     
     const rows = response.data.values || [];
     
     // Skip header row
     const displayNames = rows.slice(1).map(row => ({
-      walletAddress: row[0] || '',
-      displayName: row[1] || ''
-    })).filter(entry => entry.walletAddress);
+      wallet_address: row[0] || '',
+      display_name: row[1] || '',
+      updated_at: row[2] || new Date().toISOString()
+    })).filter(entry => entry.wallet_address);
     
     // Cache the results
     setCachedData('displayNames', displayNames);
@@ -209,12 +210,12 @@ async function getDisplayName(req, res, address) {
     // Check cache first
     const cachedDisplayNames = getCachedData('displayNames');
     if (cachedDisplayNames) {
-      const cachedName = cachedDisplayNames.find(entry => entry.walletAddress === address);
+      const cachedName = cachedDisplayNames.find(entry => entry.wallet_address === address);
       if (cachedName) {
         console.log(`Found display name for ${address} in cache`);
         return res.status(200).json({
           success: true,
-          displayName: cachedName.displayName
+          displayName: cachedName.display_name
         });
       }
     }
@@ -263,11 +264,11 @@ async function getDisplayName(req, res, address) {
     // Cache this individual result in the main cache
     if (cachedDisplayNames) {
       const updatedCache = [...cachedDisplayNames];
-      const existingIndex = updatedCache.findIndex(entry => entry.walletAddress === address);
+      const existingIndex = updatedCache.findIndex(entry => entry.wallet_address === address);
       if (existingIndex >= 0) {
-        updatedCache[existingIndex].displayName = displayName;
+        updatedCache[existingIndex].display_name = displayName;
       } else {
-        updatedCache.push({ walletAddress: address, displayName });
+        updatedCache.push({ wallet_address: address, display_name: displayName });
       }
       setCachedData('displayNames', updatedCache);
     }
@@ -348,11 +349,11 @@ async function updateDisplayName(req, res) {
     
     // Update cache
     const now = Date.now();
-    const existingIndex = displayNamesCache.data.findIndex(entry => entry.walletAddress === walletAddress);
+    const existingIndex = displayNamesCache.data.findIndex(entry => entry.wallet_address === walletAddress);
     if (existingIndex >= 0) {
-      displayNamesCache.data[existingIndex].displayName = displayName;
+      displayNamesCache.data[existingIndex].display_name = displayName;
     } else {
-      displayNamesCache.data.push({ walletAddress, displayName });
+      displayNamesCache.data.push({ wallet_address: walletAddress, display_name });
     }
     displayNamesCache.timestamp = now;
     
@@ -419,11 +420,11 @@ async function updateDisplayNameByAddress(req, res, address) {
     
     // Update cache
     const now = Date.now();
-    const existingIndex = displayNamesCache.data.findIndex(entry => entry.walletAddress === address);
+    const existingIndex = displayNamesCache.data.findIndex(entry => entry.wallet_address === address);
     if (existingIndex >= 0) {
-      displayNamesCache.data[existingIndex].displayName = displayName;
+      displayNamesCache.data[existingIndex].display_name = displayName;
     } else {
-      displayNamesCache.data.push({ walletAddress: address, displayName });
+      displayNamesCache.data.push({ wallet_address: address, display_name });
     }
     displayNamesCache.timestamp = now;
     
@@ -439,4 +440,4 @@ async function updateDisplayNameByAddress(req, res, address) {
       message: error.message
     });
   }
-} 
+}

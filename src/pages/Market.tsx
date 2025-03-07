@@ -32,10 +32,6 @@ interface Collection {
   addedAt?: number;
   creationDate?: string;
   ultimates?: boolean;
-  website?: string;
-  twitter?: string;
-  discord?: string;
-  isFeatured?: boolean;
   collectionId?: string;
 }
 
@@ -203,7 +199,7 @@ const fetchCollections = async (): Promise<Collection[]> => {
           image: row[2] || '',
           description: row[3] || '',
           addedAt: row[4] ? Number(row[4]) : Date.now(),
-          creationDate: row[5] || '',
+          creationDate: row[5] || new Date().toISOString(),
           ultimates: row[6] === 'TRUE' || row[6] === 'true',
           collectionId: row[0] || '' // Set collectionId to address for compatibility
         };

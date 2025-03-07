@@ -7,6 +7,7 @@ declare module '../api/collections' {
     addedAt?: number;
     creationDate?: string;
     ultimates?: boolean;
+    collectionId?: string;
   }
 
   export function fetchCollections(): Promise<Collection[]>;
@@ -19,8 +20,9 @@ declare module '../api/collections' {
 
 declare module '../api/displayNames' {
   export interface DisplayNameMapping {
-    walletAddress: string;
-    displayName: string;
+    wallet_address: string;
+    display_name: string;
+    updated_at?: string;
   }
 
   export function getDisplayName(address: string): Promise<string | null>;

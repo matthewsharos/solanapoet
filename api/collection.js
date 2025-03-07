@@ -171,7 +171,7 @@ async function getAllCollections(req, res) {
       console.log('Fetching data from collections sheet...');
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'collections!A:I', // Adjust range as needed for your sheet
+        range: 'collections!A:G', // Update range to match actual columns
       });
       
       const rawData = response.data.values || [];
@@ -183,13 +183,11 @@ async function getAllCollections(req, res) {
       collections = rows.map(row => ({
         address: row[0] || '',
         name: row[1] || '',
-        description: row[2] || '',
-        image: row[3] || '',
-        website: row[4] || '',
-        twitter: row[5] || '',
-        discord: row[6] || '',
-        isFeatured: row[7] === 'TRUE' || row[7] === 'true',
-        ultimates: row[8] === 'TRUE' || row[8] === 'true',
+        image: row[2] || '',
+        description: row[3] || '',
+        addedAt: row[4] ? Number(row[4]) : Date.now(),
+        creationDate: row[5] || new Date().toISOString(),
+        ultimates: row[6] === 'TRUE' || row[6] === 'true',
         collectionId: row[0] || '' // Ensure collectionId is set to address for compatibility
       })).filter(collection => 
         collection.address && 
@@ -315,7 +313,7 @@ async function getCollection(req, res, address) {
     // Get data from the collections sheet
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'collections!A:I',
+      range: 'collections!A:G',
     });
     
     const rawData = response.data.values || [];
@@ -336,13 +334,11 @@ async function getCollection(req, res, address) {
     const collection = {
       address: collectionRow[0] || '',
       name: collectionRow[1] || '',
-      description: collectionRow[2] || '',
-      image: collectionRow[3] || '',
-      website: collectionRow[4] || '',
-      twitter: collectionRow[5] || '',
-      discord: collectionRow[6] || '',
-      isFeatured: collectionRow[7] === 'TRUE' || collectionRow[7] === 'true',
-      ultimates: collectionRow[8] === 'TRUE' || collectionRow[8] === 'true',
+      image: collectionRow[2] || '',
+      description: collectionRow[3] || '',
+      addedAt: collectionRow[4] ? Number(collectionRow[4]) : Date.now(),
+      creationDate: collectionRow[5] || new Date().toISOString(),
+      ultimates: collectionRow[6] === 'TRUE' || collectionRow[6] === 'true',
       collectionId: collectionRow[0] || ''
     };
     
