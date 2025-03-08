@@ -255,6 +255,8 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
     padding: '10px 20px',
     borderRadius: '4px',
     border: '1px solid #d4af37',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
     '&:hover': {
       backgroundColor: '#d0d0d0',
     },
@@ -264,6 +266,7 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
   },
   '& .wallet-adapter-button-trigger': {
     backgroundColor: '#e8e8e8',
+    minWidth: '140px',
     '& .wallet-adapter-button-start-icon': {
       marginRight: 8,
     },
@@ -272,9 +275,17 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
       marginRight: 0,
     },
     '& > span:not(.wallet-adapter-button-start-icon):not(.wallet-adapter-button-end-icon)': {
-      display: 'inline',
-      content: '"Connect"',
+      display: 'inline-block',
+      maxWidth: '100%',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
     },
+    '& span.wallet-adapter-button-trigger-content': {
+      '&::before': {
+        content: '"Connect"',
+        display: 'block',
+      }
+    }
   },
   '& .wallet-adapter-dropdown-list': {
     backgroundColor: '#f8f5e6',
