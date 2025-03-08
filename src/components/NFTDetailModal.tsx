@@ -37,6 +37,15 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
     boxShadow: '0 10px 50px rgba(0,0,0,0.5)',
     background: `linear-gradient(135deg, #f8f4ea 0%, #e8ddc8 100%)`,
     position: 'relative',
+    
+    // Tablet optimizations (keep left-right layout but adjust dimensions)
+    [theme.breakpoints.between('sm', 'md')]: {
+      maxWidth: '95vw',
+      width: '95vw',
+      height: 'auto',
+      maxHeight: '95vh',
+    },
+    
     // Mobile optimizations
     [theme.breakpoints.down('sm')]: {
       maxWidth: '100vw',
@@ -120,6 +129,7 @@ const NFTImage = styled('img')({
   maxWidth: '100%',
   maxHeight: '100%',
   objectFit: 'contain',
+  display: 'block',
 });
 
 const DetailContent = styled(Box)(({ theme }) => ({
@@ -571,21 +581,27 @@ const getFullWalletAddress = (address: string): string => {
 // Update the DialogContent component to allow scrolling on mobile
 const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
   display: 'flex',
-  flexDirection: 'column',
+  // Horizontal layout for tablet and desktop (image left, details right)
+  flexDirection: 'row',
   padding: theme.spacing(3),
   overflow: 'auto',
   height: '100%',
-  // Improve mobile scrolling
+  gap: theme.spacing(3),
+  // Vertical layout for mobile (image top, details bottom)
   [theme.breakpoints.down('sm')]: {
+    flexDirection: 'column',
     padding: theme.spacing(2, 1),
     overflowY: 'auto',
-    maxHeight: 'calc(100vh - 64px)', // Account for close button
+    height: '100%',
+    maxHeight: '100%',
+    gap: theme.spacing(1),
   }
 }));
 
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   const [originalDimensions, setOriginalDimensions] = React.useState<{width: number, height: number} | null>(null);
   const [isLoadingDimensions, setIsLoadingDimensions] = React.useState(false);
   const [ownerDisplayName, setOwnerDisplayName] = React.useState<string>('');
@@ -977,7 +993,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
       maxWidth="md"
       fullWidth
       // Add fullScreen for mobile to improve scrolling
-      fullScreen={useMediaQuery(theme.breakpoints.down('sm'))}
+      fullScreen={isMobile}
     >
       <GalleryBackground />
       <AmbientGlow />
@@ -993,14 +1009,17 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
       </GalleryCloseButton>
 
       <DialogContentStyled>
-        {/* Left side: Artwork display only */}
+        {/* Artwork display - left on desktop/tablet, top on mobile */}
         <Box sx={{ 
           ...getFrameDimensions(),
           display: 'flex', 
           flexDirection: 'column',
           position: 'relative',
+          width: isMobile ? '100%' : isTablet ? '50%' : '55%',
+          flex: isMobile ? 'none' : 1,
+          maxHeight: isMobile ? '40vh' : 'none', // Limit image height on mobile
           ...(isMobile && {
-            marginBottom: '-10px', // Reduce bottom margin on mobile
+            marginBottom: '10px', // Add space between image and details on mobile
           })
         }}>
           <ArtworkFrame sx={{ 
@@ -1021,12 +1040,15 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
           </ArtworkFrame>
         </Box>
 
-        {/* Right side: Title, Owner info, and Metadata */}
+        {/* Details - right on desktop/tablet, below image on mobile */}
         <DetailContent sx={{ 
-          width: isMobile ? '100%' : '45%', 
-          height: isMobile ? '35vh' : '100%',
+          width: isMobile ? '100%' : isTablet ? '50%' : '45%', 
+          height: isMobile ? 'auto' : '100%', // Auto height on mobile for full scrolling
+          flex: isMobile ? 1 : 'none', // Flex:1 on mobile to take remaining space
           padding: isMobile ? theme.spacing(2) : theme.spacing(4),
           overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
           '& > *:not(:last-child)': {
             marginBottom: isMobile ? theme.spacing(1.5) : theme.spacing(2)
           },
@@ -1195,8 +1217,10 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
           aria-label="Download original image"
           title="Download original image"
           sx={{
+            position: 'absolute',
             bottom: isMobile ? '10px' : '20px',
             right: isMobile ? '10px' : '20px',
+            zIndex: 10,
           }}
         >
           <KeyboardArrowDownIcon />
