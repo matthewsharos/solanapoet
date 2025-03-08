@@ -5,27 +5,64 @@ async function getGoogleSheetsClient() {
   try {
     console.log('[API] Initializing Google Sheets client...');
     
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-      throw new Error('Missing Google API credentials');
+    if (!process.env.GOOGLE_CLIENT_EMAIL) {
+      console.error('[API] Missing GOOGLE_CLIENT_EMAIL environment variable');
+      throw new Error('GOOGLE_CLIENT_EMAIL not configured');
     }
     
-    // Ensure private key is properly formatted
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    if (!process.env.GOOGLE_PRIVATE_KEY) {
+      console.error('[API] Missing GOOGLE_PRIVATE_KEY environment variable');
+      throw new Error('GOOGLE_PRIVATE_KEY not configured');
+    }
     
+    console.log('[API] Google API credentials found');
+    
+    // Ensure private key is properly formatted
+    let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+    
+    // Check if the key needs to be unescaped
+    if (privateKey.includes('\\n')) {
+      console.log('[API] Unescaping private key newlines');
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    
+    // Verify the key has the proper PEM format
+    if (!privateKey.startsWith('-----BEGIN PRIVATE KEY-----')) {
+      console.warn('[API] Private key does not start with expected format');
+    }
+    
+    console.log('[API] Creating Google Auth client...');
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GOOGLE_CLIENT_EMAIL,
         private_key: privateKey,
       },
-      // Use full access for updating sheets
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    console.log('[API] Google Auth client initialized');
+    console.log('[API] Google Auth client created, initializing sheets client');
     const sheets = google.sheets({ version: 'v4', auth });
+    
+    // Verify credentials by making a small test request
+    try {
+      // Just request the spreadsheet metadata to verify authentication
+      if (process.env.GOOGLE_SHEETS_SPREADSHEET_ID) {
+        console.log('[API] Verifying sheets API access with test request...');
+        const testResponse = await sheets.spreadsheets.get({
+          spreadsheetId: process.env.GOOGLE_SHEETS_SPREADSHEET_ID,
+          fields: 'spreadsheetId,properties.title' // Minimal fields for fast response
+        });
+        console.log('[API] Test request successful:', testResponse.data.properties.title);
+      }
+    } catch (testError) {
+      console.warn('[API] Test request failed, but proceeding anyway:', testError.message);
+      // Still proceed with the client since the main request might work
+    }
+    
     return sheets;
   } catch (error) {
     console.error('[API] Error initializing Google Sheets client:', error);
+    console.error('[API] Error stack:', error.stack);
     throw error;
   }
 }
@@ -141,14 +178,48 @@ export default async function handler(req, res) {
       if (rowIndex === -1) {
         console.log(`[API] Adding new display name for ${walletAddress}`);
         
-        await sheets.spreadsheets.values.append({
-          spreadsheetId,
-          range: 'display_names!A:C',
-          valueInputOption: 'RAW',
-          requestBody: {
-            values: [[walletAddress, displayName, timestamp]]
+        try {
+          // Make sure the sheet exists and has headers
+          const sheetInfoResponse = await sheets.spreadsheets.get({
+            spreadsheetId,
+            ranges: ['display_names!A1:C1'],
+            includeGridData: true
+          });
+          
+          // Check if sheet exists and has headers
+          const sheetData = sheetInfoResponse.data.sheets[0];
+          const hasData = sheetData?.data?.[0]?.rowData?.[0]?.values?.length > 0;
+          
+          if (!hasData) {
+            // Create headers if they don't exist
+            console.log('[API] Creating headers in display_names sheet');
+            await sheets.spreadsheets.values.update({
+              spreadsheetId,
+              range: 'display_names!A1:C1',
+              valueInputOption: 'RAW',
+              requestBody: {
+                values: [['Wallet Address', 'Display Name', 'Last Updated']]
+              }
+            });
           }
-        });
+          
+          // Now append the new row
+          console.log('[API] Appending new row to sheet');
+          const appendResponse = await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: 'display_names!A:C',
+            valueInputOption: 'RAW',
+            insertDataOption: 'INSERT_ROWS',  // Make sure we're actually inserting a new row
+            requestBody: {
+              values: [[walletAddress, displayName, timestamp]]
+            }
+          });
+          
+          console.log('[API] Successfully appended new row:', appendResponse.data);
+        } catch (appendError) {
+          console.error('[API] Error appending new display name:', appendError);
+          throw new Error(`Failed to add new display name: ${appendError.message}`);
+        }
       } 
       // If address found, update the existing row
       else {
@@ -190,7 +261,7 @@ export default async function handler(req, res) {
       // Get displayName from request body
       const { displayName } = req.body;
       
-      console.log('[API] PUT request params:', { address, displayName });
+      console.log('[API] PUT request received:', { address, displayName });
       
       if (!address) {
         return res.status(400).json({
@@ -206,8 +277,6 @@ export default async function handler(req, res) {
         });
       }
       
-      console.log(`[API] Updating display name for ${address} to: ${displayName}`);
-      
       // Initialize sheets client
       const sheets = await getGoogleSheetsClient();
       const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
@@ -217,35 +286,64 @@ export default async function handler(req, res) {
       }
       
       // First, check if the address already has a display name
+      console.log(`[API] Checking if display name exists for ${address}`);
       const response = await sheets.spreadsheets.values.get({
         spreadsheetId,
         range: 'display_names!A:C',
       });
       
       const rows = response.data.values || [];
-      const rowIndex = rows.findIndex(row => row[0] === address);
+      console.log(`[API] Found ${rows.length} rows in the sheet`);
       
+      const rowIndex = rows.findIndex(row => row[0] === address);
       const timestamp = new Date().toISOString();
+      
+      // Check if the display_names sheet exists and has headers
+      console.log(`[API] Verifying display_names sheet structure`);
+      const sheetInfoResponse = await sheets.spreadsheets.get({
+        spreadsheetId,
+        ranges: ['display_names!A1:C1'],
+        includeGridData: true
+      });
+      
+      const sheetData = sheetInfoResponse.data.sheets[0];
+      const hasHeaders = sheetData?.data?.[0]?.rowData?.[0]?.values?.length > 0;
+      
+      // Create headers if they don't exist
+      if (!hasHeaders) {
+        console.log(`[API] Creating headers in display_names sheet`);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: 'display_names!A1:C1',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [['Wallet Address', 'Display Name', 'Last Updated']]
+          }
+        });
+      }
       
       // If address not found, append a new row
       if (rowIndex === -1) {
         console.log(`[API] Adding new display name for ${address}`);
         
-        await sheets.spreadsheets.values.append({
+        const appendResponse = await sheets.spreadsheets.values.append({
           spreadsheetId,
           range: 'display_names!A:C',
           valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',  // Explicitly tell it to insert rows
           requestBody: {
             values: [[address, displayName, timestamp]]
           }
         });
+        
+        console.log(`[API] New row added. Updated range: ${appendResponse.data.updates?.updatedRange}`);
       } 
       // If address found, update the existing row
       else {
         console.log(`[API] Updating existing display name for ${address} at row ${rowIndex + 1}`);
         
         // +1 because sheets are 1-indexed and header row counts
-        await sheets.spreadsheets.values.update({
+        const updateResponse = await sheets.spreadsheets.values.update({
           spreadsheetId,
           range: `display_names!A${rowIndex + 1}:C${rowIndex + 1}`,
           valueInputOption: 'RAW',
@@ -253,9 +351,11 @@ export default async function handler(req, res) {
             values: [[address, displayName, timestamp]]
           }
         });
+        
+        console.log(`[API] Row updated. Updated cells: ${updateResponse.data.updatedCells}`);
       }
       
-      console.log(`[API] Successfully updated display name for ${address}`);
+      console.log(`[API] Successfully handled display name for ${address}`);
       
       return res.status(200).json({
         success: true,
@@ -264,10 +364,13 @@ export default async function handler(req, res) {
       });
     } catch (error) {
       console.error('[API] Error updating display name:', error);
+      
+      // Provide more detailed error information
       return res.status(500).json({
         success: false,
         message: 'Error updating display name',
-        error: error.message
+        error: error.message,
+        details: typeof error === 'object' ? JSON.stringify(error, null, 2) : 'Unknown error'
       });
     }
   }

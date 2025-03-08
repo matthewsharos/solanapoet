@@ -552,6 +552,13 @@ interface NFTDetailModalProps {
   displayName?: string;
 }
 
+// Utility function to ensure we get full wallet addresses (not abbreviated)
+const getFullWalletAddress = (address: string): string => {
+  // This function intentionally just returns the full address
+  // without any formatting or abbreviation
+  return address;
+};
+
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -601,13 +608,13 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
         } else {
           // Show complete wallet address when no display name exists
           console.log('No display name found for address:', ownerAddress);
-          // Display the full wallet address instead of abbreviated
-          setOwnerDisplayName(ownerAddress);
+          // EXPLICITLY use the full wallet address with our helper
+          setOwnerDisplayName(getFullWalletAddress(ownerAddress));
         }
       } catch (error) {
         console.error('Error setting owner display name:', error);
         // Display the full wallet address instead of abbreviated
-        setOwnerDisplayName(ownerAddress);
+        setOwnerDisplayName(getFullWalletAddress(ownerAddress));
       } finally {
         setIsLoadingDisplayName(false);
       }
@@ -906,7 +913,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   // Add this function inside the NFTDetailModal component before the return statement
   const handleCopyOwnerAddress = async () => {
     try {
-      await navigator.clipboard.writeText(ownerAddress);
+      // Always copy the full owner address, not the potentially abbreviated display name
+      await navigator.clipboard.writeText(getFullWalletAddress(ownerAddress));
+      console.log('Copied full owner address to clipboard:', ownerAddress);
     } catch (error) {
       console.error('Failed to copy owner address:', error);
     }
