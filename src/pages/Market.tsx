@@ -792,7 +792,14 @@ const Market: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="xl">
+    <Container 
+      maxWidth="xl"
+      sx={{
+        px: { xs: '4px', sm: 2, md: 3 }, // Minimal padding on mobile
+        width: '100%',
+        maxWidth: '100%',
+      }}
+    >
       <Box sx={{ py: 4 }}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
@@ -891,14 +898,24 @@ const Market: React.FC = () => {
               {/* Show NFTs as they load */}
               <Grid 
                 container 
-                spacing={3} 
+                spacing={{ xs: 2, sm: 3 }}  // Reduce spacing between items on mobile
                 sx={{ 
-                  px: { xs: 0.5, sm: 3 },  // Reduce padding on mobile for more card width
-                  mx: 'auto'               // Center the grid
+                  px: { xs: 0, sm: 3 },    // Remove horizontal padding completely on mobile
+                  mx: 'auto'                // Center the grid
                 }}
               >
                 {currentNFTs.map((nft) => (
-                  <Grid item key={nft.mint} xs={12} sm={6} md={4} lg={3}>
+                  <Grid 
+                    item 
+                    key={nft.mint} 
+                    xs={12} 
+                    sm={6} 
+                    md={4} 
+                    lg={3}
+                    sx={{
+                      px: { xs: '4px', sm: 2 }, // Minimal padding on mobile
+                    }}
+                  >
                     <VintageCard 
                       nft={nft} 
                       wallet={wallet} 

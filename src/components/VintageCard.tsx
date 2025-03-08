@@ -39,9 +39,10 @@ const StyledCard = styled(Card)(({ theme }) => ({
   [theme.breakpoints.down('sm')]: {
     margin: '0',
     borderRadius: '4px',
-    width: '98%', // Take up more width
+    width: '100%', // Take up full width
     marginLeft: 'auto',
     marginRight: 'auto',
+    border: '1px solid #d4c4a8', // Thinner border on mobile
   }
 }));
 
