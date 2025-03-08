@@ -1483,15 +1483,25 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                     Mint ID
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Typography sx={{ 
-                      fontSize: { xs: '13px', sm: '14px' }, 
-                      fontWeight: '500',
-                      maxWidth: { xs: '190px', sm: '100%' },
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }}>
+                    <Link 
+                      href={`https://solscan.io/token/${nft?.mint}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ 
+                        fontSize: { xs: '13px', sm: '14px' }, 
+                        fontWeight: '500',
+                        maxWidth: { xs: '190px', sm: '100%' },
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        textDecoration: 'none',
+                        color: 'primary.main',
+                        '&:hover': {
+                          textDecoration: 'underline'
+                        }
+                      }}
+                    >
                       {nft?.mint || 'Unknown'}
-                    </Typography>
+                    </Link>
                     {nft?.mint && (
                       <IconButton 
                         onClick={handleCopyMintId}
@@ -1502,6 +1512,18 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                       </IconButton>
                     )}
                   </Box>
+                </Grid>
+
+                {/* Dimensions */}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '12px', sm: '13px' } }}>
+                    Dimensions
+                  </Typography>
+                  <Typography sx={{ fontSize: { xs: '13px', sm: '14px' }, fontWeight: '500' }}>
+                    {isLoadingDimensions ? (
+                      <CircularProgress size={16} sx={{ mr: 1 }} />
+                    ) : getDimensionsDisplay()}
+                  </Typography>
                 </Grid>
               </Grid>
             </DetailSection>
