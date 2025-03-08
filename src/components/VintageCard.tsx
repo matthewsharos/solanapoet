@@ -5,7 +5,7 @@ import { formatWalletAddress } from '../utils/helpers';
 import NFTDetailModal from './NFTDetailModal';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useWalletContext } from '../contexts/WalletContext';
-import { getDisplayNameForWallet, syncDisplayNamesFromSheets, getAllDisplayNames } from '../utils/displayNames';
+import { getDisplayNameForWallet, syncDisplayNamesFromSheets, getAllDisplayNames, clearDisplayNameForWallet } from '../utils/displayNames';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 
 // Styled components for vintage card
@@ -225,30 +225,20 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
           return;
         }
 
-        // Use the modified getAllDisplayNames function to get from cache
-        const displayNamesMap = getAllDisplayNames();
+        console.log(`VintageCard: Getting fresh display name for ${ownerAddress}`);
         
-        if (displayNamesMap.has(ownerAddress)) {
-          const cachedName = displayNamesMap.get(ownerAddress);
-          if (cachedName) {
-            setOwnerDisplayName(cachedName);
-            return;
-          }
-        }
+        // Clear cache for this address to force network fetch
+        await clearDisplayNameForWallet(ownerAddress);
         
-        // If no cached name found, try to get it just once
-        try {
-          const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
-          
-          if (freshDisplayName) {
-            console.log('Found display name:', freshDisplayName, 'for address:', ownerAddress);
-            setOwnerDisplayName(freshDisplayName);
-          } else {
-            // Show abbreviated wallet address if no display name found
-            setOwnerDisplayName(formatWalletAddress(ownerAddress));
-          }
-        } catch (error) {
-          // Use formatted wallet address on error
+        // Force a fresh fetch from the server
+        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
+        
+        if (freshDisplayName) {
+          console.log(`VintageCard: Found fresh display name for ${ownerAddress}: ${freshDisplayName}`);
+          setOwnerDisplayName(freshDisplayName);
+        } else {
+          // Show abbreviated wallet address if no display name found
+          console.log(`VintageCard: No display name found, using abbreviated address for ${ownerAddress}`);
           setOwnerDisplayName(formatWalletAddress(ownerAddress));
         }
       } finally {
@@ -261,7 +251,12 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
 
     interface DisplayNamesUpdateEvent extends CustomEvent {
       detail: {
-        displayNames: Record<string, string>;
+        displayNames: {
+          [key: string]: string | boolean | number | undefined;
+          __forceRefresh?: boolean;
+          __updatedAddress?: string;
+          __timestamp?: number;
+        }
       };
     }
 

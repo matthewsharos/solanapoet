@@ -19,6 +19,9 @@ let displayNamesCache: Map<string, string> = new Map();
 let isSyncInProgress = false;
 let lastCacheUpdate = 0;
 
+// Track recently updated addresses so we always get fresh data
+const recentlyUpdatedAddresses: Set<string> = new Set();
+
 /**
  * Define an interface for the display names update event detail
  */
@@ -262,6 +265,17 @@ export const formatWalletAddress = (address: string): string => {
   return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
 };
 
+// Record that an address was recently updated
+export const markAddressAsUpdated = (address: string): void => {
+  recentlyUpdatedAddresses.add(address);
+  // Clear from the "recently updated" list after 30 seconds
+  setTimeout(() => {
+    recentlyUpdatedAddresses.delete(address);
+    console.log(`Removed ${address} from recently updated list`);
+  }, 30000);
+  console.log(`Marked ${address} as recently updated, will force fetch for 30 seconds`);
+};
+
 /**
  * Get the display name for a wallet address
  * @param address The wallet address to get the display name for
@@ -270,15 +284,23 @@ export const formatWalletAddress = (address: string): string => {
 export const getDisplayNameForWallet = async (address: string): Promise<string | null> => {
   if (!address) return null;
   
-  // Initialize cache from localStorage if empty
-  if (displayNamesCache.size === 0) {
+  // Check if this is a recently updated address
+  const forceServerFetch = recentlyUpdatedAddresses.has(address);
+  if (forceServerFetch) {
+    console.log(`Force fetching display name for recently updated address: ${address}`);
+  }
+  
+  // Initialize cache from localStorage if empty (skip for recently updated addresses)
+  if (displayNamesCache.size === 0 && !forceServerFetch) {
     displayNamesCache = loadDisplayNamesFromStorage();
   }
   
-  // Check cache first
-  const cachedName = displayNamesCache.get(address);
-  if (cachedName) {
-    return cachedName;
+  // Check cache first (skip for recently updated addresses)
+  if (!forceServerFetch) {
+    const cachedName = displayNamesCache.get(address);
+    if (cachedName) {
+      return cachedName;
+    }
   }
   
   // Only try to fetch from API if we're not in the error cooldown period
@@ -313,6 +335,9 @@ export const setDisplayNameForWallet = async (address: string, name: string): Pr
   
   try {
     console.log(`Setting display name for ${address} to "${name}"`);
+    
+    // Mark this address as requiring server fetch
+    markAddressAsUpdated(address);
     
     // Update on the server
     await displayNames.update(address, name);

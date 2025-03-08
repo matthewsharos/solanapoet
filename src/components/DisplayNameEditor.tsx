@@ -72,11 +72,11 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
   // Save the display name
   const handleSave = async () => {
     if (!publicKey) {
-      setError('You must connect your wallet to set a display name');
+      setError('Wallet not connected');
       return;
     }
 
-    if (!displayName.trim()) {
+    if (!displayName) {
       setError('Display name cannot be empty');
       return;
     }
@@ -90,6 +90,23 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
     setLoading(true);
     try {
       const walletAddress = publicKey.toString();
+      console.log(`Updating display name for ${walletAddress} to "${displayName.trim()}"`);
+      
+      // First update all local components to give instant feedback
+      // This will apply the change visually even before the server confirms
+      const event = new CustomEvent('displayNamesUpdated', {
+        detail: {
+          displayNames: {
+            [walletAddress]: displayName.trim(),
+            __forceRefresh: true,
+            __updatedAddress: walletAddress,
+            __timestamp: Date.now()
+          }
+        }
+      });
+      window.dispatchEvent(event);
+      
+      // Now update on the server
       await displayNames.update(walletAddress, displayName.trim());
       
       setSuccess(true);
