@@ -237,7 +237,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
           console.log(`VintageCard: Found fresh display name for ${ownerAddress}: ${freshDisplayName}`);
           setOwnerDisplayName(freshDisplayName);
         } else {
-          // Show abbreviated wallet address if no display name found
+          // Show abbreviated wallet address in vintage card for better UI
           console.log(`VintageCard: No display name found, using abbreviated address for ${ownerAddress}`);
           setOwnerDisplayName(formatWalletAddress(ownerAddress));
         }
