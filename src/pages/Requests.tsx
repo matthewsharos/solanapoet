@@ -27,7 +27,7 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+    const MAX_FILE_SIZE = 3.5 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB due to server limits`);
     }
@@ -163,13 +163,12 @@ const Requests: React.FC = () => {
 
       console.log('Submitting art request to Google Sheets:', formData);
       
-      // Use the sheets.js API endpoint directly with full URL for production
       const sheetsUrl = process.env.NODE_ENV === 'production'
         ? 'https://solanapoet.vercel.app/api/sheets'
         : '/api/sheets';
       console.log('Sending Sheets request to:', sheetsUrl);
 
-      const sheetsResponse = await axios.post(sheetsUrl, {
+      const sheetsPayload = {
         spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
         range: 'art_requests!A:E',
         valueInputOption: 'RAW',
@@ -180,7 +179,10 @@ const Requests: React.FC = () => {
           formData.x_handle,
           formData.comment
         ]]
-      });
+      };
+      console.log('Sheets payload:', sheetsPayload); // Added for debug
+
+      const sheetsResponse = await axios.post(sheetsUrl, sheetsPayload);
       
       console.log('Google Sheets submission response:', sheetsResponse.data);
       

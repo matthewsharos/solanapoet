@@ -9,7 +9,6 @@ async function getGoogleSheetsClient() {
       throw new Error('Missing Google API credentials');
     }
     
-    // Ensure private key is properly formatted
     const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
     
     const auth = new google.auth.GoogleAuth({
@@ -39,7 +38,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-  // Handle OPTIONS request
   if (req.method === 'OPTIONS') {
     console.log('[serverless] Handling OPTIONS request');
     return res.status(200).end();
@@ -47,14 +45,13 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     console.log('[serverless] Method not allowed:', req.method);
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    // Fallback for debugging: log if GET or other methods are hitting this
+    return res.status(405).json({ success: false, message: `Method ${req.method} not allowed, use POST` });
   }
 
   try {
-    // Log the incoming request body for debugging
     console.log('[serverless] Request body:', req.body);
 
-    // Get parameters from the request body
     const { spreadsheetId, range, valueInputOption = 'RAW', values } = req.body;
     
     if (!spreadsheetId) {
@@ -80,10 +77,8 @@ export default async function handler(req, res) {
     
     console.log(`[serverless] Appending values to spreadsheet ${spreadsheetId}, range: ${range}`);
     
-    // Initialize Google Sheets client
     const sheets = await getGoogleSheetsClient();
 
-    // Append values to the sheet
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId,
       range,
