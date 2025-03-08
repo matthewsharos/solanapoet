@@ -55,23 +55,30 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { walletAddress, displayName } = req.body;
+    // Supports both single update and batch update formats
+    let updatesArray = [];
     
-    if (!walletAddress) {
+    if (req.body.entries) {
+      // Batch update format with entries array
+      if (!Array.isArray(req.body.entries) || req.body.entries.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'entries array must be a non-empty array'
+        });
+      }
+      updatesArray = req.body.entries;
+    } else if (req.body.walletAddress && req.body.displayName) {
+      // Single update format
+      updatesArray = [{
+        walletAddress: req.body.walletAddress,
+        displayName: req.body.displayName
+      }];
+    } else {
       return res.status(400).json({
         success: false,
-        message: 'walletAddress is required in the request body'
+        message: 'Either walletAddress+displayName or entries array is required'
       });
     }
-    
-    if (!displayName) {
-      return res.status(400).json({
-        success: false,
-        message: 'displayName is required in the request body'
-      });
-    }
-    
-    console.log(`[serverless] Updating display name for ${walletAddress} to: ${displayName}`);
     
     // Initialize sheets client
     const sheets = await getGoogleSheetsClient();
@@ -88,44 +95,77 @@ export default async function handler(req, res) {
     });
     
     const rows = response.data.values || [];
-    const rowIndex = rows.findIndex(row => row[0] === walletAddress);
-    
     const timestamp = new Date().toISOString();
     
-    // If address not found, append a new row
-    if (rowIndex === -1) {
-      console.log(`[serverless] Adding new display name for ${walletAddress}`);
+    // Process each update
+    const results = [];
+    
+    for (const { walletAddress, displayName } of updatesArray) {
+      if (!walletAddress || !displayName) {
+        console.warn('[serverless] Skipping invalid entry:', { walletAddress, displayName });
+        results.push({ walletAddress, success: false, message: 'Invalid entry' });
+        continue;
+      }
       
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: 'display_names!A:C',
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[walletAddress, displayName, timestamp]]
-        }
-      });
-    } 
-    // If address found, update the existing row
-    else {
-      console.log(`[serverless] Updating existing display name for ${walletAddress} at row ${rowIndex + 1}`);
+      console.log(`[serverless] Processing update for ${walletAddress} to: ${displayName}`);
       
-      // +1 because sheets are 1-indexed and header row counts
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `display_names!A${rowIndex + 1}:C${rowIndex + 1}`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [[walletAddress, displayName, timestamp]]
+      try {
+        const rowIndex = rows.findIndex(row => row[0] === walletAddress);
+        
+        // If address not found, append a new row
+        if (rowIndex === -1) {
+          console.log(`[serverless] Adding new display name for ${walletAddress}`);
+          
+          await sheets.spreadsheets.values.append({
+            spreadsheetId,
+            range: 'display_names!A:C',
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [[walletAddress, displayName, timestamp]]
+            }
+          });
+        } 
+        // If address found, update the existing row
+        else {
+          console.log(`[serverless] Updating existing display name for ${walletAddress} at row ${rowIndex + 1}`);
+          
+          // +1 because sheets are 1-indexed and header row counts
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `display_names!A${rowIndex + 1}:C${rowIndex + 1}`,
+            valueInputOption: 'RAW',
+            requestBody: {
+              values: [[walletAddress, displayName, timestamp]]
+            }
+          });
         }
-      });
+        
+        results.push({ 
+          walletAddress, 
+          displayName, 
+          success: true 
+        });
+      } catch (error) {
+        console.error(`[serverless] Error updating ${walletAddress}:`, error);
+        results.push({ 
+          walletAddress, 
+          success: false, 
+          message: error.message 
+        });
+      }
     }
     
-    console.log(`[serverless] Successfully updated display name for ${walletAddress}`);
+    const allSuccessful = results.every(r => r.success);
+    
+    console.log('[serverless] Update results:', results);
     
     return res.status(200).json({
-      success: true,
-      message: 'Display name updated successfully',
-      displayName: displayName
+      success: allSuccessful,
+      message: allSuccessful 
+        ? 'All display names updated successfully' 
+        : 'Some display name updates failed',
+      results,
+      displayName: updatesArray.length === 1 ? updatesArray[0].displayName : undefined
     });
     
   } catch (error) {
