@@ -795,21 +795,36 @@ const Market: React.FC = () => {
     <Container 
       maxWidth="xl"
       sx={{
-        px: { xs: '4px', sm: 2, md: 3 }, // Minimal padding on mobile
+        px: { xs: 0, sm: 2, md: 3 }, // Remove horizontal padding completely on mobile
         width: '100%',
         maxWidth: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center' // Center container contents
       }}
     >
-      <Box sx={{ py: 4 }}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
+      <Box sx={{ 
+        py: { xs: 2, sm: 4 }, // Reduce vertical padding on mobile
+        px: { xs: 0, sm: 2 }, // No horizontal padding on mobile
+        width: '100%', // Full width
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center' // Center box contents
+      }}>
+        <Grid 
+          container 
+          spacing={{ xs: 2, sm: 3 }} // Less spacing on mobile
+          sx={{ width: '100%', m: 0 }} // Full width, no margin
+        >
+          <Grid item xs={12} sx={{ px: { xs: '4px', sm: 2 } }}> {/* Minimal padding on mobile */}
             {/* Search and filter UI - stack vertically on mobile */}
             <Box 
               sx={{ 
                 display: 'flex', 
                 flexDirection: { xs: 'column', sm: 'row' },
-                gap: 2, 
-                mb: 3
+                gap: { xs: 1, sm: 2 }, // Smaller gap on mobile
+                mb: { xs: 2, sm: 3 }, // Less margin on mobile
+                width: '100%' // Full width
               }}
             >
               {/* First row on mobile: Search bar and My NFT checkbox */}
@@ -834,6 +849,9 @@ const Market: React.FC = () => {
                   }}
                   sx={{ 
                     flex: {xs: 3, sm: 1}, // Make search bar take more space on mobile
+                    '& .MuiInputBase-root': {
+                      paddingRight: { xs: '8px', sm: '14px' } // Less padding on mobile
+                    }
                   }}
                 />
                 <FormControlLabel
@@ -859,7 +877,7 @@ const Market: React.FC = () => {
               </Box>
               
               {/* Second row on mobile: Collections dropdown */}
-              <FormControl sx={{ width: '100%' }}>
+              <FormControl sx={{ width: '100%', mt: { xs: 0, sm: 1 } }}>
                 <InputLabel>Collection</InputLabel>
                 <Select
                   value={selectedCollection}
@@ -871,6 +889,11 @@ const Market: React.FC = () => {
                         maxHeight: 300
                       },
                     },
+                  }}
+                  sx={{
+                    '& .MuiInputBase-root': {
+                      paddingRight: { xs: '8px', sm: '14px' } // Less padding on mobile
+                    }
                   }}
                 >
                   <MenuItem value="">All Collections</MenuItem>
@@ -898,10 +921,12 @@ const Market: React.FC = () => {
               {/* Show NFTs as they load */}
               <Grid 
                 container 
-                spacing={{ xs: 2, sm: 3 }}  // Reduce spacing between items on mobile
+                spacing={{ xs: 1, sm: 3 }}  // Even less spacing on mobile for more cards
                 sx={{ 
                   px: { xs: 0, sm: 3 },    // Remove horizontal padding completely on mobile
-                  mx: 'auto'                // Center the grid
+                  mx: 'auto',               // Center the grid
+                  justifyContent: 'center', // Ensure grid items are centered
+                  width: '100%'             // Full width
                 }}
               >
                 {currentNFTs.map((nft) => (
@@ -913,7 +938,9 @@ const Market: React.FC = () => {
                     md={4} 
                     lg={3}
                     sx={{
-                      px: { xs: '4px', sm: 2 }, // Minimal padding on mobile
+                      px: { xs: '2px', sm: 2 }, // Even less padding on mobile for more card width
+                      display: 'flex',          // Allow centering of card
+                      justifyContent: 'center'  // Center the card horizontally
                     }}
                   >
                     <VintageCard 

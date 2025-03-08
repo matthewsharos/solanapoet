@@ -38,11 +38,12 @@ const StyledCard = styled(Card)(({ theme }) => ({
   // Optimize spacing for mobile
   [theme.breakpoints.down('sm')]: {
     margin: '0',
-    borderRadius: '4px',
-    width: '100%', // Take up full width
+    borderRadius: '3px',
+    width: '100%',
+    maxWidth: '100%',
     marginLeft: 'auto',
     marginRight: 'auto',
-    border: '1px solid #d4c4a8', // Thinner border on mobile
+    border: '1px solid #d4c4a8',
   }
 }));
 
@@ -51,7 +52,7 @@ const CardTitleContainer = styled(Box)(({ theme }) => ({
   borderBottom: '1px solid rgba(139, 69, 19, 0.2)',
   // Reduce padding equally on both sides for mobile
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(1, 0.5, 0.5, 0.5),
+    padding: theme.spacing(0.75, 0.25, 0.5, 0.25),
   }
 }));
 
@@ -78,8 +79,8 @@ const CardImageContainer = styled(Box)(({ theme }) => ({
   position: 'relative',
   // Make image container wider on mobile by reducing padding
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(0.5),
-    minHeight: '180px',
+    padding: theme.spacing(0.25),
+    minHeight: '170px',
   }
 }));
 
