@@ -93,7 +93,7 @@ export const displayNames = {
   },
 
   update: async (address: string, name: string): Promise<void> => {
-    const response = await fetch(`${API_BASE_URL}/api/update-display-name`, {
+    const response = await fetch(`${API_BASE_URL}/api/display-names`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
