@@ -823,7 +823,12 @@ const Market: React.FC = () => {
     if (showMyNFTs || selectedCollection) {
       return [{ 
         collectionName: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
-        nfts: filtered 
+        nfts: filtered.sort((a, b) => {
+          // Sort by creation date (newest first)
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        })
       }];
     }
     
@@ -839,9 +844,17 @@ const Market: React.FC = () => {
       return acc;
     }, {} as Record<string, NFT[]>);
     
-    // Convert to array and sort by collection name
+    // Convert to array, sort collections alphabetically, and sort NFTs within each collection by date
     return Object.entries(groupedNFTs)
-      .map(([collectionName, nfts]) => ({ collectionName, nfts }))
+      .map(([collectionName, nfts]) => ({ 
+        collectionName, 
+        nfts: nfts.sort((a, b) => {
+          // Sort by creation date (newest first)
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return dateB - dateA;
+        })
+      }))
       .sort((a, b) => a.collectionName.localeCompare(b.collectionName));
   }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
   
