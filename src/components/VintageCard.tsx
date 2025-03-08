@@ -40,6 +40,7 @@ const StyledCard = styled(Card)(({ theme }) => ({
     width: 'calc(100% - 0px)',  // Full width
     maxWidth: 'calc(100% - 0px)', // Full width
     margin: '0', // No margin
+    marginLeft: '20px',
   },
   // Mobile optimization
   [theme.breakpoints.down('sm')]: {
