@@ -55,4 +55,18 @@
   [data-theme="dark"] .css-vfhetp:hover {
     text-shadow: 0 0 3px var(--neon-secondary) !important; /* Less intense glow */
   }
+  
+  /* Fix collection dropdown width on mobile */
+  [data-theme="dark"] .MuiSelect-select.MuiSelect-outlined,
+  [data-theme="dark"] .MuiOutlinedInput-root {
+    width: 100% !important; /* Override the 400px fixed width */
+    max-width: 100% !important; /* Override the 400px fixed max-width */
+  }
+  
+  /* Ensure dropdown menu width matches the dropdown */
+  [data-theme="dark"] .MuiMenu-paper {
+    width: 90vw !important; /* Use 90% of viewport width */
+    max-width: 90vw !important;
+    min-width: 0 !important; /* Prevent min-width from causing horizontal scroll */
+  }
 } 
