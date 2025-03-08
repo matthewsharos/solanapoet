@@ -50,13 +50,13 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setIsAuthorizedMinter(false);
         });
 
-        // Try to eagerly connect
-        try {
-          await phantomWallet.connect();
-        } catch (err) {
-          // Handle connection error silently
-          console.log('No pre-existing Phantom connection');
-        }
+        // Remove auto-connect functionality
+        // try {
+        //   await phantomWallet.connect();
+        // } catch (err) {
+        //   // Handle connection error silently
+        //   console.log('No pre-existing Phantom connection');
+        // }
       } catch (error) {
         console.error('Error initializing wallet:', error);
       }

@@ -288,40 +288,76 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       className="app-root"
     >
       <VintageAppBar position="static">
-        <Toolbar sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <Link to="/art" style={{ textDecoration: 'none' }}>
-              <div ref={logoRef}>
-                <VintageLogo className={isInkSqueezing ? 'ink-squeeze' : ''} onClick={handleLogoClick}>
-                  Degen Poet
-                </VintageLogo>
-              </div>
-            </Link>
-            <StyledLink to="/art">
-              {isActive('/art') ? (
-                <ActiveNavButton>Art</ActiveNavButton>
-              ) : (
-                <NavButton>Art</NavButton>
-              )}
-            </StyledLink>
-            {connected && isAuthorizedMinter && (
-              <StyledLink to="/mint">
-                {isActive('/mint') ? (
-                  <ActiveNavButton>Mint</ActiveNavButton>
+        <Toolbar 
+          sx={{ 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            // Stack content vertically on mobile
+            flexDirection: { xs: 'column', sm: 'row' },
+            // Add some padding between the rows on mobile
+            gap: { xs: 1, sm: 0 },
+            py: { xs: 1, sm: 0 }
+          }}
+        >
+          {/* First row on mobile: Logo, links, theme toggle */}
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              width: { xs: '100%', sm: 'auto' },
+              justifyContent: { xs: 'space-between', sm: 'flex-start' },
+              gap: '16px' 
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <Link to="/art" style={{ textDecoration: 'none' }}>
+                <div ref={logoRef}>
+                  <VintageLogo className={isInkSqueezing ? 'ink-squeeze' : ''} onClick={handleLogoClick}>
+                    Degen Poet
+                  </VintageLogo>
+                </div>
+              </Link>
+              <StyledLink to="/art">
+                {isActive('/art') ? (
+                  <ActiveNavButton>Art</ActiveNavButton>
                 ) : (
-                  <NavButton>Mint</NavButton>
+                  <NavButton>Art</NavButton>
                 )}
               </StyledLink>
-            )}
-            <StyledLink to="/requests">
-              {isActive('/requests') ? (
-                <ActiveNavButton>Requests</ActiveNavButton>
-              ) : (
-                  <NavButton>Requests</NavButton>
-                )}
-            </StyledLink>
+              {connected && isAuthorizedMinter && (
+                <StyledLink to="/mint">
+                  {isActive('/mint') ? (
+                    <ActiveNavButton>Mint</ActiveNavButton>
+                  ) : (
+                    <NavButton>Mint</NavButton>
+                  )}
+                </StyledLink>
+              )}
+              <StyledLink to="/requests">
+                {isActive('/requests') ? (
+                  <ActiveNavButton>Requests</ActiveNavButton>
+                ) : (
+                    <NavButton>Requests</NavButton>
+                  )}
+              </StyledLink>
+            </Box>
+            
+            {/* Only show theme toggle in first row */}
+            <Box sx={{ display: { xs: 'flex', sm: 'none' } }}>
+              <ThemeToggle />
+            </Box>
           </Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          
+          {/* Second row on mobile: Monkey icon and wallet button */}
+          <Box 
+            sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              width: { xs: '100%', sm: 'auto' },
+              justifyContent: { xs: 'space-between', sm: 'flex-end' },
+              gap: '16px' 
+            }}
+          >
             <MonkeyContainer>
               <MonkeyImage 
                 src={MONKEY_IMAGE_URL}
@@ -335,7 +371,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               {connected ? `Disconnect (${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)})` : 'Connect'}
             </WalletButton>
             
-            <ThemeToggle />
+            {/* Hide theme toggle in second row on mobile, but show on desktop */}
+            <Box sx={{ display: { xs: 'none', sm: 'flex' } }}>
+              <ThemeToggle />
+            </Box>
           </Box>
         </Toolbar>
       </VintageAppBar>

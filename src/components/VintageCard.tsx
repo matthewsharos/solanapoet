@@ -34,12 +34,21 @@ const StyledCard = styled(Card)(({ theme }) => ({
     height: '100%',
     background: 'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 30%)',
     pointerEvents: 'none',
+  },
+  // Reduce margins for mobile
+  [theme.breakpoints.down('sm')]: {
+    margin: '0',
+    borderRadius: '6px',
   }
 }));
 
 const CardTitleContainer = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2, 2, 1, 2),
   borderBottom: '1px solid rgba(139, 69, 19, 0.2)',
+  // Reduce padding for mobile
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1, 1, 0.5, 1),
+  }
 }));
 
 const CardTitle = styled(Typography)(({ theme }) => ({
@@ -94,6 +103,13 @@ const CardContentStyled = styled(CardContent)(({ theme }) => ({
   '&:last-child': {
     paddingBottom: theme.spacing(1.5),
   },
+  // Reduce padding for mobile
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(1),
+    '&:last-child': {
+      paddingBottom: theme.spacing(1),
+    }
+  }
 }));
 
 const OwnerTypography = styled(Typography)(({ theme }) => ({

@@ -30,13 +30,22 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
     borderRadius: '0',
     maxWidth: '95vw',
     maxHeight: '95vh',
-    height: '95vh',
+    height: 'auto', // Changed from fixed 95vh to auto for better mobile scrolling
     width: '95vw',
     margin: '0',
     overflow: 'hidden',
     boxShadow: '0 10px 50px rgba(0,0,0,0.5)',
     background: `linear-gradient(135deg, #f8f4ea 0%, #e8ddc8 100%)`,
     position: 'relative',
+    // Mobile optimizations
+    [theme.breakpoints.down('sm')]: {
+      maxWidth: '100vw',
+      maxHeight: '100vh',
+      width: '100vw',
+      height: '100vh',
+      margin: 0,
+      borderRadius: 0,
+    },
     '&::before': {
       content: '""',
       position: 'absolute',
@@ -559,6 +568,21 @@ const getFullWalletAddress = (address: string): string => {
   return address;
 };
 
+// Update the DialogContent component to allow scrolling on mobile
+const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
+  display: 'flex',
+  flexDirection: 'column',
+  padding: theme.spacing(3),
+  overflow: 'auto',
+  height: '100%',
+  // Improve mobile scrolling
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(2, 1),
+    overflowY: 'auto',
+    maxHeight: 'calc(100vh - 64px)', // Account for close button
+  }
+}));
+
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -950,16 +974,10 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     <DetailDialog
       open={open}
       onClose={onClose}
-      maxWidth={false}
-      PaperProps={{
-        sx: { 
-          display: 'flex', 
-          flexDirection: isMobile ? 'column' : 'row',
-          overflow: 'hidden',
-          maxHeight: isMobile ? '90vh' : '95vh',
-          height: isMobile ? '90vh' : '95vh',
-        }
-      }}
+      maxWidth="md"
+      fullWidth
+      // Add fullScreen for mobile to improve scrolling
+      fullScreen={useMediaQuery(theme.breakpoints.down('sm'))}
     >
       <GalleryBackground />
       <AmbientGlow />
@@ -974,214 +992,216 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
         <CloseIcon />
       </GalleryCloseButton>
 
-      {/* Left side: Artwork display only */}
-      <Box sx={{ 
-        ...getFrameDimensions(),
-        display: 'flex', 
-        flexDirection: 'column',
-        position: 'relative',
-        ...(isMobile && {
-          marginBottom: '-10px', // Reduce bottom margin on mobile
-        })
-      }}>
-        <ArtworkFrame sx={{ 
-          flex: 1, 
-          height: '100%',
-          '&::before': {
-            top: isMobile ? -5 : -10,
-            left: isMobile ? -5 : -10,
-            right: isMobile ? -5 : -10,
-            bottom: isMobile ? -5 : -10,
-          }
+      <DialogContentStyled>
+        {/* Left side: Artwork display only */}
+        <Box sx={{ 
+          ...getFrameDimensions(),
+          display: 'flex', 
+          flexDirection: 'column',
+          position: 'relative',
+          ...(isMobile && {
+            marginBottom: '-10px', // Reduce bottom margin on mobile
+          })
         }}>
-          <ArtworkMatting>
-            <NFTImage src={nft.image} alt={nft.name} />
-          </ArtworkMatting>
-          <FrameShadow />
-          <ArtworkSpotlight />
-        </ArtworkFrame>
-      </Box>
-
-      {/* Right side: Title, Owner info, and Metadata */}
-      <DetailContent sx={{ 
-        width: isMobile ? '100%' : '45%', 
-        height: isMobile ? '35vh' : '100%',
-        padding: isMobile ? theme.spacing(2) : theme.spacing(4),
-        overflowY: 'auto',
-        '& > *:not(:last-child)': {
-          marginBottom: isMobile ? theme.spacing(1.5) : theme.spacing(2)
-        },
-        '&::-webkit-scrollbar': {
-          width: '8px',
-        },
-        '&::-webkit-scrollbar-track': {
-          background: 'rgba(0,0,0,0.05)',
-          borderRadius: '4px',
-        },
-        '&::-webkit-scrollbar-thumb': {
-          background: 'rgba(139, 69, 19, 0.3)',
-          borderRadius: '4px',
-          '&:hover': {
-            background: 'rgba(139, 69, 19, 0.5)',
-          },
-        },
-      }}>
-        {/* Title at the top right */}
-        <ArtworkTitle variant="h4" sx={{ 
-          textAlign: 'left',
-          fontSize: isMobile ? '1.5rem' : '2rem',
-          marginBottom: isMobile ? 1 : 2,
-        }}>
-          {nft.name}
-        </ArtworkTitle>
-
-        {/* Owner section */}
-        <OwnerSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
-          <MetadataLabel>Owner</MetadataLabel>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'flex-start',
-            gap: 1
+          <ArtworkFrame sx={{ 
+            flex: 1, 
+            height: '100%',
+            '&::before': {
+              top: isMobile ? -5 : -10,
+              left: isMobile ? -5 : -10,
+              right: isMobile ? -5 : -10,
+              bottom: isMobile ? -5 : -10,
+            }
           }}>
-            <Typography 
-              variant="h6" 
-              component="div"
-              sx={{ 
-                fontFamily: '"Arial", sans-serif',
-                fontWeight: 500,
-                color: '#333',
-                fontSize: '0.9rem',
-                flex: 1,
-                maxWidth: 'calc(100% - 40px)',
-                whiteSpace: 'normal',
-                overflowWrap: 'break-word'
-              }}
-            >
-              {isLoadingDisplayName ? (
-                <CircularProgress size={20} sx={{ mr: 1 }} />
-              ) : ownerDisplayName}
-            </Typography>
-            <Tooltip title="Copy Owner Address">
-              <CopyButton onClick={handleCopyOwnerAddress} size="small">
-                <ContentCopyIcon />
-              </CopyButton>
-            </Tooltip>
-          </Box>
-        </OwnerSection>
+            <ArtworkMatting>
+              <NFTImage src={nft.image} alt={nft.name} />
+            </ArtworkMatting>
+            <FrameShadow />
+            <ArtworkSpotlight />
+          </ArtworkFrame>
+        </Box>
 
-        {/* Collection section */}
-        <CollectionSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
-          <MetadataLabel sx={{ color: '#6B5900' }}>Collection</MetadataLabel>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <CollectionIconBadge>★</CollectionIconBadge>
-            <CollectionName variant="h6">
-              {isLoadingCollection ? (
-                <CircularProgress size={16} sx={{ mr: 1 }} />
-              ) : collectionName}
-            </CollectionName>
-          </Box>
-        </CollectionSection>
-
-        {/* Metadata section */}
-        <MetadataSection sx={{ 
-          padding: isMobile ? 2 : 3,
-          '& .MuiTypography-root': {
-            marginBottom: isMobile ? 1 : 2,
-          }
+        {/* Right side: Title, Owner info, and Metadata */}
+        <DetailContent sx={{ 
+          width: isMobile ? '100%' : '45%', 
+          height: isMobile ? '35vh' : '100%',
+          padding: isMobile ? theme.spacing(2) : theme.spacing(4),
+          overflowY: 'auto',
+          '& > *:not(:last-child)': {
+            marginBottom: isMobile ? theme.spacing(1.5) : theme.spacing(2)
+          },
+          '&::-webkit-scrollbar': {
+            width: '8px',
+          },
+          '&::-webkit-scrollbar-track': {
+            background: 'rgba(0,0,0,0.05)',
+            borderRadius: '4px',
+          },
+          '&::-webkit-scrollbar-thumb': {
+            background: 'rgba(139, 69, 19, 0.3)',
+            borderRadius: '4px',
+            '&:hover': {
+              background: 'rgba(139, 69, 19, 0.5)',
+            },
+          },
         }}>
-          <MetadataLabel>Description</MetadataLabel>
-          <MetadataValue>{nft.description}</MetadataValue>
-          
-          <MetadataLabel>Traits</MetadataLabel>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', mb: 2 }}>
-            {nft.attributes?.map((attr) => (
-              <TraitChip 
-                key={`${attr.trait_type}-${attr.value}`}
-                label={`${attr.trait_type}: ${attr.value}`} 
-                variant="outlined"
-              />
-            ))}
-          </Box>
-          
-          <MetadataLabel>Created</MetadataLabel>
-          <MetadataValue>
-            {isLoadingCreationDate ? (
-              <CircularProgress size={16} sx={{ mr: 1 }} />
-            ) : creationDate}
-          </MetadataValue>
-          
-          <MetadataLabel>Mint ID</MetadataLabel>
-          <MetadataValue sx={{ display: 'flex', alignItems: 'center' }}>
+          {/* Title at the top right */}
+          <ArtworkTitle variant="h4" sx={{ 
+            textAlign: 'left',
+            fontSize: isMobile ? '1.5rem' : '2rem',
+            marginBottom: isMobile ? 1 : 2,
+          }}>
+            {nft.name}
+          </ArtworkTitle>
+
+          {/* Owner section */}
+          <OwnerSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
+            <MetadataLabel>Owner</MetadataLabel>
             <Box sx={{ 
               display: 'flex', 
-              alignItems: 'center',
-              color: '#8b4513',
-              wordBreak: 'break-all',
-              flex: 1
+              alignItems: 'flex-start',
+              gap: 1
             }}>
-              <Link
-                href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                sx={{
-                  color: 'inherit',
-                  textDecoration: 'none',
-                  display: 'inline-block'
-                }}
-              >
-                {nft.mint}
-              </Link>
-              <Link 
-                href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`} 
-                target="_blank"
-                rel="noopener noreferrer"
+              <Typography 
+                variant="h6" 
+                component="div"
                 sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  color: 'inherit',
-                  ml: 1
+                  fontFamily: '"Arial", sans-serif',
+                  fontWeight: 500,
+                  color: '#333',
+                  fontSize: '0.9rem',
+                  flex: 1,
+                  maxWidth: 'calc(100% - 40px)',
+                  whiteSpace: 'normal',
+                  overflowWrap: 'break-word'
                 }}
               >
-                <OpenInNewIcon sx={{ fontSize: '0.9rem', flexShrink: 0 }} />
-              </Link>
-              <Tooltip title="Copy Mint ID">
-                <CopyButton onClick={handleCopyMintId} size="small">
+                {isLoadingDisplayName ? (
+                  <CircularProgress size={20} sx={{ mr: 1 }} />
+                ) : ownerDisplayName}
+              </Typography>
+              <Tooltip title="Copy Owner Address">
+                <CopyButton onClick={handleCopyOwnerAddress} size="small">
                   <ContentCopyIcon />
                 </CopyButton>
               </Tooltip>
             </Box>
-          </MetadataValue>
-          
-          <MetadataLabel>Original Dimensions</MetadataLabel>
-          <MetadataValue>{getDimensionsDisplay()}</MetadataValue>
-          
-          {nft.lastSoldPrice && (
-            <>
-              <MetadataLabel>Last Sold</MetadataLabel>
-              <Typography variant="h6" sx={{ 
-                fontFamily: '"Arial", sans-serif',
-                color: '#8b4513',
-                fontWeight: 600,
-                mb: 2
-              }}>
-                {nft.lastSoldPrice} SOL
-              </Typography>
-            </>
-          )}
-        </MetadataSection>
-      </DetailContent>
+          </OwnerSection>
 
-      <TypewriterKeyButton
-        onClick={handleDownload}
-        aria-label="Download original image"
-        title="Download original image"
-        sx={{
-          bottom: isMobile ? '10px' : '20px',
-          right: isMobile ? '10px' : '20px',
-        }}
-      >
-        <KeyboardArrowDownIcon />
-      </TypewriterKeyButton>
+          {/* Collection section */}
+          <CollectionSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
+            <MetadataLabel sx={{ color: '#6B5900' }}>Collection</MetadataLabel>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <CollectionIconBadge>★</CollectionIconBadge>
+              <CollectionName variant="h6">
+                {isLoadingCollection ? (
+                  <CircularProgress size={16} sx={{ mr: 1 }} />
+                ) : collectionName}
+              </CollectionName>
+            </Box>
+          </CollectionSection>
+
+          {/* Metadata section */}
+          <MetadataSection sx={{ 
+            padding: isMobile ? 2 : 3,
+            '& .MuiTypography-root': {
+              marginBottom: isMobile ? 1 : 2,
+            }
+          }}>
+            <MetadataLabel>Description</MetadataLabel>
+            <MetadataValue>{nft.description}</MetadataValue>
+            
+            <MetadataLabel>Traits</MetadataLabel>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', mb: 2 }}>
+              {nft.attributes?.map((attr) => (
+                <TraitChip 
+                  key={`${attr.trait_type}-${attr.value}`}
+                  label={`${attr.trait_type}: ${attr.value}`} 
+                  variant="outlined"
+                />
+              ))}
+            </Box>
+            
+            <MetadataLabel>Created</MetadataLabel>
+            <MetadataValue>
+              {isLoadingCreationDate ? (
+                <CircularProgress size={16} sx={{ mr: 1 }} />
+              ) : creationDate}
+            </MetadataValue>
+            
+            <MetadataLabel>Mint ID</MetadataLabel>
+            <MetadataValue sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                color: '#8b4513',
+                wordBreak: 'break-all',
+                flex: 1
+              }}>
+                <Link
+                  href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{
+                    color: 'inherit',
+                    textDecoration: 'none',
+                    display: 'inline-block'
+                  }}
+                >
+                  {nft.mint}
+                </Link>
+                <Link 
+                  href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`} 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    color: 'inherit',
+                    ml: 1
+                  }}
+                >
+                  <OpenInNewIcon sx={{ fontSize: '0.9rem', flexShrink: 0 }} />
+                </Link>
+                <Tooltip title="Copy Mint ID">
+                  <CopyButton onClick={handleCopyMintId} size="small">
+                    <ContentCopyIcon />
+                  </CopyButton>
+                </Tooltip>
+              </Box>
+            </MetadataValue>
+            
+            <MetadataLabel>Original Dimensions</MetadataLabel>
+            <MetadataValue>{getDimensionsDisplay()}</MetadataValue>
+            
+            {nft.lastSoldPrice && (
+              <>
+                <MetadataLabel>Last Sold</MetadataLabel>
+                <Typography variant="h6" sx={{ 
+                  fontFamily: '"Arial", sans-serif',
+                  color: '#8b4513',
+                  fontWeight: 600,
+                  mb: 2
+                }}>
+                  {nft.lastSoldPrice} SOL
+                </Typography>
+              </>
+            )}
+          </MetadataSection>
+        </DetailContent>
+
+        <TypewriterKeyButton
+          onClick={handleDownload}
+          aria-label="Download original image"
+          title="Download original image"
+          sx={{
+            bottom: isMobile ? '10px' : '20px',
+            right: isMobile ? '10px' : '20px',
+          }}
+        >
+          <KeyboardArrowDownIcon />
+        </TypewriterKeyButton>
+      </DialogContentStyled>
     </DetailDialog>
   );
 };

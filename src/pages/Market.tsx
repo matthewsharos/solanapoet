@@ -796,21 +796,56 @@ const Market: React.FC = () => {
       <Box sx={{ py: 4 }}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center' }}>
-              <TextField
-                label="Search NFTs"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                InputProps={{
-                  endAdornment: (
-                    <IconButton>
-                      <SearchIcon />
-                    </IconButton>
-                  ),
+            {/* Search and filter UI - stack vertically on mobile */}
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: 2, 
+                mb: 3
+              }}
+            >
+              {/* First row on mobile: Search bar and My NFT checkbox */}
+              <Box 
+                sx={{ 
+                  display: 'flex', 
+                  gap: 2,
+                  width: '100%',
+                  alignItems: 'center'
                 }}
-                sx={{ flex: 2 }} // Reduced width ratio
-              />
-              <FormControl sx={{ flex: 1.5 }}>
+              >
+                <TextField
+                  label="Search NFTs"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  InputProps={{
+                    endAdornment: (
+                      <IconButton>
+                        <SearchIcon />
+                      </IconButton>
+                    ),
+                  }}
+                  sx={{ flex: 1 }}
+                />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={showMyNFTs}
+                      onChange={(e) => setShowMyNFTs(e.target.checked)}
+                      disabled={!connected}
+                    />
+                  }
+                  label="My NFTs"
+                  sx={{ 
+                    minWidth: 120,
+                    opacity: connected ? 1 : 0.5,
+                    cursor: connected ? 'pointer' : 'not-allowed'
+                  }}
+                />
+              </Box>
+              
+              {/* Second row on mobile: Collections dropdown */}
+              <FormControl sx={{ width: '100%' }}>
                 <InputLabel>Collection</InputLabel>
                 <Select
                   value={selectedCollection}
@@ -835,21 +870,6 @@ const Market: React.FC = () => {
                   ))}
                 </Select>
               </FormControl>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={showMyNFTs}
-                    onChange={(e) => setShowMyNFTs(e.target.checked)}
-                    disabled={!connected}
-                  />
-                }
-                label="My NFTs"
-                sx={{ 
-                  minWidth: 120,
-                  opacity: connected ? 1 : 0.5,
-                  cursor: connected ? 'pointer' : 'not-allowed'
-                }}
-              />
             </Box>
           </Grid>
 
