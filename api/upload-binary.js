@@ -10,7 +10,7 @@ export const config = {
 };
 
 // Vercel has a 4.5MB payload size limit for serverless functions
-const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB
 
 // Helper function to initialize Google Drive client
 const initializeGoogleDrive = async () => {

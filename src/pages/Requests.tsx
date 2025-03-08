@@ -27,7 +27,7 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    const MAX_FILE_SIZE = 3.5 * 1024 * 1024;
+    const MAX_FILE_SIZE = 15 * 1024 * 1024;
     if (file.size > MAX_FILE_SIZE) {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB due to server limits`);
     }
