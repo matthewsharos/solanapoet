@@ -793,14 +793,15 @@ const Market: React.FC = () => {
 
   return (
     <Container 
-      maxWidth="xl"
+      maxWidth={false}
       sx={{
-        px: { xs: '0px', sm: 2, md: 3 }, // No padding on mobile for evenness
+        px: { xs: '0px', sm: 1, md: 2 }, // Reduce container padding on all sizes
         width: '100%',
-        maxWidth: '100%',
+        maxWidth: '100%', // Remove constraints at the container level for consistency
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center' // Center container contents
+        alignItems: 'center', // Center container contents
+        textAlign: 'center' // Center all text
       }}
     >
       <Box sx={{ 
@@ -817,7 +818,12 @@ const Market: React.FC = () => {
           spacing={{ xs: 2, sm: 3 }} // Less spacing on mobile
           sx={{ width: '100%', m: 0 }} // Full width, no margin
         >
-          <Grid item xs={12} sx={{ px: { xs: '4px', sm: 2 } }}> {/* Minimal padding on mobile */}
+          <Grid item xs={12} sx={{ 
+            px: { xs: '4px', sm: 2 },
+            width: '100%', 
+            maxWidth: { xs: '100%', sm: '95%', md: '95%', lg: '90%' }, // Match container width
+            mx: 'auto' // Center this grid item
+          }}> 
             {/* Search and filter UI - stack vertically on mobile */}
             <Box 
               sx={{ 
@@ -825,7 +831,8 @@ const Market: React.FC = () => {
                 flexDirection: { xs: 'column', sm: 'row' },
                 gap: { xs: 1, sm: 2 }, // Smaller gap on mobile
                 mb: { xs: 2, sm: 3 }, // Less margin on mobile
-                width: '100%' // Full width
+                width: '100%', // Full width
+                maxWidth: '100%'
               }}
             >
               {/* First row on mobile: Search bar and My NFT checkbox */}
@@ -866,7 +873,7 @@ const Market: React.FC = () => {
                   }
                   label="My NFTs"
                   sx={{ 
-                    minWidth: {xs: 90, sm: 120}, // Narrower on mobile
+                    minWidth: {xs: 90, sm: 100}, // Slightly narrower on desktop too
                     opacity: connected ? 1 : 0.5,
                     cursor: connected ? 'pointer' : 'not-allowed',
                     ml: {xs: 'auto', sm: 0}, // Auto margin on mobile pushes to right
@@ -878,7 +885,11 @@ const Market: React.FC = () => {
               </Box>
               
               {/* Second row on mobile: Collections dropdown */}
-              <FormControl sx={{ width: '100%', mt: { xs: 0, sm: 1 } }}>
+              <FormControl sx={{ 
+                width: '100%', 
+                mt: { xs: 0, sm: 1 },
+                maxWidth: { sm: '100%', md: '100%' } // Ensure dropdown takes full width of its container
+              }}>
                 <InputLabel>Collection</InputLabel>
                 <Select
                   value={selectedCollection}
@@ -922,13 +933,14 @@ const Market: React.FC = () => {
               {/* Show NFTs as they load */}
               <Grid 
                 container 
-                spacing={{ xs: 2, sm: 3 }}  // Increase vertical spacing on mobile
+                spacing={{ xs: 2, sm: 2, md: 2 }}  // Reduce spacing on all screen sizes
                 sx={{ 
-                  px: { xs: 0, sm: 3 },    // Remove horizontal padding on mobile
-                  mx: 'auto',               // Center the grid
-                  justifyContent: 'center', // Ensure grid items are centered
-                  width: '100%',            // Full width
-                  alignItems: 'center'      // Center items vertically
+                  px: { xs: 0, sm: 2, md: 2 },    // Reduce padding on desktop
+                  mx: 'auto',                     // Center the grid
+                  justifyContent: 'center',       // Ensure grid items are centered
+                  width: '100%',                  // Full width
+                  alignItems: 'center',           // Center items vertically
+                  maxWidth: { xs: '100%', sm: '95%', md: '95%', lg: '90%' } // Match search container width
                 }}
               >
                 {currentNFTs.map((nft) => (
@@ -940,12 +952,12 @@ const Market: React.FC = () => {
                     md={4} 
                     lg={3}
                     sx={{
-                      px: { xs: '3px', sm: 2 },    // Equal padding on both sides
-                      py: { xs: 1, sm: 1 },        // Add vertical padding
-                      display: 'flex',             // Allow centering of card
-                      justifyContent: 'center',    // Center the card horizontally
-                      alignItems: 'center',        // Center vertically
-                      textAlign: 'center'          // Center text content
+                      px: { xs: '3px', sm: 1, md: 1 },  // Reduce horizontal padding on desktop
+                      py: { xs: 1, sm: 1 },             // Keep vertical padding
+                      display: 'flex',                  // Allow centering of card
+                      justifyContent: 'center',         // Center the card horizontally
+                      alignItems: 'center',             // Center vertically
+                      textAlign: 'center'               // Center text content
                     }}
                   >
                     <VintageCard 

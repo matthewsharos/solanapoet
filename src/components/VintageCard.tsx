@@ -35,7 +35,12 @@ const StyledCard = styled(Card)(({ theme }) => ({
     background: 'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 30%)',
     pointerEvents: 'none',
   },
-  // Optimize spacing for mobile
+  // Desktop optimization to fill more space
+  [theme.breakpoints.up('sm')]: {
+    width: 'calc(100% - 4px)',
+    maxWidth: 'calc(100% - 4px)',
+  },
+  // Mobile optimization
   [theme.breakpoints.down('sm')]: {
     margin: '0 auto',
     borderRadius: '3px',
@@ -73,11 +78,11 @@ const CardImageContainer = styled(Box)(({ theme }) => ({
   alignItems: 'center',
   padding: theme.spacing(1),
   overflow: 'hidden',
-  minHeight: '200px',
+  minHeight: '250px',
   position: 'relative',
   // Make image container wider on mobile by reducing padding
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(0.25),
+    padding: theme.spacing(0.3),
     minHeight: '170px',
   }
 }));
