@@ -17,7 +17,7 @@ import axios from 'axios';
 import ImageCarousel from '../components/ImageCarousel';
 import SubmissionAnimation from '../components/SubmissionAnimation';
 
-// Helper function to upload file to Google Drive (unchanged)
+// Helper function to upload file to Google Drive
 const uploadFileToDrive = async (file: File) => {
   try {
     const timestamp = Date.now();
@@ -27,11 +27,66 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    const MAX_FILE_SIZE = 15 * 1024 * 1024;
+    const VERCEL_SIZE_LIMIT = 4.5 * 1024 * 1024; // 4.5MB Vercel limit
+    const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB max file size
+    
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB due to server limits`);
+      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+    }
+
+    // For files larger than Vercel's limit, use direct upload
+    if (file.size > VERCEL_SIZE_LIMIT) {
+      console.log('File size exceeds Vercel limit, using direct upload method');
+      const uploadUrl = process.env.NODE_ENV === 'production'
+        ? 'https://solanapoet.vercel.app/api/drive/direct-upload'
+        : '/api/drive/direct-upload';
+
+      // First, get the signed URL and upload parameters
+      const signedUrlResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName,
+          fileType: file.type,
+          fileSize: file.size
+        })
+      });
+
+      if (!signedUrlResponse.ok) {
+        throw new Error('Failed to get signed upload URL');
+      }
+
+      const { uploadUrl: directUploadUrl, fileId } = await signedUrlResponse.json();
+
+      // Upload the file directly to Google Drive
+      const uploadResponse = await fetch(directUploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Direct upload to Google Drive failed');
+      }
+
+      // Get the file URL
+      const fileDataResponse = await fetch(`${uploadUrl}/${fileId}`, {
+        method: 'GET'
+      });
+
+      if (!fileDataResponse.ok) {
+        throw new Error('Failed to get file URL after upload');
+      }
+
+      const { fileUrl } = await fileDataResponse.json();
+      return fileUrl;
     }
     
+    // For files under Vercel's limit, use the existing method
     const formData = new FormData();
     formData.append('file', file);
     console.log('FormData contents:', [...formData.entries()]);
