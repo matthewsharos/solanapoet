@@ -20,7 +20,6 @@ import SubmissionAnimation from '../components/SubmissionAnimation';
 // Helper function to upload file to Google Drive
 const uploadFileToDrive = async (file: File) => {
   try {
-    // Add timestamp to file name to make it unique
     const timestamp = Date.now();
     const fileNameParts = file.name.split('.');
     const fileExt = fileNameParts.pop();
@@ -28,42 +27,36 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    // Check file size client-side (4MB limit for Vercel)
-    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    // Stricter limit to account for FormData overhead (Vercel max is 4.5MB)
+    const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
+      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB due to server limits`);
     }
     
-    // Read file as ArrayBuffer
-    const arrayBuffer = await file.arrayBuffer();
+    const formData = new FormData();
+    formData.append('file', file);
+    console.log('FormData contents:', [...formData.entries()]);
     
-    console.log('Preparing upload to Google Drive...');
-    
-    // Use the binary upload endpoint
-    const uploadUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://solanapoet.vercel.app/api/upload-binary'
-      : '/api/upload-binary';
+    const uploadUrl = process.env.NODE_ENV === 'production'
+      ? 'https://solanapoet.vercel.app/api/drive/upload'
+      : '/api/drive/upload';
     
     console.log('Sending request to:', uploadUrl);
     
-    // Send binary data with appropriate headers
     const response = await fetch(uploadUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': file.type,
-        'X-File-Name': fileName,
-        'X-File-Type': file.type,
-        'Accept': 'application/json'
-      },
-      body: arrayBuffer
+      body: formData,
     });
     
     console.log('Response status:', response.status);
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Server response error:', response.status, errorText);
-      throw new Error(`Upload failed with status ${response.status}: ${errorText}`);
+      const errorData = await response.json();
+      console.error('Server response error:', response.status, errorData);
+      const message = response.status === 413
+        ? 'File too large for server (max 4.5MB including overhead)'
+        : errorData.message || 'Unknown error';
+      throw new Error(`Upload failed with status ${response.status}: ${message}`);
     }
     
     const data = await response.json();
@@ -325,4 +318,4 @@ const Requests: React.FC = () => {
   );
 };
 
-export default Requests; 
+export default Requests;
