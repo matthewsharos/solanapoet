@@ -521,6 +521,13 @@ const Market: React.FC = () => {
   const [loadedNFTs, setLoadedNFTs] = useState<NFT[]>([]);
   const [page, setPage] = useState(1);
 
+  // Effect to uncheck "My NFTs" when wallet disconnects
+  useEffect(() => {
+    if (!connected) {
+      setShowMyNFTs(false);
+    }
+  }, [connected]);
+
   const fetchDisplayNames = async () => {
     // If display names are already loaded, don't fetch again
     if (displayNamesLoaded) return;
