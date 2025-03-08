@@ -693,6 +693,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   const [collectionName, setCollectionName] = React.useState<string>('');
   const [isLoadingCollection, setIsLoadingCollection] = React.useState(false);
   const [copied, setCopied] = React.useState<boolean>(false);
+  const [ownerCopied, setOwnerCopied] = React.useState<boolean>(false);
 
   // Safely determine the owner address
   const ownerAddress = React.useMemo(() => {
@@ -1041,6 +1042,8 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
       // Always copy the full owner address, not the potentially abbreviated display name
       await navigator.clipboard.writeText(getFullWalletAddress(ownerAddress));
       console.log('Copied full owner address to clipboard:', ownerAddress);
+      setOwnerCopied(true);
+      setTimeout(() => setOwnerCopied(false), 2000);
     } catch (error) {
       console.error('Failed to copy owner address:', error);
     }
@@ -1203,6 +1206,37 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
 
           {/* NFT Details */}
           <DetailContent>
+            {/* Owner Section - Added above Description */}
+            <DetailSection>
+              <DetailSectionTitle>Owner</DetailSectionTitle>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Typography sx={{ 
+                  fontSize: { xs: '14px', sm: '15px' }, 
+                  fontWeight: '500',
+                  maxWidth: { xs: '260px', sm: '100%' },
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {isLoadingDisplayName ? (
+                    <CircularProgress size={16} sx={{ mr: 1 }} />
+                  ) : (
+                    // Make sure we're displaying a string
+                    typeof ownerDisplayName === 'string' ? ownerDisplayName : 
+                    (nft?.owner && typeof nft.owner === 'string' ? nft.owner : 'Unknown')
+                  )}
+                </Typography>
+                {nft?.owner && (
+                  <IconButton 
+                    onClick={handleCopyOwnerAddress}
+                    size="small" 
+                    sx={{ p: '2px' }}
+                  >
+                    {ownerCopied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
+                  </IconButton>
+                )}
+              </Box>
+            </DetailSection>
+            
             {/* Description Section */}
             <DetailSection>
               <DetailSectionTitle>Description</DetailSectionTitle>
