@@ -133,7 +133,7 @@ const App: React.FC = () => {
   return (
     <ThemeProvider>
       <MuiThemeProvider theme={theme}>
-        <CssBaseline />
+        <CssBaseline enableColorScheme />
         <WalletProvider>
           <RouterProvider router={router} />
         </WalletProvider>

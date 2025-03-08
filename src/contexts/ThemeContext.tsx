@@ -18,6 +18,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     // Apply theme to document
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+    document.body.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
+    
+    // Add a class to the body for additional styling hooks
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
   }, [isDarkMode]);
 
   const toggleTheme = () => {

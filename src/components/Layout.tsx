@@ -4,6 +4,7 @@ import { AppBar, Toolbar, Typography, Box, Container, Button, styled, Paper, Dia
 import { useWalletContext } from '../contexts/WalletContext';
 import DisplayNameEditor from './DisplayNameEditor';
 import ThemeToggle from './ThemeToggle';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Public URLs for the monkey images
 const MONKEY_IMAGE_URL = "/images/monkey.png";
@@ -246,6 +247,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { publicKey, connected, isAuthorizedMinter, connect, disconnect } = useWalletContext();
+  const { isDarkMode } = useTheme();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
   const logoRef = useRef<HTMLDivElement>(null);
@@ -275,7 +277,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }
 
   return (
-    <PageContainer>
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        minHeight: '100vh',
+        bgcolor: 'background.default'
+      }}
+      data-theme={isDarkMode ? 'dark' : 'light'}
+      className="app-root"
+    >
       <VintageAppBar position="static">
         <Toolbar sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -396,7 +407,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         open={showNameEditor}
         onClose={() => setShowNameEditor(false)}
       />
-    </PageContainer>
+    </Box>
   );
 };
 
