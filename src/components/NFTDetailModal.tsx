@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -27,6 +27,7 @@ import { format } from 'date-fns';
 import CheckIcon from '@mui/icons-material/Check';
 import ImageZoomModal from './ImageZoomModal';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
+import { formatWalletAddress } from '../utils/helpers';
 
 // Gallery-inspired styled components
 const DetailDialog = styled(Dialog)(({ theme }) => ({
@@ -765,6 +766,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   const [copied, setCopied] = React.useState<boolean>(false);
   const [ownerCopied, setOwnerCopied] = React.useState<boolean>(false);
   const [zoomModalOpen, setZoomModalOpen] = React.useState<boolean>(false);
+  const updateTimeoutRef = React.useRef<NodeJS.Timeout | undefined>(undefined);
 
   // Safely determine the owner address as a string
   const ownerAddress = React.useMemo(() => {
@@ -774,77 +776,90 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
       : (nft.owner.publicKey || 'Unknown');
   }, [nft.owner]);
 
-  // Effect to update owner display name - also handles loading state
+  // Effect to handle display name updates
   React.useEffect(() => {
-    // Flag to prevent fetch if we're not displaying the modal
-    if (!open) return;
-
-    // Show full wallet address if no display name exists
     const updateOwnerDisplay = async () => {
-      if (!ownerAddress || ownerAddress === 'Unknown') {
-        setOwnerDisplayName('Unknown');
-        setIsLoadingDisplayName(false);
+      if (!ownerAddress) return;
+
+      try {
+        // First try to use the passed displayName prop
+        if (displayName) {
+          setOwnerDisplayName(displayName);
+          return;
+        }
+
+        console.log(`NFTDetailModal: Getting fresh display name for ${ownerAddress}`);
+        
+        // Force a fresh fetch from the server
+        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
+        
+        if (freshDisplayName) {
+          console.log(`NFTDetailModal: Found fresh display name for ${ownerAddress}: ${freshDisplayName}`);
+          setOwnerDisplayName(freshDisplayName);
+        } else {
+          console.log(`NFTDetailModal: No display name found, using abbreviated address for ${ownerAddress}`);
+          setOwnerDisplayName(formatWalletAddress(ownerAddress));
+        }
+      } catch (error) {
+        console.error('Error updating display name:', error);
+        setOwnerDisplayName(formatWalletAddress(ownerAddress));
+      }
+    };
+
+    // Update immediately when modal opens
+    if (open) {
+      void updateOwnerDisplay();
+    }
+
+    const handleDisplayNameUpdate = (event: CustomEvent) => {
+      if (!event.detail?.displayNames || !ownerAddress || !open) return;
+      
+      const displayNames = event.detail.displayNames;
+      const updatedName = displayNames[ownerAddress];
+      const isDirectUpdate = displayNames.__updatedAddress === ownerAddress;
+      const timestamp = displayNames.__timestamp as number || Date.now();
+      
+      // Clear any pending updates
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = undefined;
+      }
+      
+      // Handle force refresh
+      if (displayNames.__forceRefresh) {
+        console.log(`Force refresh detected for ${ownerAddress} in modal`);
+        
+        // For direct updates, update immediately with the new value
+        if (isDirectUpdate && typeof updatedName === 'string') {
+          console.log(`Direct update with force refresh for ${ownerAddress} in modal: ${updatedName}`);
+          setOwnerDisplayName(updatedName);
+        } else {
+          // For non-direct updates, fetch fresh data after a short delay
+          updateTimeoutRef.current = setTimeout(() => {
+            updateOwnerDisplay();
+          }, 100);
+        }
         return;
       }
-
-      setIsLoadingDisplayName(true);
-      try {
-        // Check if there's a display name for this wallet
-        const displayNameResult = await getDisplayNameForWallet(ownerAddress);
-        
-        // If we have a display name, use it, otherwise show the full address (not abbreviated)
-        setOwnerDisplayName(displayNameResult || ownerAddress);
-      } catch (error) {
-        console.error('Error fetching display name:', error);
-        // If error, display the full wallet address
-        setOwnerDisplayName(ownerAddress);
-      } finally {
-        setIsLoadingDisplayName(false);
+      
+      // Handle regular updates
+      if (typeof updatedName === 'string') {
+        console.log(`Regular update for ${ownerAddress} in modal: ${updatedName}`);
+        setOwnerDisplayName(updatedName);
       }
     };
-
-    if (open) {
-      updateOwnerDisplay();
-    }
-
-    // Define a type for the display names update event
-    interface DisplayNamesUpdateEvent extends CustomEvent {
-      detail: {
-        displayNames: {
-          [key: string]: string | boolean | number | undefined;
-          __forceRefresh?: boolean;
-          __updatedAddress?: string;
-          __timestamp?: number;
-        }
-      };
-    }
 
     // Listen for display name updates
-    const handleDisplayNameUpdate = (event: Event) => {
-      const customEvent = event as DisplayNamesUpdateEvent;
-      console.log('Display name update event received in NFTDetailModal');
-      
-      // Check if it's a forced refresh (someone just updated their display name)
-      if (customEvent.detail?.displayNames?.__forceRefresh) {
-        console.log('Forced refresh detected, clearing owner display name cache');
-        setOwnerDisplayName(''); // Clear current display to show loading state
-        setIsLoadingDisplayName(true);
-        
-        // Use setTimeout to ensure UI refreshes before we start the async operation
-        setTimeout(() => {
-          updateOwnerDisplay();
-        }, 100);
-      } else {
-        // Regular update
-        updateOwnerDisplay();
+    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = undefined;
       }
     };
-
-    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate);
-    return () => {
-      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate);
-    };
-  }, [open, ownerAddress]);
+  }, [ownerAddress, displayName, open]);
 
   // Update the fetchCreationDate function
   React.useEffect(() => {

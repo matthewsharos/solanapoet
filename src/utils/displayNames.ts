@@ -37,6 +37,12 @@ let pendingPromises: Map<string, { resolve: (name: string | null) => void, rejec
 // Track recently updated addresses so we always get fresh data
 const recentlyUpdatedAddresses: Set<string> = new Set();
 
+// Add a debounce delay for display name updates
+const DEBOUNCE_DELAY = 300;
+
+// Add a pending updates queue
+const pendingUpdates = new Map<string, NodeJS.Timeout>();
+
 // Log metrics periodically
 const logMetrics = () => {
   if (cacheMetrics.hits % 25 === 0 && cacheMetrics.hits > 0) {
@@ -99,13 +105,41 @@ const checkCacheVersion = (): void => {
 };
 
 /**
- * Dispatch display name update event
+ * Dispatch display name update event with debouncing
  * @param names Updated display names map with optional metadata
  */
 const dispatchDisplayNamesUpdate = (names: DisplayNamesUpdateDetail) => {
-  window.dispatchEvent(new CustomEvent('displayNamesUpdated', {
-    detail: { displayNames: names }
-  }));
+  // Clear any pending updates for addresses in this update
+  Object.keys(names).forEach(address => {
+    if (pendingUpdates.has(address)) {
+      clearTimeout(pendingUpdates.get(address));
+      pendingUpdates.delete(address);
+    }
+  });
+
+  // Set a new timeout for this update
+  const timeoutId = setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('displayNamesUpdated', {
+      detail: { 
+        displayNames: {
+          ...names,
+          __timestamp: Date.now()
+        }
+      }
+    }));
+    
+    // Clean up the pending update
+    Object.keys(names).forEach(address => {
+      pendingUpdates.delete(address);
+    });
+  }, DEBOUNCE_DELAY);
+
+  // Store the timeout ID for each address in this update
+  Object.keys(names).forEach(address => {
+    if (address !== '__forceRefresh' && address !== '__updatedAddress' && address !== '__timestamp') {
+      pendingUpdates.set(address, timeoutId);
+    }
+  });
 };
 
 /**
@@ -422,6 +456,16 @@ export const setDisplayNameForWallet = async (address: string, name: string): Pr
   try {
     console.log(`Setting display name for ${address} to "${name}"`);
     
+    // Update local cache first for immediate feedback
+    displayNamesCache.set(address, name);
+    saveDisplayNamesToStorage(displayNamesCache);
+    
+    // Notify components of the immediate update
+    dispatchDisplayNamesUpdate({
+      [address]: name,
+      __updatedAddress: address
+    });
+    
     // Mark this address as requiring server fetch
     markAddressAsUpdated(address);
     
@@ -429,26 +473,22 @@ export const setDisplayNameForWallet = async (address: string, name: string): Pr
     await displayNames.update(address, name);
     console.log(`Server-side update completed for ${address}`);
     
-    // Force a complete cache refresh
+    // Force a complete cache refresh after server update
     await refreshDisplayNamesCache();
     
-    // Also update the specific entry in case it's not in the refreshed data
-    displayNamesCache.set(address, name);
-    saveDisplayNamesToStorage(displayNamesCache);
-    
-    // Notify components of the update with special flag
-    const displayNamesObject = Object.fromEntries(displayNamesCache);
+    // Final update notification with force refresh flag
     dispatchDisplayNamesUpdate({
-      ...displayNamesObject,
-      __forceRefresh: true, // Add special flag for components to clear their local state
-      __updatedAddress: address,
-      __timestamp: Date.now()
+      [address]: name,
+      __forceRefresh: true,
+      __updatedAddress: address
     });
     
     console.log(`Display name for ${address} has been set to "${name}" and cache has been refreshed`);
     return true;
   } catch (error) {
     console.error('Error setting display name:', error);
+    // Revert local cache if server update failed
+    await refreshDisplayNamesCache();
     return false;
   }
 };

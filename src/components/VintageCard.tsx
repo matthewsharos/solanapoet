@@ -317,46 +317,35 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
       if (!event.detail?.displayNames || !ownerAddress) return;
       
-      // Get the updated display name for this owner address
-      const updatedName = event.detail.displayNames[ownerAddress];
+      const displayNames = event.detail.displayNames;
+      const updatedName = displayNames[ownerAddress];
+      const isDirectUpdate = displayNames.__updatedAddress === ownerAddress;
+      const timestamp = displayNames.__timestamp as number || Date.now();
       
-      // Check if it's a direct update for this owner's address
-      const isDirectUpdate = event.detail.displayNames.__updatedAddress === ownerAddress;
+      // Clear any pending updates
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = undefined;
+      }
       
-      // Check if it's a forced refresh
-      if (event.detail.displayNames.__forceRefresh) {
-        console.log('Forced refresh detected in VintageCard, clearing display name cache');
+      // Handle force refresh
+      if (displayNames.__forceRefresh) {
+        console.log(`Force refresh detected for ${ownerAddress}`);
         
-        // If this is a direct update for this card's owner, update immediately
+        // For direct updates, update immediately with the new value
         if (isDirectUpdate && typeof updatedName === 'string') {
-          console.log(`Direct update for this card's owner: ${ownerAddress} - New name: ${updatedName}`);
+          console.log(`Direct update with force refresh for ${ownerAddress}: ${updatedName}`);
           setOwnerDisplayName(updatedName);
-          
-          // Clear any pending update timeouts
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
-          
-          // Force a re-fetch after a short delay to ensure UI is updated
+        } else {
+          // For non-direct updates, fetch fresh data after a short delay
           updateTimeoutRef.current = setTimeout(() => {
-            clearDisplayNameForWallet(ownerAddress);
             updateOwnerDisplay();
           }, 100);
-          return;
         }
-        
-        // For non-direct updates, still refresh but with a slightly longer delay
-        if (updateTimeoutRef.current) {
-          clearTimeout(updateTimeoutRef.current);
-        }
-        
-        updateTimeoutRef.current = setTimeout(() => {
-          updateOwnerDisplay();
-        }, 200);
         return;
       }
       
-      // Regular update for a specific address - update immediately if we have a value
+      // Handle regular updates
       if (typeof updatedName === 'string') {
         console.log(`Regular update for ${ownerAddress}: ${updatedName}`);
         setOwnerDisplayName(updatedName);
@@ -367,10 +356,10 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
 
     return () => {
-      // Clean up event listener and any pending timeouts
       window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = undefined;
       }
     };
   }, [ownerAddress, displayName, nft.owner]);
