@@ -1,283 +1,161 @@
 import formidable from 'formidable';
 import { google } from 'googleapis';
-import { Readable } from 'stream';
 import fs from 'fs';
-import os from 'os';
-import path from 'path';
 
 export const config = {
   api: {
-    bodyParser: false,
+    bodyParser: false, // Disable Next.js bodyParser for multipart
   },
 };
 
-// Vercel has a 4.5MB payload size limit for serverless functions
-// This will help log better error messages
+// Vercel payload limit is 4.5MB, set slightly below for safety
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
 
-// Helper function to initialize Google Drive client
+// Initialize Google Drive client
 const initializeGoogleDrive = async () => {
-  try {
-    console.log('[serverless] Initializing Google Drive API client...');
-    
-    if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_DRIVE_FOLDER_ID) {
-      console.error('[serverless] Missing one or more required environment variables: GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY, GOOGLE_DRIVE_FOLDER_ID');
-      throw new Error('Missing required Google Drive credentials');
-    }
-    
-    // Format private key (replace escaped newlines with actual newlines)
-    const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
-    
-    // Initialize auth client
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
-        private_key: privateKey,
-      },
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-    
-    // Initialize Drive client
-    const drive = google.drive({ version: 'v3', auth });
-    
-    return { drive, folderId: process.env.GOOGLE_DRIVE_FOLDER_ID };
-  } catch (error) {
-    console.error('[serverless] Google Drive initialization error:', error);
-    throw error;
+  if (!process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY || !process.env.GOOGLE_DRIVE_FOLDER_ID) {
+    throw new Error('Missing required Google Drive credentials');
   }
+
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: privateKey,
+    },
+    scopes: ['https://www.googleapis.com/auth/drive.file'],
+  });
+
+  const drive = google.drive({ version: 'v3', auth });
+  return { drive, folderId: process.env.GOOGLE_DRIVE_FOLDER_ID };
 };
 
-// Parse form data with proper error handling for Vercel
-const parseFormData = async (req) => {
-  return new Promise((resolve, reject) => {
-    // Create a temp directory - important for Vercel
-    const tmpDir = os.tmpdir();
-    console.log(`[serverless] Using temp directory: ${tmpDir}`);
-    
-    // Configure formidable for Vercel serverless environment
+// Parse form data with detailed logging
+const parseFormData = (req) =>
+  new Promise((resolve, reject) => {
     const form = formidable({
       maxFileSize: MAX_FILE_SIZE,
       maxFields: 5,
       keepExtensions: true,
       multiples: false,
       allowEmptyFiles: false,
-      uploadDir: tmpDir,
-      filename: (name, ext, part) => {
-        // Generate safe filename
-        return `upload_${Date.now()}${ext}`;
-      }
     });
-    
-    console.log('[serverless] Starting form parsing...');
-    
-    // Parse the form
+
+    console.log('[server] Starting form parsing');
     form.parse(req, (err, fields, files) => {
       if (err) {
-        console.error('[serverless] Form parsing error:', err);
-        if (err.code === 1009) {
-          reject(new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`));
-        } else {
-          reject(new Error(`Form parsing error: ${err.message}`));
-        }
-        return;
+        console.error('[server] Form parsing error:', err);
+        return reject(
+          err.code === 1009
+            ? new Error(`File too large. Max ${MAX_FILE_SIZE / (1024 * 1024)}MB`)
+            : new Error(`Form parsing error: ${err.message}`)
+        );
       }
-      
-      console.log('[serverless] Form parsed successfully');
-      console.log('[serverless] Fields:', Object.keys(fields));
-      console.log('[serverless] Files keys:', Object.keys(files));
-      
-      if (Object.keys(files).length === 0) {
-        console.error('[serverless] No files found in the request');
-        reject(new Error('No file uploaded'));
-        return;
+      console.log('[server] Parsed fields:', fields);
+      console.log('[server] Parsed files:', files);
+      if (!files || Object.keys(files).length === 0) {
+        console.error('[server] No files found in request');
+        return reject(new Error('No file uploaded'));
       }
-      
       resolve({ fields, files });
     });
   });
-};
 
-// Serverless function for uploading files to Google Drive
 export default async function handler(req, res) {
-  console.log('[serverless] Drive upload endpoint called:', req.method);
-  
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Handle OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  console.log('[server] Request received:', req.method);
 
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
+    console.log('[server] Method not allowed:', req.method);
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
-  let googleDriveClient;
+  let driveClient;
   try {
-    // Initialize Google Drive client
-    googleDriveClient = await initializeGoogleDrive();
-  } catch (driveError) {
-    console.error('[serverless] Failed to initialize Google Drive:', driveError);
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Error initializing Google Drive client',
-      error: driveError.message
-    });
-  }
-  
-  try {
-    // Parse the form data
-    let fields, files;
-    try {
-      const result = await parseFormData(req);
-      fields = result.fields;
-      files = result.files;
-    } catch (formError) {
-      return res.status(400).json({ 
-        success: false, 
-        message: formError.message || 'Error parsing form data'
-      });
-    }
-    
-    // Get the file object - the key might vary
-    const fileKey = Object.keys(files)[0];
-    if (!fileKey) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No file uploaded' 
-      });
-    }
-    
-    // Get the uploaded file
-    const uploadedFile = files[fileKey];
-    console.log('[serverless] Got file object with key:', fileKey, {
-      originalFilename: uploadedFile.originalFilename || 'unnamed',
-      filepath: uploadedFile.filepath ? "exists" : "missing",
-      size: uploadedFile.size || 0,
-      mimetype: uploadedFile.mimetype || 'unknown'
-    });
-    
-    if (!uploadedFile || !uploadedFile.filepath) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid file data'
-      });
-    }
-    
-    // Check file size again
-    if (uploadedFile.size > MAX_FILE_SIZE) {
-      return res.status(400).json({
-        success: false,
-        message: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`
-      });
-    }
-    
-    try {
-      // Read file
-      console.log(`[serverless] Reading file from: ${uploadedFile.filepath}`);
-      let fileBuffer;
-      try {
-        fileBuffer = fs.readFileSync(uploadedFile.filepath);
-        console.log(`[serverless] Successfully read ${fileBuffer.length} bytes from file`);
-      } catch (readError) {
-        console.error('[serverless] Error reading file:', readError);
-        return res.status(500).json({
-          success: false,
-          message: `Error reading uploaded file: ${readError.message}`
-        });
-      }
-      
-      // Create a readable stream from the buffer
-      const fileStream = new Readable();
-      fileStream._read = () => {}; // Required but noop
-      fileStream.push(fileBuffer);
-      fileStream.push(null); // End of stream
-      
-      // Set file metadata for upload
-      const fileName = uploadedFile.originalFilename || 'untitled';
-      const fileMetadata = {
-        name: fileName,
-        parents: [googleDriveClient.folderId],
-      };
-      
-      console.log(`[serverless] Uploading "${fileName}" to Google Drive folder: ${googleDriveClient.folderId}`);
-      
-      // Upload file to Google Drive
-      let uploadResponse;
-      try {
-        uploadResponse = await googleDriveClient.drive.files.create({
-          requestBody: fileMetadata,
-          media: {
-            mimeType: uploadedFile.mimetype || 'application/octet-stream',
-            body: fileStream,
-          },
-          fields: 'id,name,webViewLink,webContentLink',
-        });
-      } catch (driveError) {
-        console.error('[serverless] Google Drive upload error:', driveError);
-        return res.status(500).json({
-          success: false,
-          message: `Error uploading to Google Drive: ${driveError.message}`
-        });
-      }
-      
-      if (!uploadResponse.data || !uploadResponse.data.id) {
-        throw new Error('Upload response missing file ID');
-      }
-      
-      console.log('[serverless] File uploaded to Google Drive, ID:', uploadResponse.data.id);
-      
-      // Make the file publicly readable
-      try {
-        await googleDriveClient.drive.permissions.create({
-          fileId: uploadResponse.data.id,
-          requestBody: {
-            role: 'reader',
-            type: 'anyone',
-          },
-        });
-        console.log('[serverless] File permissions set to public');
-      } catch (permissionsError) {
-        console.error('[serverless] Error setting file permissions:', permissionsError);
-        // Continue anyway, since the file was uploaded
-      }
-      
-      // Get direct link URL
-      const fileLink = uploadResponse.data.webContentLink || uploadResponse.data.webViewLink;
-      console.log('[serverless] File is now public:', fileLink);
-      
-      // Cleanup temporary file
-      try {
-        fs.unlinkSync(uploadedFile.filepath);
-        console.log('[serverless] Temporary file deleted');
-      } catch (cleanupError) {
-        console.warn('[serverless] Cleanup error (non-fatal):', cleanupError.message);
-      }
-      
-      // Return success with file link
-      return res.status(200).json({
-        success: true,
-        fileUrl: fileLink,
-        file: uploadResponse.data
-      });
-    } catch (fileProcessingError) {
-      console.error('[serverless] File processing error:', fileProcessingError);
-      return res.status(500).json({
-        success: false,
-        message: 'Error processing file upload',
-        error: fileProcessingError.message
-      });
-    }
+    console.log('[server] Initializing Google Drive');
+    driveClient = await initializeGoogleDrive();
   } catch (error) {
-    console.error('[serverless] Google Drive upload error:', error);
+    console.error('[server] Google Drive initialization failed:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error uploading to Google Drive',
-      error: error.message
+      message: 'Google Drive initialization failed',
+      error: error.message,
     });
   }
-} 
+
+  try {
+    const { files } = await parseFormData(req);
+
+    const fileKey = Object.keys(files)[0];
+    if (!fileKey) {
+      console.error('[server] No file key found in files object');
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const uploadedFile = Array.isArray(files[fileKey]) ? files[fileKey][0] : files[fileKey];
+    console.log('[server] Uploaded file:', uploadedFile);
+
+    const filePath =
+      uploadedFile.filepath ||
+      uploadedFile.newFileName ||
+      (uploadedFile.toJSON && uploadedFile.toJSON().filepath);
+    console.log('[server] Resolved filePath:', filePath);
+
+    if (!uploadedFile || !filePath) {
+      console.error('[server] Invalid file data - missing file or filepath');
+      return res.status(400).json({ success: false, message: 'Invalid file data' });
+    }
+
+    const fileName = uploadedFile.originalFilename || `upload_${Date.now()}.webp`;
+    const mimeType = uploadedFile.mimetype || 'image/webp';
+    console.log('[server] File details:', { fileName, mimeType, size: uploadedFile.size });
+
+    const fileStream = fs.createReadStream(filePath);
+    const fileMetadata = {
+      name: fileName,
+      parents: [driveClient.folderId],
+    };
+
+    console.log('[server] Uploading to Google Drive:', fileName);
+    const uploadResponse = await Promise.race([
+      driveClient.drive.files.create({
+        requestBody: fileMetadata,
+        media: {
+          mimeType,
+          body: fileStream,
+        },
+        fields: 'id,webViewLink',
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timed out')), 9000) // 9s to stay under 10s
+      ),
+    ]);
+
+    console.log('[server] Setting public permissions');
+    await driveClient.drive.permissions.create({
+      fileId: uploadResponse.data.id,
+      requestBody: { role: 'reader', type: 'anyone' },
+    });
+
+    fs.unlink(filePath, (err) => {
+      if (err) console.warn('[server] Cleanup failed:', err.message);
+    });
+
+    console.log('[server] Upload successful, file ID:', uploadResponse.data.id);
+    return res.status(200).json({
+      success: true,
+      fileUrl: uploadResponse.data.webViewLink,
+      fileId: uploadResponse.data.id,
+    });
+  } catch (error) {
+    console.error('[server] Error during upload:', error);
+    return res.status(error.message.includes('too large') ? 400 : 500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}
