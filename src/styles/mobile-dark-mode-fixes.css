@@ -5,11 +5,21 @@
   /* Reduce hover effect for NFT cards */
   [data-theme="dark"] .MuiCard-root {
     transition: all 0.2s ease !important;
+    transform: none !important; /* Prevent any default transform */
   }
   
   [data-theme="dark"] .MuiCard-root:hover {
-    transform: translateY(-1px) !important;  /* Reduce vertical movement */
+    transform: translateY(-1px) translateX(0) !important;  /* Only allow minimal vertical movement, no horizontal */
     box-shadow: 0 0 15px var(--neon-secondary) !important; /* Less intense glow */
+  }
+  
+  /* Fix for VintageCard to prevent horizontal shift */
+  [data-theme="dark"] .css-1qw96cp {
+    transform: none !important; /* Reset any transform */
+  }
+  
+  [data-theme="dark"] .css-1qw96cp:hover {
+    transform: translateY(-1px) translateX(0) !important; /* Only minimal vertical movement */
   }
   
   /* Stabilize link hover effects */
@@ -29,6 +39,7 @@
   
   [data-theme="dark"] .MuiButton-root:hover {
     box-shadow: 0 0 8px var(--neon-primary) !important; /* Less intense glow */
+    transform: translateY(0) translateX(0) !important; /* Prevent any movement */
   }
   
   /* Fix the theme toggle animation */
@@ -49,6 +60,7 @@
   /* Stabilize carousel buttons */
   [data-theme="dark"] .carousel-nav-button:hover {
     box-shadow: 0 0 10px var(--neon-accent) !important; /* Less intense glow */
+    transform: none !important; /* Prevent any movement */
   }
   
   /* Fix any bouncing effects on mint ID hover */
