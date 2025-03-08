@@ -6,6 +6,7 @@ import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import DisplayNameEditor from './DisplayNameEditor';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 // Public URLs for the monkey images
 const MONKEY_IMAGE_URL = "/images/monkey.png";
@@ -336,6 +337,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { publicKey, connected, isAuthorizedMinter } = useWalletContext();
+  const { disconnect } = useWallet();
   const { isDarkMode } = useTheme();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
@@ -357,6 +359,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setShowNameEditor(true);
     } else {
       console.log('Wallet not connected');
+    }
+  };
+
+  const handleWalletClick = async (event: React.MouseEvent) => {
+    if (connected) {
+      event.preventDefault();
+      event.stopPropagation();
+      await disconnect();
     }
   };
 
@@ -430,7 +440,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               />
             </MonkeyContainer>
             
-            <WalletButtonWrapper>
+            <WalletButtonWrapper onClick={handleWalletClick}>
               <WalletMultiButton />
             </WalletButtonWrapper>
             
