@@ -60,6 +60,9 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
       height: '100vh',
       margin: 0,
       borderRadius: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'auto', // Allow scrolling
     },
     '&::before': {
       content: '""',
@@ -119,6 +122,19 @@ const ArtworkFrame = styled(Box)(({ theme }) => ({
   }
 }));
 
+const NFTImage = styled('img')({
+  maxWidth: '100%',
+  maxHeight: '100%',
+  objectFit: 'contain',
+  display: 'block',
+  transition: 'transform 0.2s ease-out',
+  width: 'auto',
+  height: 'auto',
+  '&:hover': {
+    transform: 'scale(1.03)',
+  }
+});
+
 const ArtworkMatting = styled(Box)(({ theme }) => ({
   backgroundColor: '#fff',
   padding: '12px',
@@ -131,22 +147,17 @@ const ArtworkMatting = styled(Box)(({ theme }) => ({
   alignItems: 'center',
   overflow: 'hidden',
   position: 'relative',
+  // Maintain aspect ratio while filling available space
+  '& img': {
+    objectFit: 'contain',
+    maxHeight: '100%',
+    maxWidth: '100%',
+  },
   // Less padding on smaller screens for more image space
   [theme.breakpoints.down('md')]: {
     padding: '8px',
   }
 }));
-
-const NFTImage = styled('img')({
-  maxWidth: '100%',
-  maxHeight: '100%',
-  objectFit: 'contain',
-  display: 'block',
-  transition: 'transform 0.2s ease-out',
-  '&:hover': {
-    transform: 'scale(1.03)',
-  }
-});
 
 const DetailContent = styled(Box)(({ theme }) => ({
   padding: theme.spacing(4),
@@ -617,7 +628,8 @@ const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
     flexDirection: 'column',
     padding: theme.spacing(2, 1),
     overflowY: 'auto',
-    height: '100%',
+    overflowX: 'hidden',
+    height: 'auto', // Allow content to determine height
     maxHeight: '100%',
     gap: theme.spacing(1),
   }
@@ -1051,14 +1063,21 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                   xl: '55%'  // Back to original on xl
                 },
           flex: isMobile ? 'none' : 1,
-          maxHeight: isMobile ? '40vh' : 'none',
+          // Height based on screen size
+          height: isMobile 
+            ? 'auto'
+            : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
+          maxHeight: isMobile 
+            ? '50vh' // Increased from 40vh to 50vh on mobile
+            : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
           ...(isMobile && {
             marginBottom: '10px',
           })
         }}>
           <ArtworkFrame sx={{ 
             flex: 1, 
-            height: '100%',
+            height: isMobile ? '100%' : 'calc(100% - 20px)',
+            maxHeight: isMobile ? '50vh' : 'calc(95vh - 100px)',
             '&::before': {
               top: isMobile ? -5 : -10,
               left: isMobile ? -5 : -10,
@@ -1096,6 +1115,13 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
+          // Mobile-specific styles to ensure proper scrolling
+          ...(isMobile && {
+            minHeight: '50vh', // Ensure there's enough space to scroll
+            maxHeight: 'none', // Remove height constraint on mobile
+            flexGrow: 1,       // Take up available space
+            overflowY: 'visible', // Let parent container handle scrolling
+          }),
           '& > *:not(:last-child)': {
             marginBottom: isMobile ? theme.spacing(1.5) : theme.spacing(2)
           },
