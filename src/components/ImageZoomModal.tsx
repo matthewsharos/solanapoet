@@ -100,7 +100,7 @@ const CloseButton = styled(IconButton)(({ theme }) => ({
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
   },
   [theme.breakpoints.down('sm')]: {
-    top: 12,
+    top: 42, // Increased from 12px to 42px (30px lower) to prevent being cut off
     right: 12,
     padding: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -122,6 +122,11 @@ const MobileExitHint = styled(Box)(({ theme }) => ({
   justifyContent: 'center',
   alignItems: 'center',
   gap: theme.spacing(1),
+  [theme.breakpoints.down('sm')]: {
+    top: 0, // Keep at top but adjust padding
+    paddingTop: theme.spacing(6), // Add more top padding on mobile to clear status bar
+    paddingBottom: theme.spacing(2),
+  },
 }));
 
 // Background overlay that can be tapped to exit when not zoomed
