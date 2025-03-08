@@ -959,7 +959,7 @@ const Market: React.FC = () => {
                       justifyContent: { xs: 'flex-start', sm: 'center' }, // Left align on mobile to offset the card's right shift
                       alignItems: 'center',
                       textAlign: 'center',
-                      pl: { xs: '6px', sm: 0 }, // Add left padding on mobile only
+                      pl: { xs: '10px', sm: 0 }, // Increased left padding from 6px to 10px on mobile only
                     }}
                   >
                     <VintageCard 

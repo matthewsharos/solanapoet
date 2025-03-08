@@ -48,10 +48,10 @@ const StyledCard = styled(Card)(({ theme }) => ({
     width: '100%', // Full width
     maxWidth: '100%', // Full width
     border: '1px solid #d4c4a8',
-    left: '52%', // Slightly right of center (changed from 50%)
+    left: '54%', // Further right of center (increased from 52%)
     transform: 'translateX(-50%)',
     position: 'relative', // Needed for left/transform to work
-    marginRight: '8px', // Add extra right margin to push slightly right
+    marginRight: '12px', // Increased right margin (from 8px to 12px)
   }
 }));
 
