@@ -37,12 +37,10 @@ const StyledCard = styled(Card)(({ theme }) => ({
   },
   // Optimize spacing for mobile
   [theme.breakpoints.down('sm')]: {
-    margin: '0',
+    margin: '0 auto',
     borderRadius: '3px',
-    width: '100%',
-    maxWidth: '100%',
-    marginLeft: 'auto',
-    marginRight: 'auto',
+    width: 'calc(100% - 6px)', // Leave equal space on both sides
+    maxWidth: 'calc(100% - 6px)',
     border: '1px solid #d4c4a8',
   }
 }));

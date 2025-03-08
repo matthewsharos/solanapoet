@@ -795,7 +795,7 @@ const Market: React.FC = () => {
     <Container 
       maxWidth="xl"
       sx={{
-        px: { xs: 0, sm: 2, md: 3 }, // Remove horizontal padding completely on mobile
+        px: { xs: '0px', sm: 2, md: 3 }, // No padding on mobile for evenness
         width: '100%',
         maxWidth: '100%',
         display: 'flex',
@@ -809,7 +809,8 @@ const Market: React.FC = () => {
         width: '100%', // Full width
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center' // Center box contents
+        alignItems: 'center', // Center box contents
+        textAlign: 'center' // Center all text
       }}>
         <Grid 
           container 
@@ -921,12 +922,13 @@ const Market: React.FC = () => {
               {/* Show NFTs as they load */}
               <Grid 
                 container 
-                spacing={{ xs: 1, sm: 3 }}  // Even less spacing on mobile for more cards
+                spacing={{ xs: 2, sm: 3 }}  // Increase vertical spacing on mobile
                 sx={{ 
-                  px: { xs: 0, sm: 3 },    // Remove horizontal padding completely on mobile
+                  px: { xs: 0, sm: 3 },    // Remove horizontal padding on mobile
                   mx: 'auto',               // Center the grid
                   justifyContent: 'center', // Ensure grid items are centered
-                  width: '100%'             // Full width
+                  width: '100%',            // Full width
+                  alignItems: 'center'      // Center items vertically
                 }}
               >
                 {currentNFTs.map((nft) => (
@@ -938,9 +940,12 @@ const Market: React.FC = () => {
                     md={4} 
                     lg={3}
                     sx={{
-                      px: { xs: '2px', sm: 2 }, // Even less padding on mobile for more card width
-                      display: 'flex',          // Allow centering of card
-                      justifyContent: 'center'  // Center the card horizontally
+                      px: { xs: '3px', sm: 2 },    // Equal padding on both sides
+                      py: { xs: 1, sm: 1 },        // Add vertical padding
+                      display: 'flex',             // Allow centering of card
+                      justifyContent: 'center',    // Center the card horizontally
+                      alignItems: 'center',        // Center vertically
+                      textAlign: 'center'          // Center text content
                     }}
                   >
                     <VintageCard 
