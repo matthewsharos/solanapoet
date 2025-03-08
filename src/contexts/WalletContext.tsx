@@ -1,16 +1,27 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+  CoinbaseWalletAdapter
+} from '@solana/wallet-adapter-wallets';
+import { ConnectionProvider, WalletProvider as SolanaWalletProvider, useWallet, Wallet } from '@solana/wallet-adapter-react';
+import { WalletModalProvider, useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { clusterApiUrl } from '@solana/web3.js';
 import axios from 'axios';
 import { API_BASE_URL } from '../types/api';
+
+// Import wallet adapter CSS
+require('@solana/wallet-adapter-react-ui/styles.css');
 
 interface WalletContextType {
   publicKey: string | null;
   connected: boolean;
-  wallet: PhantomWalletAdapter | null;
+  wallet: Wallet | null;
   isAuthorizedMinter: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  selectWallet: () => void;
 }
 
 const WalletContext = createContext<WalletContextType>({
@@ -20,56 +31,15 @@ const WalletContext = createContext<WalletContextType>({
   isAuthorizedMinter: false,
   connect: async () => {},
   disconnect: async () => {},
+  selectWallet: () => {},
 });
 
 export const useWalletContext = () => useContext(WalletContext);
 
-export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [wallet, setWallet] = useState<PhantomWalletAdapter | null>(null);
+const WalletContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { publicKey, connected, wallet, disconnect: disconnectWallet } = useWallet();
+  const { setVisible } = useWalletModal();
   const [isAuthorizedMinter, setIsAuthorizedMinter] = useState(false);
-
-  useEffect(() => {
-    const initializeWallet = async () => {
-      try {
-        const phantomWallet = new PhantomWalletAdapter();
-        setWallet(phantomWallet);
-
-        phantomWallet.on('connect', () => {
-          if (phantomWallet.publicKey) {
-            setPublicKey(phantomWallet.publicKey.toString());
-            setConnected(true);
-            checkMinterAuthorization(phantomWallet.publicKey.toString());
-          }
-        });
-
-        phantomWallet.on('disconnect', () => {
-          setPublicKey(null);
-          setConnected(false);
-          setIsAuthorizedMinter(false);
-        });
-
-        // Remove auto-connect functionality
-        // try {
-        //   await phantomWallet.connect();
-        // } catch (err) {
-        //   // Handle connection error silently
-        //   console.log('No pre-existing Phantom connection');
-        // }
-      } catch (error) {
-        console.error('Error initializing wallet:', error);
-      }
-    };
-
-    initializeWallet();
-
-    return () => {
-      if (wallet) {
-        wallet.disconnect();
-      }
-    };
-  }, []);
 
   const checkMinterAuthorization = async (walletAddress: string) => {
     try {
@@ -81,38 +51,81 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  useEffect(() => {
+    if (connected && publicKey) {
+      checkMinterAuthorization(publicKey.toString());
+    } else {
+      setIsAuthorizedMinter(false);
+    }
+  }, [connected, publicKey]);
+
   const connect = async () => {
-    if (wallet) {
-      try {
-        await wallet.connect();
-      } catch (error) {
-        console.error('Error connecting wallet:', error);
+    try {
+      if (wallet) {
+        await wallet.adapter.connect();
       }
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
     }
   };
 
   const disconnect = async () => {
-    if (wallet) {
-      try {
-        await wallet.disconnect();
-      } catch (error) {
-        console.error('Error disconnecting wallet:', error);
+    try {
+      if (disconnectWallet) {
+        await disconnectWallet();
       }
+    } catch (error) {
+      console.error('Error disconnecting wallet:', error);
     }
+  };
+
+  const selectWallet = () => {
+    setVisible(true);
   };
 
   return (
     <WalletContext.Provider
       value={{
-        publicKey,
+        publicKey: publicKey ? publicKey.toString() : null,
         connected,
         wallet,
         isAuthorizedMinter,
         connect,
         disconnect,
+        selectWallet,
       }}
     >
       {children}
     </WalletContext.Provider>
+  );
+};
+
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // You can add custom RPC URL here
+  const endpoint = useMemo(() => clusterApiUrl(WalletAdapterNetwork.Mainnet), []);
+  
+  // Initialize all supported wallet adapters
+  const wallets = useMemo(
+    () => [
+      // Specific adapters for enhanced mobile support
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+      new CoinbaseWalletAdapter()
+      // Note: Backpack and other standard-compliant wallets are automatically detected
+      // through the Solana Wallet Standard, no need for explicit adapters
+    ],
+    []
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <SolanaWalletProvider wallets={wallets} autoConnect={false}>
+        <WalletModalProvider>
+          <WalletContextProvider>
+            {children}
+          </WalletContextProvider>
+        </WalletModalProvider>
+      </SolanaWalletProvider>
+    </ConnectionProvider>
   );
 }; 

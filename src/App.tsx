@@ -1,22 +1,20 @@
 import React from 'react';
+import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
-import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import '@fontsource/dancing-script';
 import '@fontsource/special-elite';
 import './styles/cosmic_bowling.css';
 import './styles/mobile-dark-mode-fixes.css';
-
-// Import components
+import { ThemeProvider } from './contexts/ThemeContext';
+import { WalletProvider } from './contexts/WalletContext';
 import Layout from './components/Layout';
-
-// Import pages
 import Market from './pages/Market';
 import Mint from './pages/Mint';
 import Requests from './pages/Requests';
 
-// Import contexts
-import { WalletProvider } from './contexts/WalletContext';
-import { ThemeProvider } from './contexts/ThemeContext';
+// Import wallet adapter CSS
+require('@solana/wallet-adapter-react-ui/styles.css');
 
 // Create a vintage-themed MUI theme
 const theme = createTheme({

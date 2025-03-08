@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, Outlet, Navigate } from 'react-router-dom';
 import { AppBar, Toolbar, Typography, Box, Container, Button, styled, Paper, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import DisplayNameEditor from './DisplayNameEditor';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
@@ -240,18 +241,52 @@ const MonkeyImage = styled('img')(({ theme }) => ({
   },
 }));
 
+const WalletButtonWrapper = styled(Box)(({ theme }) => ({
+  '& .wallet-adapter-button': {
+    backgroundColor: '#e8e8e8',
+    color: '#333333',
+    fontFamily: 'Arial, sans-serif',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    padding: '10px 20px',
+    borderRadius: '4px',
+    border: '1px solid #d4af37',
+    '&:hover': {
+      backgroundColor: '#d0d0d0',
+    },
+    '&:not(:disabled):hover': {
+      backgroundColor: '#d0d0d0',
+    },
+  },
+  '& .wallet-adapter-button-trigger': {
+    backgroundColor: '#e8e8e8',
+  },
+  '& .wallet-adapter-dropdown-list': {
+    backgroundColor: '#f8f5e6',
+  },
+  '& .wallet-adapter-dropdown-list-item': {
+    backgroundColor: '#e8e8e8',
+    color: '#333333',
+    fontFamily: 'Arial, sans-serif',
+    fontSize: '14px',
+    fontWeight: 'bold',
+    '&:hover': {
+      backgroundColor: '#d0d0d0',
+    },
+  },
+}));
+
 interface LayoutProps {
   children?: React.ReactNode;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
-  const { publicKey, connected, isAuthorizedMinter, connect, disconnect } = useWalletContext();
+  const { publicKey, connected, isAuthorizedMinter } = useWalletContext();
   const { isDarkMode } = useTheme();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
   const logoRef = useRef<HTMLDivElement>(null);
-  const [showConnectPopup, setShowConnectPopup] = useState(false);
   const [showNameEditor, setShowNameEditor] = useState(false);
   
   const isActive = (path: string) => {
@@ -266,9 +301,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const handleMonkeyClick = () => {
     if (connected) {
       setShowNameEditor(true);
-    } else {
-      // Connect directly instead of showing popup
-      connect();
     }
   };
 
@@ -278,38 +310,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }
 
   return (
-    <Box 
-      sx={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        minHeight: '100vh',
-        bgcolor: 'background.default'
-      }}
-      data-theme={isDarkMode ? 'dark' : 'light'}
-      className="app-root"
-    >
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <VintageAppBar position="static">
-        <Toolbar 
-          sx={{ 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            // Stack content vertically on mobile
-            flexDirection: { xs: 'column', sm: 'row' },
-            // Add some padding between the rows on mobile
-            gap: { xs: 1, sm: 0 },
-            py: { xs: 1, sm: 0 }
-          }}
-        >
-          {/* First row on mobile: Logo, links, theme toggle */}
-          <Box 
-            sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              width: { xs: '100%', sm: 'auto' },
-              justifyContent: { xs: 'space-between', sm: 'flex-start' },
-              gap: '16px' 
-            }}
-          >
+        <Toolbar sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 2, sm: 0 }, py: { xs: 2, sm: 1 } }}>
+          {/* First row: Logo and navigation */}
+          <Box sx={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <Link to="/art" style={{ textDecoration: 'none' }}>
                 <div ref={logoRef}>
@@ -338,8 +343,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isActive('/requests') ? (
                   <ActiveNavButton>Requests</ActiveNavButton>
                 ) : (
-                    <NavButton>Requests</NavButton>
-                  )}
+                  <NavButton>Requests</NavButton>
+                )}
               </StyledLink>
             </Box>
             
@@ -368,9 +373,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               />
             </MonkeyContainer>
             
-            <WalletButton onClick={connected ? disconnect : connect} disabled={false}>
-              {connected ? `Disconnect (${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)})` : 'Connect'}
-            </WalletButton>
+            <WalletButtonWrapper>
+              <WalletMultiButton />
+            </WalletButtonWrapper>
             
             {/* Hide theme toggle in second row on mobile, but show on desktop */}
             <Box sx={{ display: { xs: 'none', sm: 'flex' } }}>
@@ -394,53 +399,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           Powered by Solana Blockchain
         </Typography>
       </Footer>
-
-      {/* Wallet connect popup */}
-      <Dialog
-        open={showConnectPopup}
-        onClose={() => setShowConnectPopup(false)}
-        PaperProps={{
-          style: {
-            backgroundColor: '#f8f5e6',
-            border: '1px solid #d4af37',
-            borderRadius: '8px',
-            maxWidth: '400px',
-            width: '100%',
-          }
-        }}
-      >
-        <DialogTitle sx={{ fontFamily: '"Special Elite", cursive', textAlign: 'center' }}>
-          Connect Your Wallet
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Connect your Solana wallet to mint and view your NFTs.
-          </Typography>
-          <Button
-            fullWidth
-            variant="contained"
-            onClick={connect}
-            sx={{
-              backgroundColor: '#e8e8e8',
-              color: '#333333',
-              padding: '12px',
-              fontFamily: 'Arial, sans-serif',
-              fontWeight: 'bold',
-              '&:hover': {
-                backgroundColor: '#d0d0d0',
-              },
-              marginBottom: '8px'
-            }}
-          >
-            Connect Phantom Wallet
-          </Button>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowConnectPopup(false)} color="inherit">
-            Cancel
-          </Button>
-        </DialogActions>
-      </Dialog>
       
       {/* Display name editor */}
       <DisplayNameEditor

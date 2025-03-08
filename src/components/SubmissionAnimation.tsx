@@ -15,7 +15,7 @@ const AnimationContainer = styled('div')({
   backgroundColor: 'rgba(0, 0, 0, 0.8)',
 });
 
-const TextContainer = styled('div')({
+const TextContainer = styled('div')(({ theme }) => ({
   position: 'relative',
   width: '100%',
   height: '100%',
@@ -24,7 +24,11 @@ const TextContainer = styled('div')({
   justifyContent: 'center',
   alignItems: 'center',
   gap: '20px',
-});
+  [theme.breakpoints.down('sm')]: {
+    width: '98%',
+    margin: '0 auto'
+  }
+}));
 
 const FallingText = styled('div')<{ $active: boolean; $delay: number; $x: number }>(({ $active, $delay, $x }) => ({
   position: 'absolute',
