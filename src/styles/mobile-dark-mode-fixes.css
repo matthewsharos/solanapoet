@@ -5,7 +5,6 @@
   /* Reduce hover effect for NFT cards */
   [data-theme="dark"] .MuiCard-root {
     transition: all 0.2s ease !important;
-    transform: none !important; /* Prevent any default transform */
   }
   
   [data-theme="dark"] .MuiCard-root:hover {
@@ -13,13 +12,18 @@
     box-shadow: 0 0 15px var(--neon-secondary) !important; /* Less intense glow */
   }
   
-  /* Fix for VintageCard to prevent horizontal shift */
+  /* Fix for VintageCard to match light mode positioning */
   [data-theme="dark"] .css-1qw96cp {
-    transform: none !important; /* Reset any transform */
+    left: 54% !important; /* Match light mode positioning */
+    transform: translateX(-50%) !important; /* Match light mode transform */
+    position: relative !important;
+    margin: 0 auto !important;
+    marginRight: 1px !important;
   }
   
   [data-theme="dark"] .css-1qw96cp:hover {
-    transform: translateY(-1px) translateX(0) !important; /* Only minimal vertical movement */
+    transform: translateX(-50%) translateY(-2px) !important; /* Match light mode hover with minimal lift */
+    box-shadow: 0 0 15px var(--neon-secondary) !important; /* Neon glow instead of regular shadow */
   }
   
   /* Stabilize link hover effects */
