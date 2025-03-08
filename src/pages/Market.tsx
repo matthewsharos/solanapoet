@@ -809,7 +809,7 @@ const Market: React.FC = () => {
               <Box 
                 sx={{ 
                   display: 'flex', 
-                  gap: 2,
+                  gap: {xs: 1, sm: 2}, // Reduce gap on mobile
                   width: '100%',
                   alignItems: 'center'
                 }}
@@ -825,7 +825,9 @@ const Market: React.FC = () => {
                       </IconButton>
                     ),
                   }}
-                  sx={{ flex: 1 }}
+                  sx={{ 
+                    flex: {xs: 3, sm: 1}, // Make search bar take more space on mobile
+                  }}
                 />
                 <FormControlLabel
                   control={
@@ -833,13 +835,18 @@ const Market: React.FC = () => {
                       checked={showMyNFTs}
                       onChange={(e) => setShowMyNFTs(e.target.checked)}
                       disabled={!connected}
+                      size="small" // Slightly smaller checkbox on mobile
                     />
                   }
                   label="My NFTs"
                   sx={{ 
-                    minWidth: 120,
+                    minWidth: {xs: 90, sm: 120}, // Narrower on mobile
                     opacity: connected ? 1 : 0.5,
-                    cursor: connected ? 'pointer' : 'not-allowed'
+                    cursor: connected ? 'pointer' : 'not-allowed',
+                    ml: {xs: 'auto', sm: 0}, // Auto margin on mobile pushes to right
+                    '& .MuiFormControlLabel-label': {
+                      fontSize: {xs: '0.85rem', sm: '1rem'}, // Smaller text on mobile
+                    }
                   }}
                 />
               </Box>
