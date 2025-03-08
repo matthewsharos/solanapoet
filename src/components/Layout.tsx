@@ -7,6 +7,7 @@ import DisplayNameEditor from './DisplayNameEditor';
 import ThemeToggle from './ThemeToggle';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 // Public URLs for the monkey images
 const MONKEY_IMAGE_URL = "/images/monkey.png";
@@ -338,6 +339,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { publicKey, connected, isAuthorizedMinter } = useWalletContext();
   const { disconnect, connect } = useWallet();
+  const { setVisible } = useWalletModal();
   const { isDarkMode } = useTheme();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
@@ -376,10 +378,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [connect, connected]);
 
   const handleWalletClick = async (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
     if (connected) {
-      event.preventDefault();
-      event.stopPropagation();
       await disconnect();
+    } else {
+      setVisible(true);
     }
   };
 
@@ -453,8 +458,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               />
             </MonkeyContainer>
             
-            <WalletButtonWrapper onClick={handleWalletClick}>
-              <WalletMultiButton />
+            <WalletButtonWrapper>
+              <Box onClick={handleWalletClick} sx={{ cursor: 'pointer' }}>
+                <WalletMultiButton />
+              </Box>
             </WalletButtonWrapper>
             
             {/* Hide theme toggle in second row on mobile, but show on desktop */}
