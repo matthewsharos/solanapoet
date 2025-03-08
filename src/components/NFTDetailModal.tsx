@@ -66,6 +66,7 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
       display: 'flex',
       flexDirection: 'column',
       overflow: 'auto', // Allow scrolling
+      marginTop: '30px', // Add top margin on mobile to prevent X button from being cut off
     },
     '&::before': {
       content: '""',
@@ -93,35 +94,49 @@ const GalleryCloseButton = styled(IconButton)(({ theme }) => ({
   zIndex: 10,
   '&:hover': {
     backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  [theme.breakpoints.down('sm')]: {
+    top: '10px', // Move the close button down on mobile
+    right: '10px',
   }
 }));
 
 const ArtworkFrame = styled(Box)(({ theme }) => ({
   position: 'relative',
-  maxHeight: 'calc(100% - 50px)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  padding: '0',
-  [theme.breakpoints.down('md')]: {
-    maxHeight: 'calc(100% - 20px)', // Reduce space on mobile
-  },
-  '&::before': { // Realistic frame effect
+  borderRadius: '2px',
+  backgroundColor: '#FFFFFF',
+  overflow: 'hidden',
+  boxShadow: `
+    0 1px 2px rgba(0,0,0,0.1),
+    0 2px 4px rgba(0,0,0,0.1)
+  `,
+  '&::before': {
     content: '""',
     position: 'absolute',
     top: -10,
     left: -10,
     right: -10,
     bottom: -10,
-    backgroundColor: '#111',
+    backgroundColor: '#222',
     borderRadius: '2px',
     boxShadow: `
-      0 0 0 1px #222,
+      0 0 0 1px #444,
       0 0 0 10px #000,
-      0 5px 20px rgba(0,0,0,0.4),
-      0 10px 30px rgba(0,0,0,0.2)
+      0 10px 30px rgba(0,0,0,0.3)
     `,
     zIndex: -1,
+  },
+  // Optimize frame styling for mobile
+  [theme.breakpoints.down('sm')]: {
+    width: '98%', // Use almost full width
+    marginLeft: 'auto',
+    marginRight: 'auto',
+    '&::before': {
+      top: -5,
+      left: -5,
+      right: -5,
+      bottom: -5,
+    }
   }
 }));
 
@@ -629,12 +644,13 @@ const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
   // Vertical layout for mobile (image top, details bottom) with unified scrolling
   [theme.breakpoints.down('sm')]: {
     flexDirection: 'column',
-    padding: theme.spacing(2, 1),
+    padding: theme.spacing(2, 1.5), // Slightly increased horizontal padding
     overflowY: 'auto',
     overflowX: 'hidden',
     height: 'auto', 
     maxHeight: '100%',
     gap: theme.spacing(2),
+    paddingTop: theme.spacing(5), // Increased top padding to avoid close button overlap
     paddingBottom: theme.spacing(8), // Extra padding at bottom for better scrolling
   }
 }));
@@ -927,8 +943,10 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     if (isMobile) {
       return {
         width: '100%',
-        height: '55vh',
-        padding: 2,
+        height: 'auto', // Changed from fixed height to auto
+        maxHeight: '50vh', // Cap the max height to 50% of viewport height
+        padding: 1, // Reduced padding for better fit
+        marginTop: '15px', // Added top margin for spacing from the top
       };
     }
     return {
