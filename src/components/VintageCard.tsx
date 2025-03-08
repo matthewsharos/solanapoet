@@ -51,7 +51,7 @@ const StyledCard = styled(Card)(({ theme }) => ({
     left: '54%', // Further right of center (increased from 52%)
     transform: 'translateX(-50%)',
     position: 'relative', // Needed for left/transform to work
-    marginRight: '12px', // Increased right margin (from 8px to 12px)
+    marginRight: '1px', // Increased right margin (from 8px to 12px)
   }
 }));
 
