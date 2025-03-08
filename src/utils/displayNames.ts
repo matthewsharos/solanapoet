@@ -12,15 +12,37 @@ const CACHE_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const ERROR_COOLDOWN_KEY = 'wallet_display_names_error_cooldown';
 const ERROR_COOLDOWN_TIME = 5 * 60 * 1000; // 5 minutes cooldown after error
 const CACHE_VERSION_KEY = 'wallet_display_names_version';
-const CURRENT_CACHE_VERSION = '1.2'; // Incremented to force cache refresh
+const CURRENT_CACHE_VERSION = '1.3'; // Incremented to force cache refresh
+
+// Batch update handling
+const BATCH_UPDATE_DELAY = 500; // 500ms delay for batch processing
+const BATCH_SIZE_LIMIT = 10; // Maximum number of addresses to batch in one request
 
 // Cache display names in memory
 let displayNamesCache: Map<string, string> = new Map();
 let isSyncInProgress = false;
 let lastCacheUpdate = 0;
+let cacheMetrics = {
+  hits: 0,
+  misses: 0,
+  staleHits: 0,
+  networkRequests: 0
+};
+
+// Request batching
+let pendingAddressQueue: string[] = [];
+let batchProcessingTimeout: NodeJS.Timeout | null = null;
+let pendingPromises: Map<string, { resolve: (name: string | null) => void, reject: (error: Error) => void }> = new Map();
 
 // Track recently updated addresses so we always get fresh data
 const recentlyUpdatedAddresses: Set<string> = new Set();
+
+// Log metrics periodically
+const logMetrics = () => {
+  if (cacheMetrics.hits % 25 === 0 && cacheMetrics.hits > 0) {
+    console.log('[DisplayNames Cache] Metrics:', cacheMetrics);
+  }
+};
 
 /**
  * Define an interface for the display names update event detail
@@ -277,52 +299,116 @@ export const markAddressAsUpdated = (address: string): void => {
 };
 
 /**
+ * Process a batch of pending address lookups
+ */
+const processPendingBatch = async () => {
+  if (pendingAddressQueue.length === 0) return;
+  
+  const batchAddresses = pendingAddressQueue.splice(0, Math.min(pendingAddressQueue.length, BATCH_SIZE_LIMIT));
+  console.log(`[DisplayNames] Processing batch of ${batchAddresses.length} addresses`);
+  
+  try {
+    cacheMetrics.networkRequests++;
+    
+    // Make a single network request for all addresses in the batch
+    const response = await displayNames.getMultipleDisplayNames(batchAddresses);
+    const results = response.data?.displayNames || {};
+    
+    // Process results and resolve pending promises
+    for (const address of batchAddresses) {
+      const name = results[address] || null;
+      const pendingPromise = pendingPromises.get(address);
+      
+      if (pendingPromise) {
+        pendingPromise.resolve(name);
+        pendingPromises.delete(address);
+        
+        // Also update cache if we got a valid name
+        if (name) {
+          displayNamesCache.set(address, name);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[DisplayNames] Batch processing error:', error);
+    
+    // Reject all pending promises for this batch
+    for (const address of batchAddresses) {
+      const pendingPromise = pendingPromises.get(address);
+      if (pendingPromise) {
+        pendingPromise.reject(error as Error);
+        pendingPromises.delete(address);
+      }
+    }
+  }
+  
+  // Process next batch if there are more pending addresses
+  if (pendingAddressQueue.length > 0) {
+    batchProcessingTimeout = setTimeout(processPendingBatch, BATCH_UPDATE_DELAY);
+  } else {
+    batchProcessingTimeout = null;
+  }
+};
+
+/**
+ * Queue an address for batch processing
+ */
+const queueAddressForBatch = (address: string): Promise<string | null> => {
+  return new Promise((resolve, reject) => {
+    // Store the promise resolution functions
+    pendingPromises.set(address, { resolve, reject });
+    
+    // Add to queue
+    pendingAddressQueue.push(address);
+    
+    // Start batch processing if not already scheduled
+    if (!batchProcessingTimeout) {
+      batchProcessingTimeout = setTimeout(processPendingBatch, BATCH_UPDATE_DELAY);
+    }
+  });
+};
+
+/**
  * Get the display name for a wallet address
- * @param address The wallet address to get the display name for
- * @returns The display name if found, null otherwise
+ * @param address The wallet address to get a display name for
+ * @returns The display name or null if none exists
  */
 export const getDisplayNameForWallet = async (address: string): Promise<string | null> => {
   if (!address) return null;
   
-  // Check if this is a recently updated address
-  const forceServerFetch = recentlyUpdatedAddresses.has(address);
-  if (forceServerFetch) {
-    console.log(`Force fetching display name for recently updated address: ${address}`);
-  }
-  
-  // Initialize cache from localStorage if empty (skip for recently updated addresses)
-  if (displayNamesCache.size === 0 && !forceServerFetch) {
-    displayNamesCache = loadDisplayNamesFromStorage();
-  }
-  
-  // Check cache first (skip for recently updated addresses)
-  if (!forceServerFetch) {
-    const cachedName = displayNamesCache.get(address);
-    if (cachedName) {
-      return cachedName;
-    }
-  }
-  
-  // Only try to fetch from API if we're not in the error cooldown period
-  if (!isInErrorCooldown()) {
-    try {
-      // Try a direct fetch for this address
-      const name = await displayNames.get(address);
-      if (name) {
-        displayNamesCache.set(address, name);
-        saveDisplayNamesToStorage(displayNamesCache);
-        return name;
+  try {
+    // Check if it's in memory cache first
+    if (displayNamesCache.has(address)) {
+      // If it was recently updated, don't use cache
+      if (recentlyUpdatedAddresses.has(address)) {
+        cacheMetrics.staleHits++;
+        recentlyUpdatedAddresses.delete(address);
+      } else {
+        cacheMetrics.hits++;
+        logMetrics();
+        return displayNamesCache.get(address) || null;
       }
-    } catch (error) {
-      console.error('Error fetching display name:', error);
-      setErrorCooldown();
+    } else {
+      cacheMetrics.misses++;
     }
+    
+    // Sync from sheets first if needed and not in error cooldown
+    // This ensures we have the latest data
+    if (shouldRefreshCache() && !isSyncInProgress && !isInErrorCooldown()) {
+      await syncDisplayNamesFromSheets();
+      
+      // Check if the name is now in cache after sync
+      if (displayNamesCache.has(address)) {
+        return displayNamesCache.get(address) || null;
+      }
+    }
+    
+    // Not in cache or stale, queue it for batch processing
+    return await queueAddressForBatch(address);
+  } catch (error) {
+    console.error(`Error getting display name for wallet ${address}:`, error);
+    return null;
   }
-  
-  // Trigger a sync for future requests, but don't wait for it
-  syncDisplayNamesFromSheets(false).catch(() => {});
-  
-  return null;
 };
 
 /**

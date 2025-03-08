@@ -71,25 +71,113 @@ export const getGoogleAuth = async () => {
   }
 };
 
-// Cache configuration
-const cache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_TTL = 60000; // 1 minute cache TTL
+// Enhanced cache configuration
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  ttl: number;
+}
+
+const cache = new Map<string, CacheEntry<any>>();
+
+// Define different TTLs based on how frequently the data changes
+const CACHE_TTL = {
+  default: 60000, // 1 minute default TTL
+  listings: 5 * 60000, // 5 minutes for listings (changes frequently)
+  collections: 15 * 60000, // 15 minutes for collections (changes occasionally)
+  display_names: 30 * 60000, // 30 minutes for display names (changes rarely)
+  ultimates: 60 * 60000, // 1 hour for ultimates (changes very rarely)
+};
+
+const CACHE_SIZE_LIMIT = 100; // Limit cache size to prevent memory issues
 const MAX_RETRIES = 3;
 const BASE_DELAY = 1000; // 1 second
+
+// Track cache metrics
+let cacheHits = 0;
+let cacheMisses = 0;
+let cacheEvictions = 0;
 
 interface GoogleSheetsError extends Error {
   code?: number;
 }
 
-// Get values from a sheet with caching and exponential backoff
+// Helper to get the appropriate TTL based on sheet range
+const getTTLForSheet = (range: string): number => {
+  const lowerRange = range.toLowerCase();
+  
+  if (lowerRange.includes('listing') || lowerRange === 'listings') {
+    return CACHE_TTL.listings;
+  } else if (lowerRange.includes('collection') || lowerRange === 'collections') {
+    return CACHE_TTL.collections;
+  } else if (lowerRange.includes('display_name') || lowerRange === 'display_names') {
+    return CACHE_TTL.display_names;
+  } else if (lowerRange.includes('ultimate') || lowerRange === 'ultimates') {
+    return CACHE_TTL.ultimates;
+  }
+  
+  return CACHE_TTL.default;
+};
+
+// Log cache statistics periodically
+const logCacheStats = () => {
+  if (cacheHits % 10 === 0 && cacheHits > 0) {
+    console.log(`[Sheets Cache] Stats - Hits: ${cacheHits}, Misses: ${cacheMisses}, Evictions: ${cacheEvictions}, Size: ${cache.size}`);
+  }
+};
+
+// Clear expired cache entries
+const clearExpiredEntries = () => {
+  const now = Date.now();
+  let cleared = 0;
+  
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp > entry.ttl) {
+      cache.delete(key);
+      cleared++;
+    }
+  }
+  
+  if (cleared > 0) {
+    console.log(`[Sheets Cache] Cleared ${cleared} expired entries`);
+  }
+};
+
+// Get values from a sheet with enhanced caching and exponential backoff
 export async function getSheetValues(spreadsheetId: string, range: string): Promise<SheetValues> {
+  clearExpiredEntries(); // Clean up expired entries
+  
   const cacheKey = `${spreadsheetId}:${range}`;
   const now = Date.now();
   const cached = cache.get(cacheKey);
 
   // Return cached data if still valid
-  if (cached && (now - cached.timestamp) < CACHE_TTL) {
+  if (cached && (now - cached.timestamp) < cached.ttl) {
+    cacheHits++;
+    logCacheStats();
     return cached.data;
+  }
+  
+  cacheMisses++;
+
+  // Check if we need to evict entries due to size limit
+  if (cache.size >= CACHE_SIZE_LIMIT) {
+    // Find the oldest entry
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    
+    for (const [key, entry] of cache.entries()) {
+      if (entry.timestamp < oldestTime) {
+        oldestTime = entry.timestamp;
+        oldestKey = key;
+      }
+    }
+    
+    // Evict the oldest entry
+    if (oldestKey) {
+      cache.delete(oldestKey);
+      cacheEvictions++;
+    }
   }
 
   let lastError: GoogleSheetsError = new Error('No error occurred yet');
@@ -113,13 +201,17 @@ export async function getSheetValues(spreadsheetId: string, range: string): Prom
         range,
       });
 
+      // Determine the appropriate TTL for this data
+      const ttl = getTTLForSheet(range);
+
       // Cache the successful response
       cache.set(cacheKey, {
         data: response.data,
-        timestamp: now
+        timestamp: now,
+        ttl
       });
 
-      console.log('Successfully retrieved sheet data');
+      logCacheStats();
       return response.data;
     } catch (error) {
       lastError = error as GoogleSheetsError;

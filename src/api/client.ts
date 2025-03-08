@@ -92,6 +92,21 @@ export const displayNames = {
     return data.displayNames;
   },
 
+  getMultipleDisplayNames: async (addresses: string[]): Promise<{ data?: { displayNames: Record<string, string> } }> => {
+    if (!addresses.length) return { data: { displayNames: {} } };
+    
+    const queryParams = addresses.map(addr => `addresses=${encodeURIComponent(addr)}`).join('&');
+    const response = await fetch(`${API_BASE_URL}/api/display-names/batch?${queryParams}`);
+    const data = await response.json();
+    
+    if (!data.success) {
+      console.error('Failed to fetch multiple display names:', data.message);
+      return { data: { displayNames: {} } };
+    }
+    
+    return { data: { displayNames: data.displayNames || {} } };
+  },
+
   update: async (address: string, name: string): Promise<void> => {
     const response = await fetch(`${API_BASE_URL}/api/display-names?address=${encodeURIComponent(address)}`, {
       method: 'PUT',

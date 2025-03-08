@@ -248,6 +248,68 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         hasGoogleCredentials: GOOGLE_SHEETS_CONFIG.hasGoogleCredentials,
       }
     });
+    
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred'
+    });
+  }
+});
+
+// Add a batch endpoint to fetch multiple display names at once
+router.get('/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    console.log('GET /display_names/batch endpoint called');
+    
+    // Get addresses from query parameters (can be multiple)
+    const addresses = Array.isArray(req.query.addresses) 
+      ? req.query.addresses as string[] 
+      : req.query.addresses 
+        ? [req.query.addresses as string] 
+        : [];
+    
+    if (!addresses.length) {
+      console.log('No addresses provided for batch lookup');
+      res.json({
+        success: true,
+        message: 'No addresses provided',
+        displayNames: {}
+      });
+      return;
+    }
+    
+    console.log(`Batch looking up ${addresses.length} addresses:`, addresses);
+    
+    const auth = await getGoogleAuth();
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: 'v4', auth: client as OAuth2Client });
+    
+    // Get all display names once (more efficient than multiple lookups)
+    const allDisplayNames = await getAllDisplayNames(sheets);
+    
+    // Create a map for quick lookup
+    const displayNamesMap: Record<string, string> = {};
+    for (const address of addresses) {
+      // Find the matching display name
+      const normalizedAddress = address.toLowerCase();
+      const entry = allDisplayNames.find(
+        e => e.wallet_address.toLowerCase() === normalizedAddress
+      );
+      
+      if (entry) {
+        displayNamesMap[address] = entry.display_name;
+      }
+    }
+    
+    console.log(`Found ${Object.keys(displayNamesMap).length} display names for ${addresses.length} addresses`);
+    
+    res.json({
+      success: true,
+      message: 'Display names batch lookup completed',
+      displayNames: displayNamesMap
+    });
+  } catch (error) {
+    console.error('Error in batch display names lookup:', error);
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred'

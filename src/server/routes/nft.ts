@@ -57,6 +57,7 @@ interface HeliusNFTData {
 interface NFTCacheEntry {
   data: HeliusNFTData;
   timestamp: number;
+  duration: number;
 }
 
 interface PinataResponse {
@@ -100,21 +101,60 @@ if (!AUTHORIZED_MINTER) {
 // Add cache for NFT data
 const NFT_CACHE = new Map<string, NFTCacheEntry>();
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+const CACHE_DURATION_EXTENDED = 60 * 60 * 1000; // 1 hour for NFTs that rarely change
+const CACHE_SIZE_LIMIT = 500; // Limit cache size to prevent memory issues
+
+// Track cache hits and misses for analytics
+let cacheHits = 0;
+let cacheMisses = 0;
+let cacheEvictions = 0;
 
 // Helper function to get cached NFT data
 const getCachedNFTData = (mintAddress: string): HeliusNFTData | null => {
   const cached = NFT_CACHE.get(mintAddress);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  if (cached && Date.now() - cached.timestamp < cached.duration) {
+    cacheHits++;
+    // Log cache hits for every 20 hits
+    if (cacheHits % 20 === 0) {
+      console.log(`[Helius Cache] Stats - Hits: ${cacheHits}, Misses: ${cacheMisses}, Evictions: ${cacheEvictions}, Size: ${NFT_CACHE.size}`);
+    }
     return cached.data;
   }
+  cacheMisses++;
   return null;
 };
 
 // Helper function to cache NFT data
 const cacheNFTData = (mintAddress: string, data: HeliusNFTData): void => {
+  // Use extended cache duration for NFTs with a creation date older than 30 days
+  // because their metadata rarely changes
+  const isOlderNFT = data.createdAt && (Date.now() - new Date(data.createdAt).getTime() > 30 * 24 * 60 * 60 * 1000);
+  const duration = isOlderNFT ? CACHE_DURATION_EXTENDED : CACHE_DURATION;
+  
+  // Implement LRU cache eviction if we exceed the size limit
+  if (NFT_CACHE.size >= CACHE_SIZE_LIMIT) {
+    // Find the oldest entry
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    
+    for (const [key, entry] of NFT_CACHE.entries()) {
+      if (entry.timestamp < oldestTime) {
+        oldestTime = entry.timestamp;
+        oldestKey = key;
+      }
+    }
+    
+    // Evict the oldest entry
+    if (oldestKey) {
+      NFT_CACHE.delete(oldestKey);
+      cacheEvictions++;
+    }
+  }
+  
   NFT_CACHE.set(mintAddress, {
     data,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    duration
   });
 };
 
