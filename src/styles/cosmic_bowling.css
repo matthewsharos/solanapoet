@@ -347,6 +347,31 @@ html[data-theme="dark"],
 /* Switch monkey icon in dark mode */
 [data-theme="dark"] .monkey-icon {
   content: url("/images/dark_monkey.png") !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Fix backgrounds for theme toggle button and monkey container */
+[data-theme="dark"] .MuiIconButton-root,
+[data-theme="dark"] .MonkeyContainer,
+[data-theme="dark"] .css-78trlr-MuiButtonBase-root-MuiIconButton-root {
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+/* Ensure the theme toggle and monkey icon don't have a dark background */
+[data-theme="dark"] button, 
+[data-theme="dark"] .MuiButtonBase-root {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* Ensure containers around icons are transparent */
+[data-theme="dark"] .MuiBox-root .MuiIconButton-root,
+[data-theme="dark"] .MuiBox-root .MonkeyContainer {
+  background-color: transparent !important;
+  background-image: none !important;
 }
 
 [data-theme="dark"] .MuiDialog-paper .MuiTypography-root a[href*="explorer.solana.com"] {
