@@ -601,10 +601,12 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
         } else {
           // Show complete wallet address when no display name exists
           console.log('No display name found for address:', ownerAddress);
+          // Display the full wallet address instead of abbreviated
           setOwnerDisplayName(ownerAddress);
         }
       } catch (error) {
         console.error('Error setting owner display name:', error);
+        // Display the full wallet address instead of abbreviated
         setOwnerDisplayName(ownerAddress);
       } finally {
         setIsLoadingDisplayName(false);
