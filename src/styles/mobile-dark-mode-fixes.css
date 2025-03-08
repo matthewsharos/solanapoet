@@ -20,7 +20,7 @@
     border-radius: 3px !important;
     margin: 0 auto !important;
     left: 54% !important; /* Match light mode positioning */
-    transform: translateX(-50%) !important; /* Match light mode transform */
+    transform: translateX(-1%) !important; /* Use minimal horizontal transform */
     transition: all 0.2s ease !important; /* Match light mode transition timing */
     box-shadow: 0 0 15px var(--neon-secondary) !important; /* Neon glow instead of regular shadow */
     border: 1px solid var(--neon-secondary) !important; /* Neon border */
@@ -30,7 +30,7 @@
   }
   
   [data-theme="dark"] .css-1qw96cp:hover {
-    transform: translateX(-50%) translateY(-2px) !important; /* Match light mode hover with minimal lift */
+    transform: translateX(-1%) translateY(-2px) !important; /* Use minimal horizontal transform with vertical lift */
     box-shadow: 0 0 20px var(--neon-accent) !important; /* Slightly stronger glow on hover but not excessive */
     border-color: var(--neon-accent) !important; /* Change border color on hover */
   }
