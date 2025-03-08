@@ -4,6 +4,7 @@ import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline } from '@mu
 import '@fontsource/dancing-script';
 import '@fontsource/special-elite';
 import './styles/cosmic_bowling.css';
+import './styles/mobile-dark-mode-fixes.css';
 
 // Import components
 import Layout from './components/Layout';

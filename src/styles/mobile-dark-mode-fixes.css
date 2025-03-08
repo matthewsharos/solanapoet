@@ -1,0 +1,58 @@
+/* Mobile-specific fixes for dark mode animations */
+
+/* Fix card hover animations in dark mode on mobile */
+@media (max-width: 600px) {
+  /* Reduce hover effect for NFT cards */
+  [data-theme="dark"] .MuiCard-root {
+    transition: all 0.2s ease !important;
+  }
+  
+  [data-theme="dark"] .MuiCard-root:hover {
+    transform: translateY(-1px) !important;  /* Reduce vertical movement */
+    box-shadow: 0 0 15px var(--neon-secondary) !important; /* Less intense glow */
+  }
+  
+  /* Stabilize link hover effects */
+  [data-theme="dark"] a {
+    transition: all 0.2s ease !important;
+  }
+  
+  [data-theme="dark"] a:hover {
+    text-shadow: 0 0 5px var(--neon-accent) !important; /* Less intense glow */
+  }
+  
+  /* Reduce button hover effects */
+  [data-theme="dark"] .MuiButton-root,
+  [data-theme="dark"] .MuiIconButton-root {
+    transition: all 0.2s ease !important;
+  }
+  
+  [data-theme="dark"] .MuiButton-root:hover {
+    box-shadow: 0 0 8px var(--neon-primary) !important; /* Less intense glow */
+  }
+  
+  /* Fix the theme toggle animation */
+  [data-theme="dark"] .MuiIconButton-root[aria-label="toggle theme"]:hover {
+    transform: scale(1.05) !important; /* Reduce scale and remove rotation */
+  }
+  
+  /* Slow down neon pulse animation */
+  [data-theme="dark"] .neon-text {
+    animation: neonPulse 3s ease-in-out infinite !important; /* Slower, gentler animation */
+  }
+  
+  /* Reduce form element hover effects */
+  [data-theme="dark"] .MuiOutlinedInput-root:hover {
+    box-shadow: 0 0 5px var(--neon-secondary) !important; /* Less intense glow */
+  }
+  
+  /* Stabilize carousel buttons */
+  [data-theme="dark"] .carousel-nav-button:hover {
+    box-shadow: 0 0 10px var(--neon-accent) !important; /* Less intense glow */
+  }
+  
+  /* Fix any bouncing effects on mint ID hover */
+  [data-theme="dark"] .css-vfhetp:hover {
+    text-shadow: 0 0 3px var(--neon-secondary) !important; /* Less intense glow */
+  }
+} 
