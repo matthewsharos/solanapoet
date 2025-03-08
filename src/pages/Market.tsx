@@ -807,8 +807,8 @@ const Market: React.FC = () => {
       <Box sx={{ 
         py: { xs: 2, sm: 4 },
         px: { xs: 0, sm: 0 }, // Remove horizontal padding completely
-        width: '98%', // Almost full width
-        maxWidth: '98%', // Ensure consistent width
+        width: { xs: '100%', sm: '98%' }, // Full width on mobile, slightly constrained on desktop
+        maxWidth: { xs: '100%', sm: '98%' }, // Full width on mobile, slightly constrained on desktop
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -953,7 +953,7 @@ const Market: React.FC = () => {
                     md={4} 
                     lg={3}
                     sx={{
-                      px: { xs: '2px', sm: '2px' },  // Minimal padding
+                      px: { xs: 0, sm: '2px' },  // No padding on mobile
                       py: { xs: 1, sm: 1 },
                       display: 'flex',
                       justifyContent: 'center',

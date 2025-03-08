@@ -43,11 +43,14 @@ const StyledCard = styled(Card)(({ theme }) => ({
   },
   // Mobile optimization
   [theme.breakpoints.down('sm')]: {
-    margin: '0 auto',
+    margin: '0 auto', // Center using auto margins
     borderRadius: '3px',
-    width: 'calc(100% - 6px)', // Leave equal space on both sides
-    maxWidth: 'calc(100% - 6px)',
+    width: '100%', // Full width
+    maxWidth: '100%', // Full width
     border: '1px solid #d4c4a8',
+    left: '50%', // Center using transform
+    transform: 'translateX(-50%)',
+    position: 'relative', // Needed for left/transform to work
   }
 }));
 
