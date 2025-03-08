@@ -12,7 +12,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../types/api';
 
 // Import wallet adapter CSS
-require('@solana/wallet-adapter-react-ui/styles.css');
+import '@solana/wallet-adapter-react-ui/styles.css';
 
 interface WalletContextType {
   publicKey: string | null;
