@@ -25,6 +25,8 @@ import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/di
 import { collections } from '../api/client';
 import { format } from 'date-fns';
 import CheckIcon from '@mui/icons-material/Check';
+import ImageZoomModal from './ImageZoomModal';
+import ZoomInIcon from '@mui/icons-material/ZoomIn';
 
 // Gallery-inspired styled components
 const DetailDialog = styled(Dialog)(({ theme }) => ({
@@ -722,6 +724,31 @@ const CollectionBox = styled(Box)(({ theme }) => ({
     : 'rgba(255, 215, 0, 0.3)'}`,
 }));
 
+// Add a ZoomIndicator styled component
+const ZoomIndicator = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  right: 12,
+  bottom: 12,
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  color: 'white',
+  borderRadius: '50%',
+  width: 36,
+  height: 36,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  opacity: 0.8,
+  transition: 'opacity 0.2s',
+  pointerEvents: 'none', // So it doesn't interfere with click events
+  zIndex: 5,
+  [theme.breakpoints.down('sm')]: {
+    width: 30,
+    height: 30,
+    right: 8,
+    bottom: 8,
+  }
+}));
+
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -737,6 +764,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   const [isLoadingCollection, setIsLoadingCollection] = React.useState(false);
   const [copied, setCopied] = React.useState<boolean>(false);
   const [ownerCopied, setOwnerCopied] = React.useState<boolean>(false);
+  const [zoomModalOpen, setZoomModalOpen] = React.useState<boolean>(false);
 
   // Safely determine the owner address as a string
   const ownerAddress = React.useMemo(() => {
@@ -1174,6 +1202,16 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     }
   }, [open, nft.collection?.address, nft.collectionName]);
 
+  // Handle image click to open zoom modal
+  const handleImageClick = () => {
+    setZoomModalOpen(true);
+  };
+
+  // Handle closing the zoom modal
+  const handleCloseZoomModal = () => {
+    setZoomModalOpen(false);
+  };
+
   return (
     <DetailDialog
       open={open}
@@ -1239,7 +1277,15 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             }
           }}>
             <ArtworkMatting>
-              <NFTImage src={nft.image} alt={nft.name} />
+              <NFTImage 
+                src={nft.image} 
+                alt={nft.name} 
+                onClick={handleImageClick}
+                sx={{ cursor: 'zoom-in' }} // Add cursor style to indicate it's clickable
+              />
+              <ZoomIndicator>
+                <ZoomInIcon fontSize="small" />
+              </ZoomIndicator>
             </ArtworkMatting>
             <FrameShadow />
             <ArtworkSpotlight />
@@ -1458,9 +1504,17 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             zIndex: 10,
           }}
         >
-          <KeyboardArrowDownIcon />
+          <KeyboardArrowDownIcon fontSize="small" />
         </TypewriterKeyButton>
       </DialogContentStyled>
+
+      {/* Image Zoom Modal */}
+      <ImageZoomModal 
+        open={zoomModalOpen}
+        onClose={handleCloseZoomModal}
+        imageSrc={nft.image}
+        imageAlt={nft.name}
+      />
     </DetailDialog>
   );
 };
