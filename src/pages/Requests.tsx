@@ -27,99 +27,13 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    const VERCEL_SIZE_LIMIT = 4.5 * 1024 * 1024; // 4.5MB Vercel limit
-    const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB max file size
+    const MAX_FILE_SIZE = 4.5 * 1024 * 1024; // 4.5MB limit
     
     if (file.size > MAX_FILE_SIZE) {
-      throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
-    }
-
-    // For files larger than Vercel's limit, use direct upload
-    if (file.size > VERCEL_SIZE_LIMIT) {
-      console.log('File size exceeds Vercel limit, using direct upload method');
-      const uploadUrl = process.env.NODE_ENV === 'production'
-        ? 'https://solanapoet.vercel.app/api/drive/direct-upload'
-        : '/api/drive/direct-upload';
-
-      console.log('Direct upload URL:', uploadUrl);
-
-      // First, get the signed URL and upload parameters
-      const signedUrlResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({
-          fileName,
-          fileType: file.type,
-          fileSize: file.size
-        })
-      });
-
-      console.log('Signed URL response status:', signedUrlResponse.status);
-      
-      if (!signedUrlResponse.ok) {
-        const errorData = await signedUrlResponse.json();
-        console.error('Failed to get signed URL:', errorData);
-        throw new Error(`Failed to get signed upload URL: ${errorData.message || 'Unknown error'}`);
-      }
-
-      const signedUrlData = await signedUrlResponse.json();
-      console.log('Signed URL data:', signedUrlData);
-
-      if (!signedUrlData.success || !signedUrlData.uploadUrl) {
-        throw new Error('Invalid response from signed URL endpoint');
-      }
-
-      const { uploadUrl: directUploadUrl, fileId } = signedUrlData;
-
-      // Upload the file directly to Google Drive
-      console.log('Uploading file to signed URL...');
-      const uploadResponse = await fetch(directUploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
-      });
-
-      console.log('Upload response status:', uploadResponse.status);
-      
-      if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
-        console.error('Direct upload failed:', errorText);
-        throw new Error(`Direct upload to Google Drive failed: ${errorText}`);
-      }
-
-      // Get the file URL
-      console.log('Getting public file URL...');
-      const fileDataResponse = await fetch(`${uploadUrl}/${fileId}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-
-      console.log('File data response status:', fileDataResponse.status);
-      
-      if (!fileDataResponse.ok) {
-        const errorData = await fileDataResponse.json();
-        console.error('Failed to get file URL:', errorData);
-        throw new Error(`Failed to get file URL: ${errorData.message || 'Unknown error'}`);
-      }
-
-      const fileData = await fileDataResponse.json();
-      console.log('File data:', fileData);
-
-      if (!fileData.success || !fileData.fileUrl) {
-        throw new Error('Invalid response from file URL endpoint');
-      }
-
-      return fileData.fileUrl;
+      throw new Error(`File size limit is 4.5MB. Your file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
     }
     
-    // For files under Vercel's limit, use the existing method
+    // For files under the limit, use the existing method
     const formData = new FormData();
     formData.append('file', file);
     console.log('FormData contents:', [...formData.entries()]);
