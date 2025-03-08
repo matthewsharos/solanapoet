@@ -58,11 +58,11 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
     // Mobile optimizations
     [theme.breakpoints.down('sm')]: {
       maxWidth: '100vw',
-      maxHeight: '98vh', // Slightly reduced from 100vh to prevent overflow
+      maxHeight: '95vh', // Reduced from 98vh for more space at top
       width: '100vw',
       height: 'auto',
       margin: 0,
-      marginTop: '40px', // Increased top margin to prevent X button from being cut off
+      marginTop: '50px', // Increased top margin to ensure X button is fully visible
       borderRadius: 0,
       display: 'flex',
       flexDirection: 'column',
@@ -130,6 +130,7 @@ const ArtworkFrame = styled(Box)(({ theme }) => ({
   // Optimize frame styling for mobile
   [theme.breakpoints.down('sm')]: {
     width: '100%', // Fill available width
+    maxHeight: 'none', // Remove max height restriction to show full image
     marginLeft: 'auto',
     marginRight: 'auto',
     '&::before': {
@@ -146,7 +147,7 @@ const ArtworkFrame = styled(Box)(({ theme }) => ({
   }
 }));
 
-const NFTImage = styled('img')({
+const NFTImage = styled('img')(({ theme }) => ({
   maxWidth: '100%',
   maxHeight: '100%',
   objectFit: 'contain',
@@ -156,8 +157,15 @@ const NFTImage = styled('img')({
   height: 'auto',
   '&:hover': {
     transform: 'scale(1.03)',
+  },
+  [theme.breakpoints.down('sm')]: {
+    width: '100%',
+    height: 'auto',
+    objectFit: 'contain',
+    maxWidth: '100%',
+    maxHeight: 'none',
   }
-});
+}));
 
 const ArtworkMatting = styled(Box)(({ theme }) => ({
   backgroundColor: '#fff',
@@ -1035,10 +1043,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     if (isMobile) {
       return {
         width: '100%',
-        height: 'auto', // Changed from fixed height to auto
-        maxHeight: '50vh', // Cap the max height to 50% of viewport height
-        padding: 0.5, // Reduced padding for better fit
-        marginTop: '8px', // Less top margin for more space
+        height: 'auto', // Use auto height to maintain image aspect ratio
+        padding: 0.5, // Keep minimal padding
+        marginTop: '10px', // Increased from 8px to 10px
       };
     }
     return {
@@ -1218,13 +1225,13 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
         }}>
           <ArtworkFrame sx={{ 
             flex: 1, 
-            height: isMobile ? '100%' : 'calc(100% - 20px)',
-            maxHeight: isMobile ? '40vh' : 'calc(95vh - 100px)',
+            height: isMobile ? 'auto' : 'calc(100% - 20px)',
+            maxHeight: isMobile ? 'none' : 'calc(95vh - 100px)',
             '&::before': {
-              top: isMobile ? -5 : -10,
-              left: isMobile ? -5 : -10,
-              right: isMobile ? -5 : -10,
-              bottom: isMobile ? -5 : -10,
+              top: isMobile ? -3 : -10,
+              left: isMobile ? -3 : -10,
+              right: isMobile ? -3 : -10,
+              bottom: isMobile ? -3 : -10,
             }
           }}>
             <ArtworkMatting>
