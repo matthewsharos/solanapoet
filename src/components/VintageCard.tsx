@@ -37,8 +37,9 @@ const StyledCard = styled(Card)(({ theme }) => ({
   },
   // Desktop optimization to fill more space
   [theme.breakpoints.up('sm')]: {
-    width: 'calc(100% - 4px)',
-    maxWidth: 'calc(100% - 4px)',
+    width: 'calc(100% - 0px)',  // Full width
+    maxWidth: 'calc(100% - 0px)', // Full width
+    margin: '0', // No margin
   },
   // Mobile optimization
   [theme.breakpoints.down('sm')]: {
@@ -78,12 +79,16 @@ const CardImageContainer = styled(Box)(({ theme }) => ({
   alignItems: 'center',
   padding: theme.spacing(1),
   overflow: 'hidden',
-  minHeight: '250px',
+  minHeight: '200px',
   position: 'relative',
   // Make image container wider on mobile by reducing padding
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(0.3),
-    minHeight: '170px',
+    padding: theme.spacing(0.25), // Minimal padding
+    minHeight: '170px', // Slightly shorter on mobile
+  },
+  // Make images fit better on desktop
+  [theme.breakpoints.up('sm')]: {
+    padding: theme.spacing(0.5), // Minimal padding
   }
 }));
 
