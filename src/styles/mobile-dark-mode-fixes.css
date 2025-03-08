@@ -12,18 +12,38 @@
     box-shadow: 0 0 15px var(--neon-secondary) !important; /* Less intense glow */
   }
   
-  /* Fix for VintageCard to match light mode positioning */
+  /* Comprehensive fix for VintageCard to exactly match light mode positioning and animations */
   [data-theme="dark"] .css-1qw96cp {
+    position: relative !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 3px !important;
+    margin: 0 auto !important;
     left: 54% !important; /* Match light mode positioning */
     transform: translateX(-50%) !important; /* Match light mode transform */
-    position: relative !important;
-    margin: 0 auto !important;
-    marginRight: 1px !important;
+    transition: all 0.2s ease !important; /* Match light mode transition timing */
+    box-shadow: 0 0 15px var(--neon-secondary) !important; /* Neon glow instead of regular shadow */
+    border: 1px solid var(--neon-secondary) !important; /* Neon border */
+    /* Ensure no extra margin that could cause misalignment */
+    margin-left: 0 !important; 
+    margin-right: 1px !important;
   }
   
   [data-theme="dark"] .css-1qw96cp:hover {
     transform: translateX(-50%) translateY(-2px) !important; /* Match light mode hover with minimal lift */
-    box-shadow: 0 0 15px var(--neon-secondary) !important; /* Neon glow instead of regular shadow */
+    box-shadow: 0 0 20px var(--neon-accent) !important; /* Slightly stronger glow on hover but not excessive */
+    border-color: var(--neon-accent) !important; /* Change border color on hover */
+  }
+  
+  /* Fix for card content in dark mode */
+  [data-theme="dark"] .css-1qw96cp .MuiCardContent-root {
+    padding-bottom: 16px !important; /* Ensure consistent padding */
+  }
+  
+  /* Container element positioning fix */
+  [data-theme="dark"] .MuiGrid-item {
+    display: flex !important;
+    justify-content: flex-start !important; /* Match light mode alignment */
   }
   
   /* Stabilize link hover effects */
