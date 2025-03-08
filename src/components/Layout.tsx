@@ -246,6 +246,7 @@ const MonkeyImage = styled('img')(({ theme }) => ({
 }));
 
 const WalletButtonWrapper = styled(Box)(({ theme }) => ({
+  position: 'relative',
   '& .wallet-adapter-button': {
     backgroundColor: '#e8e8e8',
     color: '#333333',
@@ -287,8 +288,23 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
       }
     }
   },
+  '& .wallet-adapter-dropdown': {
+    position: 'relative',
+    zIndex: 1000,
+  },
   '& .wallet-adapter-dropdown-list': {
+    position: 'absolute',
+    top: 'calc(100% + 8px)',
+    right: 0,
+    left: 'auto',
+    margin: 0,
+    padding: '8px',
+    width: '225px',
     backgroundColor: '#f8f5e6',
+    border: '1px solid #d4af37',
+    borderRadius: '4px',
+    boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.15)',
+    zIndex: 1000,
   },
   '& .wallet-adapter-dropdown-list-item': {
     backgroundColor: '#e8e8e8',
@@ -296,8 +312,19 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
     fontFamily: 'Arial, sans-serif',
     fontSize: '14px',
     fontWeight: 'bold',
+    padding: '8px 16px',
+    margin: '4px 0',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
     '&:hover': {
       backgroundColor: '#d0d0d0',
+    },
+    '&:first-of-type': {
+      marginTop: 0,
+    },
+    '&:last-of-type': {
+      marginBottom: 0,
     },
   },
 }));
