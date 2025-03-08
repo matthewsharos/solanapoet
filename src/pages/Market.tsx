@@ -22,6 +22,8 @@ import VintageCard from '../components/VintageCard';
 import { useWalletContext } from '../contexts/WalletContext';
 import { fetchCollectionNFTs as fetchCollectionNFTsFromUtils, NFTMetadata } from '../utils/nftUtils';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
+import { styled } from '@mui/material/styles';
+import { useTheme, useMediaQuery } from '@mui/material';
 
 // Define types from removed imports
 interface Collection {
@@ -476,8 +478,34 @@ const testFetch = async () => {
   }
 };
 
+// Add a styled component for the collection title
+const CollectionTitle = styled(Typography)(({ theme }) => ({
+  textAlign: 'center',
+  fontSize: '1.5rem',
+  fontWeight: 500,
+  margin: '30px 0 15px 0',
+  width: '100%',
+  position: 'relative',
+  '&::after': {
+    content: '""',
+    position: 'absolute',
+    bottom: -8,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: '60px',
+    height: '2px',
+    backgroundColor: theme.palette.primary.main,
+  },
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '1.25rem',
+    margin: '20px 0 10px 0',
+  }
+}));
+
 const Market: React.FC = () => {
   const { wallet, connected } = useWalletContext();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [nfts, setNfts] = useState<NFT[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -777,13 +805,93 @@ const Market: React.FC = () => {
     });
   };
 
-  // Get current NFTs for the page
-  const filteredNFTs = filterNFTs(nfts, searchTerm, selectedCollection);
-  const pageCount = Math.ceil(filteredNFTs.length / ITEMS_PER_PAGE);
-  const currentNFTs = filteredNFTs.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  // Group NFTs by collection name for display
+  const groupedNFTsByCollection = useMemo(() => {
+    // Filter the NFTs based on current filters
+    const filtered = filterNFTs(nfts, searchTerm, selectedCollection);
+    
+    // If showing "My NFTs" or if a specific collection is selected, we don't need to group
+    if (showMyNFTs || selectedCollection) {
+      return [{ 
+        collectionName: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
+        nfts: filtered 
+      }];
+    }
+    
+    // Group NFTs by collection name
+    const groupedNFTs = filtered.reduce((acc, nft) => {
+      const collectionName = nft.collectionName || 'Unknown Collection';
+      
+      if (!acc[collectionName]) {
+        acc[collectionName] = [];
+      }
+      
+      acc[collectionName].push(nft);
+      return acc;
+    }, {} as Record<string, NFT[]>);
+    
+    // Convert to array and sort by collection name
+    return Object.entries(groupedNFTs)
+      .map(([collectionName, nfts]) => ({ collectionName, nfts }))
+      .sort((a, b) => a.collectionName.localeCompare(b.collectionName));
+  }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
+  
+  // Get the current page's NFTs, possibly from multiple collections
+  const currentPageGroupedNFTs = useMemo(() => {
+    // If we have a specific collection or showing My NFTs, just paginate the single group
+    if (showMyNFTs || selectedCollection) {
+      const group = groupedNFTsByCollection[0];
+      return [{
+        collectionName: group.collectionName,
+        nfts: group.nfts.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+      }];
+    }
+    
+    // We need to paginate across all collections
+    let nftsCount = 0;
+    const startIdx = (page - 1) * ITEMS_PER_PAGE;
+    const endIdx = page * ITEMS_PER_PAGE;
+    
+    // Find which collections should be included on this page
+    const result: { collectionName: string; nfts: NFT[] }[] = [];
+    
+    for (const group of groupedNFTsByCollection) {
+      // Skip collections that end before our page starts
+      if (nftsCount + group.nfts.length <= startIdx) {
+        nftsCount += group.nfts.length;
+        continue;
+      }
+      
+      // If we've already filled the page, stop
+      if (nftsCount >= endIdx) {
+        break;
+      }
+      
+      // Calculate which NFTs from this collection should be shown
+      const collectionStartIdx = Math.max(0, startIdx - nftsCount);
+      const collectionEndIdx = Math.min(group.nfts.length, endIdx - nftsCount);
+      const collectionNFTs = group.nfts.slice(collectionStartIdx, collectionEndIdx);
+      
+      if (collectionNFTs.length > 0) {
+        result.push({
+          collectionName: group.collectionName,
+          nfts: collectionNFTs
+        });
+      }
+      
+      nftsCount += group.nfts.length;
+    }
+    
+    return result;
+  }, [groupedNFTsByCollection, page, showMyNFTs, selectedCollection]);
+  
+  // Calculate total filtered NFTs for pagination
+  const totalFilteredNFTs = useMemo(() => {
+    return groupedNFTsByCollection.reduce((acc, group) => acc + group.nfts.length, 0);
+  }, [groupedNFTsByCollection]);
+  
+  // Update page count based on total filtered NFTs
+  const pageCount = Math.ceil(totalFilteredNFTs / ITEMS_PER_PAGE);
 
   // Handle page change
   const handlePageChange = (_event: React.ChangeEvent<unknown>, value: number) => {
@@ -931,53 +1039,63 @@ const Market: React.FC = () => {
             </Grid>
           ) : (
             <>
-              {/* Show NFTs as they load */}
-              <Grid 
-                container 
-                spacing={{ xs: 2, sm: 1, md: 1 }}  // Minimal horizontal spacing
-                sx={{ 
-                  px: 0,
-                  mx: 'auto',
-                  justifyContent: 'center',
-                  width: '100%',
-                  maxWidth: '100%',
-                  alignItems: 'center'
-                }}
-              >
-                {currentNFTs.map((nft) => (
+              {/* Replace the existing NFT grid with grouped collection sections */}
+              {currentPageGroupedNFTs.map((group) => (
+                <React.Fragment key={group.collectionName}>
+                  {/* Collection Title */}
+                  <CollectionTitle variant="h4">
+                    {group.collectionName}
+                  </CollectionTitle>
+                  
+                  {/* NFTs Grid */}
                   <Grid 
-                    item 
-                    key={nft.mint} 
-                    xs={12} 
-                    sm={6} 
-                    md={4} 
-                    lg={3}
-                    sx={{
-                      px: { xs: 0, sm: '2px' },  // No padding on mobile
-                      py: { xs: 1, sm: 1 },
-                      display: 'flex',
-                      justifyContent: { xs: 'flex-start', sm: 'center' }, // Left align on mobile to offset the card's right shift
-                      alignItems: 'center',
-                      textAlign: 'center',
-                      pl: { xs: '10px', sm: 0 }, // Increased left padding from 6px to 10px on mobile only
+                    container 
+                    spacing={{ xs: 2, sm: 1, md: 1 }}
+                    sx={{ 
+                      px: 0,
+                      mx: 'auto',
+                      justifyContent: 'center',
+                      width: '100%',
+                      maxWidth: '100%',
+                      alignItems: 'center'
                     }}
                   >
-                    <VintageCard 
-                      nft={nft} 
-                      wallet={wallet} 
-                      connected={connected}
-                      displayName={
-                        !nft.owner ? undefined :
-                        typeof nft.owner === 'string'
-                          ? displayNames.get(nft.owner)
-                          : (nft.owner.publicKey ? displayNames.get(nft.owner.publicKey) : undefined)
-                      }
-                    />
+                    {group.nfts.map((nft) => (
+                      <Grid 
+                        item 
+                        key={nft.mint} 
+                        xs={12} 
+                        sm={6} 
+                        md={4} 
+                        lg={3}
+                        sx={{
+                          px: { xs: 0, sm: '2px' },  // No padding on mobile
+                          py: { xs: 1, sm: 1 },
+                          display: 'flex',
+                          justifyContent: { xs: 'flex-start', sm: 'center' }, // Left align on mobile to offset the card's right shift
+                          alignItems: 'center',
+                          textAlign: 'center',
+                          pl: { xs: '10px', sm: 0 }, // Increased left padding from 6px to 10px on mobile only
+                        }}
+                      >
+                        <VintageCard 
+                          nft={nft} 
+                          wallet={wallet} 
+                          connected={connected}
+                          displayName={
+                            !nft.owner ? undefined :
+                            typeof nft.owner === 'string'
+                              ? displayNames.get(nft.owner)
+                              : (nft.owner.publicKey ? displayNames.get(nft.owner.publicKey) : undefined)
+                          }
+                        />
+                      </Grid>
+                    ))}
                   </Grid>
-                ))}
-              </Grid>
+                </React.Fragment>
+              ))}
               
-              {/* Show subtle loading indicator */}
+              {/* Loading indicator */}
               {(loading || isLoadingMore) && (
                 <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                   <Box sx={{ 
@@ -996,19 +1114,24 @@ const Market: React.FC = () => {
                   </Box>
                 </Grid>
               )}
-
+              
+              {/* Pagination */}
               {pageCount > 1 && (
-                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                <Box sx={{ mt: 4, mb: 2, display: 'flex', justifyContent: 'center' }}>
                   <Pagination 
                     count={pageCount} 
                     page={page} 
                     onChange={handlePageChange}
-                    color="primary"
-                    size="large"
-                    showFirstButton
-                    showLastButton
+                    variant="outlined"
+                    shape="rounded"
+                    size={isMobile ? "small" : "medium"}
+                    sx={{
+                      '& .MuiPaginationItem-root': {
+                        bgcolor: 'background.paper',
+                      }
+                    }}
                   />
-                </Grid>
+                </Box>
               )}
             </>
           )}
