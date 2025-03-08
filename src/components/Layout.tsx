@@ -331,7 +331,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               />
             </MonkeyContainer>
             
-            <WalletButton onClick={disconnect} disabled={!connected}>
+            <WalletButton onClick={connected ? disconnect : () => setShowConnectPopup(true)} disabled={false}>
               {connected ? `Disconnect (${publicKey?.toString().slice(0, 4)}...${publicKey?.toString().slice(-4)})` : 'Connect'}
             </WalletButton>
             
