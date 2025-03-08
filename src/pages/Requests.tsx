@@ -41,11 +41,14 @@ const uploadFileToDrive = async (file: File) => {
         ? 'https://solanapoet.vercel.app/api/drive/direct-upload'
         : '/api/drive/direct-upload';
 
+      console.log('Direct upload URL:', uploadUrl);
+
       // First, get the signed URL and upload parameters
       const signedUrlResponse = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           fileName,
@@ -54,13 +57,25 @@ const uploadFileToDrive = async (file: File) => {
         })
       });
 
+      console.log('Signed URL response status:', signedUrlResponse.status);
+      
       if (!signedUrlResponse.ok) {
-        throw new Error('Failed to get signed upload URL');
+        const errorData = await signedUrlResponse.json();
+        console.error('Failed to get signed URL:', errorData);
+        throw new Error(`Failed to get signed upload URL: ${errorData.message || 'Unknown error'}`);
       }
 
-      const { uploadUrl: directUploadUrl, fileId } = await signedUrlResponse.json();
+      const signedUrlData = await signedUrlResponse.json();
+      console.log('Signed URL data:', signedUrlData);
+
+      if (!signedUrlData.success || !signedUrlData.uploadUrl) {
+        throw new Error('Invalid response from signed URL endpoint');
+      }
+
+      const { uploadUrl: directUploadUrl, fileId } = signedUrlData;
 
       // Upload the file directly to Google Drive
+      console.log('Uploading file to signed URL...');
       const uploadResponse = await fetch(directUploadUrl, {
         method: 'PUT',
         body: file,
@@ -69,21 +84,39 @@ const uploadFileToDrive = async (file: File) => {
         },
       });
 
+      console.log('Upload response status:', uploadResponse.status);
+      
       if (!uploadResponse.ok) {
-        throw new Error('Direct upload to Google Drive failed');
+        const errorText = await uploadResponse.text();
+        console.error('Direct upload failed:', errorText);
+        throw new Error(`Direct upload to Google Drive failed: ${errorText}`);
       }
 
       // Get the file URL
+      console.log('Getting public file URL...');
       const fileDataResponse = await fetch(`${uploadUrl}/${fileId}`, {
-        method: 'GET'
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
+      console.log('File data response status:', fileDataResponse.status);
+      
       if (!fileDataResponse.ok) {
-        throw new Error('Failed to get file URL after upload');
+        const errorData = await fileDataResponse.json();
+        console.error('Failed to get file URL:', errorData);
+        throw new Error(`Failed to get file URL: ${errorData.message || 'Unknown error'}`);
       }
 
-      const { fileUrl } = await fileDataResponse.json();
-      return fileUrl;
+      const fileData = await fileDataResponse.json();
+      console.log('File data:', fileData);
+
+      if (!fileData.success || !fileData.fileUrl) {
+        throw new Error('Invalid response from file URL endpoint');
+      }
+
+      return fileData.fileUrl;
     }
     
     // For files under Vercel's limit, use the existing method
