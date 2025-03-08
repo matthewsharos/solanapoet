@@ -164,8 +164,8 @@ const Requests: React.FC = () => {
       console.log('Submitting art request to Google Sheets:', formData);
       
       const sheetsUrl = process.env.NODE_ENV === 'production'
-        ? 'https://solanapoet.vercel.app/api/sheets'
-        : '/api/sheets';
+        ? 'https://solanapoet.vercel.app/api/sheets/append'
+        : '/api/sheets/append';
       console.log('Sending Sheets request to:', sheetsUrl);
 
       const sheetsPayload = {
