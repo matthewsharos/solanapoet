@@ -775,23 +775,32 @@ const Market: React.FC = () => {
 
   // Filter NFTs based on search term, collection, and ownership
   const filterNFTs = (nfts: NFT[], searchTerm: string, selectedCollection: string): NFT[] => {
-    const collectionAddresses = collections
-      .filter(c => c.name === selectedCollection)
-      .map(c => c.address);
+    // Get all collection addresses for the selected collection name
+    const collectionAddresses = selectedCollection 
+      ? consolidatedCollections.find(c => c.name === selectedCollection)?.addresses || []
+      : [];
       
     const searchLower = searchTerm.toLowerCase();
     
     return nfts.filter(nft => {
       const nftName = nft.name?.toLowerCase() || '';
       const collectionName = nft.collectionName?.toLowerCase() || '';
+      
+      // Check if the NFT matches the search term
       const matchesSearch = searchTerm === '' || 
         nftName.includes(searchLower) || 
         collectionName.includes(searchLower);
       
+      // Check if the NFT matches the selected collection
+      // If no collection is selected, all NFTs match
+      // If a collection is selected, the NFT matches if:
+      // 1. Its collectionAddress is in the list of addresses for the selected collection name
+      // 2. Or its collectionName exactly matches the selected collection name
       const matchesCollection = selectedCollection === '' || 
         collectionAddresses.includes(nft.collectionAddress || '') ||
-        nft.collectionName === selectedCollection; // Exact match with collection name
+        nft.collectionName === selectedCollection;
       
+      // Check if the NFT matches the ownership filter
       const matchesOwner = !showMyNFTs || (
         connected && 
         wallet?.publicKey && 
@@ -1003,7 +1012,25 @@ const Market: React.FC = () => {
                 <Select
                   value={selectedCollection}
                   label="Collection"
-                  onChange={(e) => setSelectedCollection(e.target.value)}
+                  onChange={(e) => {
+                    const selected = e.target.value;
+                    console.log(`Collection selected: "${selected}"`);
+                    
+                    if (selected) {
+                      const selectedCollectionInfo = consolidatedCollections.find(c => c.name === selected);
+                      console.log('Selected collection addresses:', selectedCollectionInfo?.addresses);
+                      
+                      // Count how many NFTs match this collection
+                      const matchingNFTs = nfts.filter(nft => 
+                        selectedCollectionInfo?.addresses.includes(nft.collectionAddress || '') || 
+                        nft.collectionName === selected
+                      );
+                      console.log(`Found ${matchingNFTs.length} NFTs matching collection "${selected}"`);
+                    }
+                    
+                    setSelectedCollection(selected);
+                    setPage(1); // Reset to first page when changing collection
+                  }}
                   MenuProps={{
                     PaperProps: {
                       style: {
