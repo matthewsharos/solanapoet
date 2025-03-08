@@ -260,6 +260,20 @@ const WalletButtonWrapper = styled(Box)(({ theme }) => ({
   },
   '& .wallet-adapter-button-trigger': {
     backgroundColor: '#e8e8e8',
+    '&::after': {
+      content: '"CONNECT"',
+      display: 'inline',
+    },
+    '& .wallet-adapter-button-start-icon': {
+      marginRight: 0,
+    },
+    '& .wallet-adapter-button-end-icon': {
+      marginLeft: 4,
+      marginRight: 0,
+    },
+    '& > *:not(.wallet-adapter-button-start-icon):not(.wallet-adapter-button-end-icon)': {
+      display: 'none',
+    },
   },
   '& .wallet-adapter-dropdown-list': {
     backgroundColor: '#f8f5e6',
