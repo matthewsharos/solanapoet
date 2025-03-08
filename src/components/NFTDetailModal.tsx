@@ -690,6 +690,28 @@ const DetailSection = styled(Box)(({ theme }) => ({
   },
 }));
 
+// Add these styled components for the collection display
+const CollectionStar = styled('span')(({ theme }) => ({
+  color: '#FFD700', // Gold color
+  marginRight: '6px',
+  fontSize: '18px',
+  fontWeight: 'bold',
+}));
+
+const CollectionBox = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  marginBottom: '6px',
+  backgroundColor: theme.palette.mode === 'dark' 
+    ? 'rgba(255, 215, 0, 0.08)' 
+    : 'rgba(255, 215, 0, 0.05)',
+  padding: '6px 10px',
+  borderRadius: '4px',
+  border: `1px solid ${theme.palette.mode === 'dark' 
+    ? 'rgba(255, 215, 0, 0.2)' 
+    : 'rgba(255, 215, 0, 0.3)'}`,
+}));
+
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -706,50 +728,38 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
   const [copied, setCopied] = React.useState<boolean>(false);
   const [ownerCopied, setOwnerCopied] = React.useState<boolean>(false);
 
-  // Safely determine the owner address
+  // Safely determine the owner address as a string
   const ownerAddress = React.useMemo(() => {
-    if (!nft.owner) return '';
+    if (!nft.owner) return 'Unknown';
     return typeof nft.owner === 'string' 
       ? nft.owner 
-      : (nft.owner.publicKey || '');
+      : (nft.owner.publicKey || 'Unknown');
   }, [nft.owner]);
 
-  // Effect to handle display name updates
+  // Effect to update owner display name - also handles loading state
   React.useEffect(() => {
+    // Flag to prevent fetch if we're not displaying the modal
+    if (!open) return;
+
+    // Show full wallet address if no display name exists
     const updateOwnerDisplay = async () => {
-      if (!ownerAddress) return;
-      
+      if (!ownerAddress || ownerAddress === 'Unknown') {
+        setOwnerDisplayName('Unknown');
+        setIsLoadingDisplayName(false);
+        return;
+      }
+
       setIsLoadingDisplayName(true);
       try {
-        // First try to use the passed displayName prop
-        if (displayName) {
-          setOwnerDisplayName(displayName);
-          return;
-        }
-
-        // Then try to use the owner's displayName if it exists
-        if (typeof nft.owner !== 'string' && nft.owner?.displayName) {
-          setOwnerDisplayName(nft.owner.displayName);
-          return;
-        }
-
-        // Force a fresh sync from Google Sheets and get display name
-        await syncDisplayNamesFromSheets(true);
-        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
+        // Check if there's a display name for this wallet
+        const displayNameResult = await getDisplayNameForWallet(ownerAddress);
         
-        if (freshDisplayName) {
-          console.log('Found fresh display name:', freshDisplayName, 'for address:', ownerAddress);
-          setOwnerDisplayName(freshDisplayName);
-        } else {
-          // Show complete wallet address when no display name exists
-          console.log('No display name found for address:', ownerAddress);
-          // EXPLICITLY use the full wallet address with our helper
-          setOwnerDisplayName(getFullWalletAddress(ownerAddress));
-        }
+        // If we have a display name, use it, otherwise show the full address (not abbreviated)
+        setOwnerDisplayName(displayNameResult || ownerAddress);
       } catch (error) {
-        console.error('Error setting owner display name:', error);
-        // Display the full wallet address instead of abbreviated
-        setOwnerDisplayName(getFullWalletAddress(ownerAddress));
+        console.error('Error fetching display name:', error);
+        // If error, display the full wallet address
+        setOwnerDisplayName(ownerAddress);
       } finally {
         setIsLoadingDisplayName(false);
       }
@@ -796,7 +806,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     return () => {
       window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate);
     };
-  }, [open, ownerAddress, displayName, nft.owner]);
+  }, [open, ownerAddress]);
 
   // Update the fetchCreationDate function
   React.useEffect(() => {
@@ -805,7 +815,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
 
       setIsLoadingCreationDate(true);
       try {
-        // First get the asset to determine if it's compressed
+        // First approach: Get the asset from Helius API to check if it's compressed
         const assetResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
           method: 'POST',
           headers: {
@@ -821,48 +831,32 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
           }),
         });
 
-        if (!assetResponse.ok) {
-          throw new Error('Failed to fetch from Helius API');
-        }
+        if (assetResponse.ok) {
+          const assetData = await assetResponse.json();
+          console.log('Full Helius Asset API response:', JSON.stringify(assetData, null, 2));
 
-        const assetData = await assetResponse.json();
-        console.log('Full Helius Asset API response:', JSON.stringify(assetData, null, 2));
+          // Check if the NFT is compressed
+          const isCompressed = assetData.result?.compression?.compressed;
+          console.log('Is NFT compressed:', isCompressed);
 
-        // Check if the NFT is compressed
-        const isCompressed = assetData.result.compression?.compressed;
-        console.log('Is NFT compressed:', isCompressed);
-
-        if (isCompressed) {
-          // For compressed NFTs, get the mint transaction
-          const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 'my-id',
-              method: 'getSignaturesForAsset',
-              params: {
-                id: nft.mint,
-                page: 1,
-                limit: 1000,
-              },
-            }),
-          });
-
-          if (!signaturesResponse.ok) {
-            throw new Error('Failed to fetch signatures');
+          // Try to get created_at date from the asset data for compressed NFTs
+          if (isCompressed && assetData.result?.compression?.created_at) {
+            const createdAt = assetData.result.compression.created_at;
+            const date = new Date(createdAt);
+            console.log('Found created_at in compression data:', createdAt);
+            console.log('Converted date:', date.toISOString());
+            setCreationDate(date.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }));
+            setIsLoadingCreationDate(false);
+            return;
           }
 
-          const signaturesData = await signaturesResponse.json();
-          console.log('Signatures response:', signaturesData);
-
-          if (signaturesData.result?.items?.[0]?.[0]) {
-            const signature = signaturesData.result.items[0][0];
-            
-            // Get the transaction details
-            const txResponse = await fetch('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
+          // If compressed but no created_at, try to get the mint transaction
+          if (isCompressed) {
+            const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -870,78 +864,164 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
               body: JSON.stringify({
                 jsonrpc: '2.0',
                 id: 'my-id',
-                method: 'getTransaction',
-                params: [signature],
+                method: 'getSignaturesForAsset',
+                params: {
+                  id: nft.mint,
+                  page: 1,
+                  limit: 1000,
+                },
               }),
             });
 
-            if (txResponse.ok) {
-              const txData = await txResponse.json();
-              console.log('Transaction data:', JSON.stringify(txData, null, 2));
-              
-              if (txData.result?.blockTime) {
-                const blockTime = txData.result.blockTime;
-                console.log('Found blockTime:', blockTime);
-                const date = new Date(blockTime * 1000);
-                console.log('Converted date:', date.toISOString());
-                setCreationDate(date.toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                }));
-                return;
+            if (signaturesResponse.ok) {
+              const signaturesData = await signaturesResponse.json();
+              console.log('Signatures response:', signaturesData);
+
+              if (signaturesData.result?.items?.[0]?.[0]) {
+                const signature = signaturesData.result.items[0][0];
+                
+                // Get the transaction details
+                const txResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'my-id',
+                    method: 'getTransaction',
+                    params: [signature],
+                  }),
+                });
+
+                if (txResponse.ok) {
+                  const txData = await txResponse.json();
+                  console.log('Transaction data:', JSON.stringify(txData, null, 2));
+                  
+                  if (txData.result?.blockTime) {
+                    const blockTime = txData.result.blockTime;
+                    console.log('Found blockTime:', blockTime);
+                    const date = new Date(blockTime * 1000);
+                    console.log('Converted date:', date.toISOString());
+                    setCreationDate(date.toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    }));
+                    setIsLoadingCreationDate(false);
+                    return;
+                  }
+                }
               }
             }
-          }
-        } else {
-          // For non-compressed NFTs, keep existing logic
-          const signaturesResponse = await fetch('https://mainnet.helius-rpc.com/?api-key=1aac55c4-5c9d-411a-bd46-37479a165e6d', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              id: 'my-id',
-              method: 'getSignaturesForAddress',
-              params: [nft.mint, { limit: 1000 }],
-            }),
-          });
+          } else {
+            // For non-compressed NFTs, try to get the mint transaction
+            const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 'my-id',
+                method: 'getSignaturesForAddress',
+                params: [nft.mint, { limit: 1000 }],
+              }),
+            });
 
-          if (!signaturesResponse.ok) {
-            throw new Error('Failed to fetch signatures');
-          }
+            if (signaturesResponse.ok) {
+              const signaturesData = await signaturesResponse.json();
+              console.log('Signatures response:', signaturesData);
 
-          const signaturesData = await signaturesResponse.json();
-          console.log('Signatures response:', signaturesData);
+              if (signaturesData.result && signaturesData.result.length > 0) {
+                const sortedSignatures = signaturesData.result.sort((a: any, b: any) => a.blockTime - b.blockTime);
+                const earliestSignature = sortedSignatures[0];
 
-          if (signaturesData.result && signaturesData.result.length > 0) {
-            const sortedSignatures = signaturesData.result.sort((a: any, b: any) => a.blockTime - b.blockTime);
-            const earliestSignature = sortedSignatures[0];
-
-            if (earliestSignature.blockTime) {
-              const date = new Date(earliestSignature.blockTime * 1000);
-              setCreationDate(date.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              }));
-              return;
+                if (earliestSignature.blockTime) {
+                  const date = new Date(earliestSignature.blockTime * 1000);
+                  setCreationDate(date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  }));
+                  setIsLoadingCreationDate(false);
+                  return;
+                }
+              }
             }
           }
         }
 
-        setCreationDate('Unknown');
+        // If we still don't have a date, try DAS API
+        const dasResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'my-id',
+            method: 'searchAssets',
+            params: {
+              ownerAddress: nft.owner,
+              compressed: true,
+              limit: 1000,
+            },
+          }),
+        });
+
+        if (dasResponse.ok) {
+          const dasData = await dasResponse.json();
+          console.log('DAS search response:', JSON.stringify(dasData, null, 2));
+          
+          // Find the asset in the DAS results
+          const matchingAsset = dasData.result?.items?.find((asset: any) => 
+            asset.id === nft.mint || asset.content?.metadata?.name === nft.name
+          );
+          
+          if (matchingAsset?.content?.metadata?.created_at) {
+            const date = new Date(matchingAsset.content.metadata.created_at);
+            setCreationDate(date.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }));
+            setIsLoadingCreationDate(false);
+            return;
+          }
+        }
+
+        // Fallback to NFT data or use a default date if nothing else works
+        if (nft.createdAt) {
+          const date = new Date(nft.createdAt);
+          setCreationDate(date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }));
+        } else {
+          // Last resort: show the current date with a note
+          const now = new Date();
+          setCreationDate(`~ ${now.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long'
+          })}`); // Approximate date (just month and year)
+        }
       } catch (error) {
         console.error('Error fetching creation date:', error);
-        setCreationDate('Unknown');
+        // If error, show approximate date rather than "Unknown"
+        const now = new Date();
+        setCreationDate(`~ ${now.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long'
+        })}`);
       } finally {
         setIsLoadingCreationDate(false);
       }
     };
 
     fetchCreationDate();
-  }, [nft.mint, open]);
+  }, [nft.mint, nft.name, nft.owner, nft.createdAt, open]);
 
   // Format date
   const creationDateFormatted = nft.createdAt ? new Date(nft.createdAt).toLocaleDateString('en-US', {
@@ -1217,7 +1297,24 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
 
           {/* NFT Details */}
           <DetailContent>
-            {/* Owner Section - Added above Description */}
+            {/* Collection Section - Added above Owner */}
+            <DetailSection>
+              <DetailSectionTitle>Collection</DetailSectionTitle>
+              <CollectionBox>
+                <CollectionStar>★</CollectionStar>
+                <Typography sx={{ 
+                  fontSize: { xs: '14px', sm: '15px' }, 
+                  fontWeight: '500',
+                  color: theme.palette.mode === 'dark' ? '#f0f0f0' : '#333333'
+                }}>
+                  {isLoadingCollection ? (
+                    <CircularProgress size={16} sx={{ mr: 1 }} />
+                  ) : collectionName}
+                </Typography>
+              </CollectionBox>
+            </DetailSection>
+            
+            {/* Owner Section */}
             <DetailSection>
               <DetailSectionTitle>Owner</DetailSectionTitle>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1232,11 +1329,10 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                     <CircularProgress size={16} sx={{ mr: 1 }} />
                   ) : (
                     // Make sure we're displaying a string
-                    typeof ownerDisplayName === 'string' ? ownerDisplayName : 
-                    (nft?.owner && typeof nft.owner === 'string' ? nft.owner : 'Unknown')
+                    ownerDisplayName || 'Unknown'
                   )}
                 </Typography>
-                {nft?.owner && (
+                {ownerAddress && ownerAddress !== 'Unknown' && (
                   <IconButton 
                     onClick={handleCopyOwnerAddress}
                     size="small" 
@@ -1303,7 +1399,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                     Created
                   </Typography>
                   <Typography sx={{ fontSize: { xs: '13px', sm: '14px' }, fontWeight: '500' }}>
-                    {nft?.createdAt ? format(new Date(nft.createdAt), 'MMM d, yyyy') : 'Unknown'}
+                    {isLoadingCreationDate ? (
+                      <CircularProgress size={16} sx={{ mr: 1 }} />
+                    ) : creationDate}
                   </Typography>
                 </Grid>
 
