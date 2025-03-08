@@ -235,9 +235,13 @@ const MonkeyImage = styled('img')(({ theme }) => ({
   cursor: 'pointer',
   width: '32px',
   height: '32px',
-  transition: 'transform 0.2s',
+  transition: 'transform 0.2s, opacity 0.2s',
   '&:hover': {
     transform: 'scale(1.1)',
+  },
+  '&[data-connected="false"]': {
+    cursor: 'not-allowed',
+    opacity: 0.6,
   },
 }));
 
@@ -313,8 +317,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const handleMonkeyClick = () => {
-    if (connected) {
+    if (connected && publicKey) {
+      console.log('Opening display name editor');
       setShowNameEditor(true);
+    } else {
+      console.log('Wallet not connected');
     }
   };
 
@@ -380,9 +387,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           >
             <MonkeyContainer>
               <MonkeyImage 
-                src={MONKEY_IMAGE_URL}
+                src={isDarkMode ? DARK_MONKEY_IMAGE_URL : MONKEY_IMAGE_URL}
                 alt="Set Display Name" 
-                onClick={handleMonkeyClick} 
+                onClick={handleMonkeyClick}
+                data-connected={connected}
                 className="monkey-icon"
               />
             </MonkeyContainer>
@@ -417,7 +425,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Display name editor */}
       <DisplayNameEditor
         open={showNameEditor}
-        onClose={() => setShowNameEditor(false)}
+        onClose={() => {
+          console.log('Closing display name editor');
+          setShowNameEditor(false);
+        }}
       />
     </Box>
   );
