@@ -265,7 +265,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   // Effect to handle display name updates
   React.useEffect(() => {
     const updateOwnerDisplay = async () => {
-      if (!ownerAddress || isUpdatingDisplayName) return;
+      if (!ownerAddress) return;
 
       try {
         setIsUpdatingDisplayName(true);
@@ -283,9 +283,6 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
         }
 
         console.log(`VintageCard: Getting fresh display name for ${ownerAddress}`);
-        
-        // Clear cache for this address to force network fetch
-        await clearDisplayNameForWallet(ownerAddress);
         
         // Force a fresh fetch from the server
         const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
@@ -320,31 +317,48 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
       if (!event.detail?.displayNames || !ownerAddress) return;
       
+      // Get the updated display name for this owner address
+      const updatedName = event.detail.displayNames[ownerAddress];
+      
+      // Check if it's a direct update for this owner's address
+      const isDirectUpdate = event.detail.displayNames.__updatedAddress === ownerAddress;
+      
       // Check if it's a forced refresh
       if (event.detail.displayNames.__forceRefresh) {
         console.log('Forced refresh detected in VintageCard, clearing display name cache');
-        setIsUpdatingDisplayName(true);
         
-        // If this is the card for the updated address, prioritize the update
-        if (event.detail.displayNames.__updatedAddress === ownerAddress) {
-          console.log(`Direct update for this card's owner: ${ownerAddress}`);
-          // Update immediately, then the regular flow will run anyway
-          const newName = event.detail.displayNames[ownerAddress];
-          if (typeof newName === 'string') {
-            setOwnerDisplayName(newName);
+        // If this is a direct update for this card's owner, update immediately
+        if (isDirectUpdate && typeof updatedName === 'string') {
+          console.log(`Direct update for this card's owner: ${ownerAddress} - New name: ${updatedName}`);
+          setOwnerDisplayName(updatedName);
+          
+          // Clear any pending update timeouts
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
           }
+          
+          // Force a re-fetch after a short delay to ensure UI is updated
+          updateTimeoutRef.current = setTimeout(() => {
+            clearDisplayNameForWallet(ownerAddress);
+            updateOwnerDisplay();
+          }, 100);
+          return;
         }
         
-        // Do a full update
-        setTimeout(() => {
+        // For non-direct updates, still refresh but with a slightly longer delay
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current);
+        }
+        
+        updateTimeoutRef.current = setTimeout(() => {
           updateOwnerDisplay();
-        }, 100);
+        }, 200);
         return;
       }
       
-      // Regular update for a specific address
-      const updatedName = event.detail.displayNames[ownerAddress];
+      // Regular update for a specific address - update immediately if we have a value
       if (typeof updatedName === 'string') {
+        console.log(`Regular update for ${ownerAddress}: ${updatedName}`);
         setOwnerDisplayName(updatedName);
       }
     };
@@ -353,7 +367,11 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
 
     return () => {
+      // Clean up event listener and any pending timeouts
       window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
     };
   }, [ownerAddress, displayName, nft.owner]);
 

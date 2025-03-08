@@ -13,6 +13,12 @@ import {
 import { useWalletContext } from '../contexts/WalletContext';
 import { formatWalletAddress } from '../utils/helpers';
 import { displayNames } from '../api/client';
+import { 
+  getDisplayNameForWallet, 
+  setDisplayNameForWallet 
+} from '../utils/displayNames';
+
+const DEFAULT_PROFILE_IMAGE = '/images/default-profile.png';
 
 interface DisplayNameEditorProps {
   open: boolean;
@@ -106,8 +112,23 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
       });
       window.dispatchEvent(event);
       
-      // Now update on the server
-      await displayNames.update(walletAddress, displayName.trim());
+      // Now update on the server and in the local cache
+      await setDisplayNameForWallet(walletAddress, displayName.trim());
+      
+      // Dispatch a second update event to make sure all components are in sync
+      setTimeout(() => {
+        const refreshEvent = new CustomEvent('displayNamesUpdated', {
+          detail: {
+            displayNames: {
+              [walletAddress]: displayName.trim(),
+              __forceRefresh: true,
+              __updatedAddress: walletAddress,
+              __timestamp: Date.now()
+            }
+          }
+        });
+        window.dispatchEvent(refreshEvent);
+      }, 300);
       
       setSuccess(true);
       setError(null);
