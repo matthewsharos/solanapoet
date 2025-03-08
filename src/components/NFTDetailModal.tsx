@@ -38,6 +38,12 @@ const DetailDialog = styled(Dialog)(({ theme }) => ({
     background: `linear-gradient(135deg, #f8f4ea 0%, #e8ddc8 100%)`,
     position: 'relative',
     
+    // Improved mid-size screen experience
+    [theme.breakpoints.between('md', 'lg')]: {
+      maxWidth: '92vw',
+      width: '92vw',
+    },
+    
     // Tablet optimizations (keep left-right layout but adjust dimensions)
     [theme.breakpoints.between('sm', 'md')]: {
       maxWidth: '95vw',
@@ -116,13 +122,19 @@ const ArtworkFrame = styled(Box)(({ theme }) => ({
 const ArtworkMatting = styled(Box)(({ theme }) => ({
   backgroundColor: '#fff',
   padding: '12px',
-  boxSizing: 'border-box',
-  borderRadius: '2px',
+  borderRadius: '1px',
+  boxShadow: 'inset 0 0 6px rgba(0,0,0,0.2)',
   width: '100%',
   height: '100%',
   display: 'flex',
-  alignItems: 'center',
   justifyContent: 'center',
+  alignItems: 'center',
+  overflow: 'hidden',
+  position: 'relative',
+  // Less padding on smaller screens for more image space
+  [theme.breakpoints.down('md')]: {
+    padding: '8px',
+  }
 }));
 
 const NFTImage = styled('img')({
@@ -130,6 +142,10 @@ const NFTImage = styled('img')({
   maxHeight: '100%',
   objectFit: 'contain',
   display: 'block',
+  transition: 'transform 0.2s ease-out',
+  '&:hover': {
+    transform: 'scale(1.03)',
+  }
 });
 
 const DetailContent = styled(Box)(({ theme }) => ({
@@ -587,6 +603,15 @@ const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
   overflow: 'auto',
   height: '100%',
   gap: theme.spacing(3),
+  // Use more dynamic sizing for mid-size screens
+  [theme.breakpoints.between('md', 'lg')]: {
+    gap: theme.spacing(2),
+  },
+  // Adjust for small tablets
+  [theme.breakpoints.between('sm', 'md')]: {
+    gap: theme.spacing(2),
+    padding: theme.spacing(2),
+  },
   // Vertical layout for mobile (image top, details bottom)
   [theme.breakpoints.down('sm')]: {
     flexDirection: 'column',
@@ -1015,11 +1040,20 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
           display: 'flex', 
           flexDirection: 'column',
           position: 'relative',
-          width: isMobile ? '100%' : isTablet ? '50%' : '55%',
+          // Progressive width based on screen size
+          width: isMobile 
+            ? '100%' 
+            : isTablet 
+              ? '60%' // Increased from 50% to 60% on tablet
+              : {
+                  md: '65%', // More width on medium screens
+                  lg: '60%', // Slightly less on large
+                  xl: '55%'  // Back to original on xl
+                },
           flex: isMobile ? 'none' : 1,
-          maxHeight: isMobile ? '40vh' : 'none', // Limit image height on mobile
+          maxHeight: isMobile ? '40vh' : 'none',
           ...(isMobile && {
-            marginBottom: '10px', // Add space between image and details on mobile
+            marginBottom: '10px',
           })
         }}>
           <ArtworkFrame sx={{ 
@@ -1042,10 +1076,23 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
 
         {/* Details - right on desktop/tablet, below image on mobile */}
         <DetailContent sx={{ 
-          width: isMobile ? '100%' : isTablet ? '50%' : '45%', 
-          height: isMobile ? 'auto' : '100%', // Auto height on mobile for full scrolling
-          flex: isMobile ? 1 : 'none', // Flex:1 on mobile to take remaining space
-          padding: isMobile ? theme.spacing(2) : theme.spacing(4),
+          // Progressive width based on screen size, complementing the image width
+          width: isMobile 
+            ? '100%' 
+            : isTablet 
+              ? '40%' // Decreased from 50% to 40% on tablet
+              : {
+                  md: '35%', // Less width on medium screens
+                  lg: '40%', // Slightly more on large
+                  xl: '45%'  // Back to original on xl
+                },
+          height: isMobile ? 'auto' : '100%',
+          flex: isMobile ? 1 : 'none',
+          padding: isMobile 
+            ? theme.spacing(2) 
+            : isTablet 
+              ? theme.spacing(2) // Less padding on tablet
+              : theme.spacing(3), // Reduced padding on all sizes
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
