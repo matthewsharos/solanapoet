@@ -53,6 +53,13 @@ const StyledCard = styled(Card)(({ theme }) => ({
     transform: 'translateX(-50%)',
     position: 'relative', // Needed for left/transform to work
     marginRight: '1px', // Increased right margin (from 8px to 12px)
+    // Reduce hover animation on mobile to prevent bouncing
+    '&:hover': {
+      transform: 'translateX(-50%) translateY(-2px)', // Much smaller lift and preserve horizontal position
+      boxShadow: '0 8px 16px rgba(0,0,0,0.15)', // Less dramatic shadow
+    },
+    // More stable transition on mobile
+    transition: 'all 0.2s ease',
   }
 }));
 
@@ -97,7 +104,7 @@ const CardImageContainer = styled(Box)(({ theme }) => ({
   }
 }));
 
-const CardImage = styled('img')({
+const CardImage = styled('img')(({ theme }) => ({
   maxWidth: '100%',
   maxHeight: '100%',
   objectFit: 'contain',
@@ -106,7 +113,14 @@ const CardImage = styled('img')({
   '&:hover': {
     transform: 'scale(1.05)',
   },
-});
+  // Reduce animation on mobile
+  [theme.breakpoints.down('sm')]: {
+    transition: 'transform 0.3s ease, opacity 0.2s ease-in-out',
+    '&:hover': {
+      transform: 'scale(1.02)', // Reduced zoom effect
+    },
+  }
+}));
 
 const LoadingImage = styled('div')({
   position: 'absolute',
@@ -198,11 +212,15 @@ const TypewriterKeyButton = styled(IconButton)(({ theme }) => ({
   '& svg': {
     fontSize: '16px',
   },
-  '&.Mui-disabled': {
-    backgroundColor: '#999',
-    color: '#ccc',
-    boxShadow: 'none',
-    transform: 'none',
+  // Reduced animation on mobile
+  [theme.breakpoints.down('sm')]: {
+    transition: 'all 0.05s ease',
+    '&:hover': {
+      transform: 'translateY(0)', // No movement on hover
+    },
+    '&:active': {
+      transform: 'translateY(1px)', // Less movement on press
+    }
   }
 }));
 
