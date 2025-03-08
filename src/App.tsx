@@ -14,7 +14,7 @@ import Mint from './pages/Mint';
 import Requests from './pages/Requests';
 
 // Import wallet adapter CSS
-require('@solana/wallet-adapter-react-ui/styles.css');
+import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Create a vintage-themed MUI theme
 const theme = createTheme({
