@@ -337,7 +337,7 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const { publicKey, connected, isAuthorizedMinter } = useWalletContext();
-  const { disconnect } = useWallet();
+  const { disconnect, connect } = useWallet();
   const { isDarkMode } = useTheme();
   
   const [isInkSqueezing, setIsInkSqueezing] = useState(false);
@@ -361,6 +361,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       console.log('Wallet not connected');
     }
   };
+
+  useEffect(() => {
+    if (!connected) {
+      const autoConnect = async () => {
+        try {
+          await connect();
+        } catch (error) {
+          console.error('Failed to auto-connect:', error);
+        }
+      };
+      autoConnect();
+    }
+  }, [connect, connected]);
 
   const handleWalletClick = async (event: React.MouseEvent) => {
     if (connected) {
