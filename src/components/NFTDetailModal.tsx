@@ -160,10 +160,10 @@ const NFTImage = styled('img')(({ theme }) => ({
   },
   [theme.breakpoints.down('sm')]: {
     width: '100%',
-    height: 'auto',
+    height: 'auto', // Ensures proper aspect ratio
     objectFit: 'contain',
     maxWidth: '100%',
-    maxHeight: 'none',
+    maxHeight: 'none', // No maximum height constraint
   }
 }));
 
@@ -193,6 +193,8 @@ const ArtworkMatting = styled(Box)(({ theme }) => ({
   [theme.breakpoints.down('sm')]: {
     padding: '4px',
     boxShadow: 'inset 0 0 3px rgba(0,0,0,0.15)',
+    height: 'auto', // Auto height for natural sizing
+    minHeight: '200px', // Ensure there's at least some height
   }
 }));
 
@@ -1043,9 +1045,9 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     if (isMobile) {
       return {
         width: '100%',
-        height: 'auto', // Use auto height to maintain image aspect ratio
-        padding: 0.5, // Keep minimal padding
-        marginTop: '10px', // Increased from 8px to 10px
+        height: 'auto', // Auto height to accommodate full image
+        padding: 0.5,
+        marginTop: '10px',
       };
     }
     return {
@@ -1217,7 +1219,7 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             ? 'auto'
             : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
           maxHeight: isMobile 
-            ? '40vh' // Reduced from 50vh to 40vh for better mobile scrolling
+            ? 'none' // Removed height constraint to show full image
             : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
           ...(isMobile && {
             marginBottom: '20px', // Increased space between image and details on mobile
@@ -1227,6 +1229,8 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             flex: 1, 
             height: isMobile ? 'auto' : 'calc(100% - 20px)',
             maxHeight: isMobile ? 'none' : 'calc(95vh - 100px)',
+            display: 'flex',
+            flexDirection: 'column',
             '&::before': {
               top: isMobile ? -3 : -10,
               left: isMobile ? -3 : -10,
