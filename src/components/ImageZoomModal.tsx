@@ -7,7 +7,9 @@ import {
   useTheme,
   useMediaQuery,
   Box,
-  Slider
+  Slider,
+  Typography,
+  Fade
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
@@ -85,22 +87,52 @@ const ControlsContainer = styled(Box)(({ theme }) => ({
   },
 }));
 
+// Enhanced mobile-friendly close button
 const CloseButton = styled(IconButton)(({ theme }) => ({
   position: 'absolute',
   top: 16,
   right: 16,
   color: '#fff',
-  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  padding: 8,
-  zIndex: 10,
+  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  padding: 12,
+  zIndex: 100, // Higher z-index to always be on top
   '&:hover': {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
   },
   [theme.breakpoints.down('sm')]: {
-    top: 8,
-    right: 8,
+    top: 12,
+    right: 12,
+    padding: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
 }));
+
+// Mobile exit hint that appears when zoomed in
+const MobileExitHint = styled(Box)(({ theme }) => ({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  padding: theme.spacing(1.5),
+  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  color: 'white',
+  textAlign: 'center',
+  zIndex: 90, // High but below close button
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  gap: theme.spacing(1),
+}));
+
+// Background overlay that can be tapped to exit when not zoomed
+const BackgroundOverlay = styled(Box)({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 5, // Above the image but below controls
+});
 
 const StyledSlider = styled(Slider)({
   width: 120,
@@ -114,6 +146,8 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [startPos, setStartPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [showHint, setShowHint] = useState<boolean>(true);
+  const [lastTap, setLastTap] = useState<number>(0);
   const imageRef = useRef<HTMLImageElement>(null);
 
   // Reset zoom and position when modal opens
@@ -122,8 +156,28 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       setScale(1);
       setPosition({ x: 0, y: 0 });
       setIsDragging(false);
+      setShowHint(true);
+      
+      // Hide the hint after 3 seconds
+      const timer = setTimeout(() => {
+        setShowHint(false);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
     }
   }, [open]);
+
+  // Show hint when zoomed in
+  useEffect(() => {
+    if (scale > 1) {
+      setShowHint(true);
+      const timer = setTimeout(() => {
+        setShowHint(false);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [scale]);
 
   const handleZoomIn = () => {
     setScale((prev) => Math.min(prev + 0.25, 5));
@@ -160,6 +214,13 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         y: e.touches[0].clientY - position.y,
       });
     }
+    
+    // Handle double tap to exit when not zoomed
+    const now = Date.now();
+    if (scale === 1 && now - lastTap < 300) {
+      onClose();
+    }
+    setLastTap(now);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
@@ -206,13 +267,40 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       }
     }
   };
+  
+  // Handle background click/tap to exit when not zoomed in
+  const handleBackgroundClick = () => {
+    if (scale === 1) {
+      onClose();
+    }
+  };
 
   return (
     <ZoomDialog open={open} onClose={onClose} fullScreen>
       <ZoomDialogContent>
-        <CloseButton onClick={onClose}>
-          <CloseIcon />
+        {/* Enhanced close button */}
+        <CloseButton onClick={onClose} aria-label="Close zoom view">
+          <CloseIcon fontSize={isMobile ? "medium" : "large"} />
         </CloseButton>
+        
+        {/* Mobile hint that appears at the top */}
+        {isMobile && (
+          <Fade in={showHint} timeout={300}>
+            <MobileExitHint>
+              <Typography variant="body2">
+                {scale > 1 
+                  ? "Reset zoom or use ✕ to exit" 
+                  : "Tap image to exit, double-tap to zoom"}
+              </Typography>
+              <CloseIcon fontSize="small" />
+            </MobileExitHint>
+          </Fade>
+        )}
+        
+        {/* Background overlay that can be tapped to exit when not zoomed */}
+        {scale === 1 && (
+          <BackgroundOverlay onClick={handleBackgroundClick} />
+        )}
         
         <ImageContainer
           onMouseUp={handleMouseUp}
