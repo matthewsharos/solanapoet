@@ -31,24 +31,29 @@ async function getGoogleSheetsClient() {
 
 // Serverless function for appending values to Google Sheets
 export default async function handler(req, res) {
-  console.log('[serverless] Sheets endpoint called');
+  console.log('[serverless] Sheets endpoint called with method:', req.method);
   
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   // Handle OPTIONS request
   if (req.method === 'OPTIONS') {
+    console.log('[serverless] Handling OPTIONS request');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
+    console.log('[serverless] Method not allowed:', req.method);
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
   try {
+    // Log the incoming request body for debugging
+    console.log('[serverless] Request body:', req.body);
+
     // Get parameters from the request body
     const { spreadsheetId, range, valueInputOption = 'RAW', values } = req.body;
     
@@ -107,4 +112,4 @@ export default async function handler(req, res) {
       error: error.message
     });
   }
-} 
+}

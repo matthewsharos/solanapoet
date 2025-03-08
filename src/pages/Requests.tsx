@@ -17,7 +17,7 @@ import axios from 'axios';
 import ImageCarousel from '../components/ImageCarousel';
 import SubmissionAnimation from '../components/SubmissionAnimation';
 
-// Helper function to upload file to Google Drive
+// Helper function to upload file to Google Drive (unchanged)
 const uploadFileToDrive = async (file: File) => {
   try {
     const timestamp = Date.now();
@@ -27,7 +27,6 @@ const uploadFileToDrive = async (file: File) => {
     
     console.log('Uploading file to Google Drive:', fileName, 'size:', Math.round(file.size / 1024) + 'KB', 'type:', file.type);
     
-    // Stricter limit to account for FormData overhead (Vercel max is 4.5MB)
     const MAX_FILE_SIZE = 3.5 * 1024 * 1024; // 3.5MB
     if (file.size > MAX_FILE_SIZE) {
       throw new Error(`File is too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB due to server limits`);
@@ -119,27 +118,23 @@ const Requests: React.FC = () => {
       return;
     }
 
-    // Validate image file
     if (imageFile.size === 0) {
       setSubmitStatus('error');
       alert('The selected file appears to be empty.');
       return;
     }
 
-    // Check file type (allow only images)
     if (!imageFile.type.startsWith('image/')) {
       setSubmitStatus('error');
       alert('Please select an image file (JPEG, PNG, etc.).');
       return;
     }
 
-    // Show animation immediately
     setShowAnimation(true);
 
     try {
       console.log('Starting file upload process...');
       
-      // Upload image to Google Drive with error handling
       let imageUrl;
       try {
         imageUrl = await uploadFileToDrive(imageFile);
@@ -151,7 +146,6 @@ const Requests: React.FC = () => {
         return;
       }
 
-      // Only continue if we have an image URL
       if (!imageUrl) {
         setShowAnimation(false);
         setSubmitStatus('error');
@@ -159,7 +153,6 @@ const Requests: React.FC = () => {
         return;
       }
 
-      // Submit to Google Sheets through server endpoint
       const formData = {
         timestamp: new Date().toISOString(),
         requester_id: publicKey.toString(),
@@ -170,8 +163,13 @@ const Requests: React.FC = () => {
 
       console.log('Submitting art request to Google Sheets:', formData);
       
-      // Use the sheets.js API endpoint directly
-      const sheetsResponse = await axios.post('/api/sheets', {
+      // Use the sheets.js API endpoint directly with full URL for production
+      const sheetsUrl = process.env.NODE_ENV === 'production'
+        ? 'https://solanapoet.vercel.app/api/sheets'
+        : '/api/sheets';
+      console.log('Sending Sheets request to:', sheetsUrl);
+
+      const sheetsResponse = await axios.post(sheetsUrl, {
         spreadsheetId: '1A6kggkeDD2tpiUoSs5kqSVEINlsNLrZ6ne5azS2_sF0',
         range: 'art_requests!A:E',
         valueInputOption: 'RAW',
@@ -186,7 +184,6 @@ const Requests: React.FC = () => {
       
       console.log('Google Sheets submission response:', sheetsResponse.data);
       
-      // Reset form
       setImageFile(null);
       setXHandle('');
       setComment('');
@@ -196,7 +193,6 @@ const Requests: React.FC = () => {
       setShowAnimation(false);
       setSubmitStatus('error');
       
-      // Display more specific error information
       const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
       alert(`Error submitting request: ${errorMessage}. Please try again later.`);
     }
@@ -221,7 +217,6 @@ const Requests: React.FC = () => {
     <>
       <Container maxWidth="xl" sx={{ mt: 4 }}>
         <Grid container spacing={4}>
-          {/* Request Form */}
           <Grid item xs={12} md={6}>
             <FormContainer>
               <Typography variant="h4" sx={{ mb: 4, textAlign: 'center' }}>
@@ -303,7 +298,6 @@ const Requests: React.FC = () => {
             </FormContainer>
           </Grid>
 
-          {/* Example Gallery */}
           <Grid item xs={12} md={6}>
             <ImageCarousel />
           </Grid>
