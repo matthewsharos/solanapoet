@@ -617,9 +617,37 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
       updateOwnerDisplay();
     }
 
+    // Define a type for the display names update event
+    interface DisplayNamesUpdateEvent extends CustomEvent {
+      detail: {
+        displayNames: {
+          [key: string]: string | boolean | number | undefined;
+          __forceRefresh?: boolean;
+          __updatedAddress?: string;
+          __timestamp?: number;
+        }
+      };
+    }
+
     // Listen for display name updates
-    const handleDisplayNameUpdate = () => {
-      updateOwnerDisplay();
+    const handleDisplayNameUpdate = (event: Event) => {
+      const customEvent = event as DisplayNamesUpdateEvent;
+      console.log('Display name update event received in NFTDetailModal');
+      
+      // Check if it's a forced refresh (someone just updated their display name)
+      if (customEvent.detail?.displayNames?.__forceRefresh) {
+        console.log('Forced refresh detected, clearing owner display name cache');
+        setOwnerDisplayName(''); // Clear current display to show loading state
+        setIsLoadingDisplayName(true);
+        
+        // Use setTimeout to ensure UI refreshes before we start the async operation
+        setTimeout(() => {
+          updateOwnerDisplay();
+        }, 100);
+      } else {
+        // Regular update
+        updateOwnerDisplay();
+      }
     };
 
     window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate);

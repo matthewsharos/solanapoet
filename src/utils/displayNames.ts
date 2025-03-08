@@ -11,16 +11,73 @@ const CACHE_EXPIRY_KEY = 'wallet_display_names_expiry';
 const CACHE_EXPIRY_TIME = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 const ERROR_COOLDOWN_KEY = 'wallet_display_names_error_cooldown';
 const ERROR_COOLDOWN_TIME = 5 * 60 * 1000; // 5 minutes cooldown after error
+const CACHE_VERSION_KEY = 'wallet_display_names_version';
+const CURRENT_CACHE_VERSION = '1.2'; // Incremented to force cache refresh
 
 // Cache display names in memory
 let displayNamesCache: Map<string, string> = new Map();
 let isSyncInProgress = false;
+let lastCacheUpdate = 0;
+
+/**
+ * Define an interface for the display names update event detail
+ */
+interface DisplayNamesUpdateDetail {
+  [key: string]: string | boolean | number | undefined;
+  __forceRefresh?: boolean;
+  __updatedAddress?: string;
+  __timestamp?: number;
+}
+
+/**
+ * Clear all display names from localStorage and memory
+ */
+export const clearAllDisplayNames = (): void => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(CACHE_EXPIRY_KEY);
+    displayNamesCache = new Map();
+    lastCacheUpdate = 0;
+    console.log('Display names cache cleared');
+  } catch (error) {
+    console.error('Error clearing display names:', error);
+  }
+};
+
+/**
+ * Force refresh of the display names cache
+ */
+export const refreshDisplayNamesCache = async (): Promise<void> => {
+  console.log('Forcing refresh of display names cache');
+  clearAllDisplayNames();
+  await syncDisplayNamesFromSheets(true);
+  
+  // Update the last cache update timestamp
+  lastCacheUpdate = Date.now();
+  console.log('Display names cache refreshed at:', new Date(lastCacheUpdate).toISOString());
+};
+
+/**
+ * Check if cache needs to be reset due to version change
+ */
+const checkCacheVersion = (): void => {
+  try {
+    const storedVersion = localStorage.getItem(CACHE_VERSION_KEY);
+    if (storedVersion !== CURRENT_CACHE_VERSION) {
+      console.log(`Cache version changed (${storedVersion} -> ${CURRENT_CACHE_VERSION}), clearing old data`);
+      clearAllDisplayNames();
+      localStorage.setItem(CACHE_VERSION_KEY, CURRENT_CACHE_VERSION);
+    }
+  } catch (error) {
+    console.error('Error checking cache version:', error);
+  }
+};
 
 /**
  * Dispatch display name update event
- * @param names Updated display names map
+ * @param names Updated display names map with optional metadata
  */
-const dispatchDisplayNamesUpdate = (names: Record<string, string>) => {
+const dispatchDisplayNamesUpdate = (names: DisplayNamesUpdateDetail) => {
   window.dispatchEvent(new CustomEvent('displayNamesUpdated', {
     detail: { displayNames: names }
   }));
@@ -31,16 +88,56 @@ const dispatchDisplayNamesUpdate = (names: Record<string, string>) => {
  */
 const loadDisplayNamesFromStorage = (): Map<string, string> => {
   try {
+    // Check cache version first
+    checkCacheVersion();
+    
     const storedNames = localStorage.getItem(STORAGE_KEY);
     if (!storedNames) return new Map();
     
     const parsedNames = JSON.parse(storedNames) as Record<string, string>;
+    
+    // Filter out any old fallback names that might be cached
+    const knownFallbacks = ['Jack', 'Daniel', 'Mary'];
+    Object.keys(parsedNames).forEach(key => {
+      if (knownFallbacks.includes(parsedNames[key])) {
+        console.log(`Removing obsolete fallback display name "${parsedNames[key]}" for ${key}`);
+        delete parsedNames[key];
+      }
+    });
+    
     return new Map(Object.entries(parsedNames));
   } catch (error) {
     console.error('Error loading display names from localStorage:', error);
     return new Map();
   }
 };
+
+// Immediately run this once at import time to clean up any cached fallback display names
+(function cleanupOldFallbacks() {
+  try {
+    const storedNames = localStorage.getItem(STORAGE_KEY);
+    if (storedNames) {
+      const parsedNames = JSON.parse(storedNames) as Record<string, string>;
+      const knownFallbacks = ['Jack', 'Daniel', 'Mary'];
+      let changed = false;
+      
+      Object.keys(parsedNames).forEach(key => {
+        if (knownFallbacks.includes(parsedNames[key])) {
+          console.log(`[startup] Removing obsolete fallback display name "${parsedNames[key]}" for ${key}`);
+          delete parsedNames[key];
+          changed = true;
+        }
+      });
+      
+      if (changed) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedNames));
+        console.log('[startup] Cleaned up old fallback display names in cache');
+      }
+    }
+  } catch (e) {
+    // Ignore errors during cleanup
+  }
+})();
 
 /**
  * Save display names to localStorage
@@ -215,18 +312,29 @@ export const setDisplayNameForWallet = async (address: string, name: string): Pr
   if (!address || !name) return false;
   
   try {
+    console.log(`Setting display name for ${address} to "${name}"`);
+    
     // Update on the server
     await displayNames.update(address, name);
+    console.log(`Server-side update completed for ${address}`);
     
-    // Update in the local cache
+    // Force a complete cache refresh
+    await refreshDisplayNamesCache();
+    
+    // Also update the specific entry in case it's not in the refreshed data
     displayNamesCache.set(address, name);
-    
-    // Save to localStorage
     saveDisplayNamesToStorage(displayNamesCache);
     
-    // Notify components of the update
-    dispatchDisplayNamesUpdate(Object.fromEntries(displayNamesCache));
+    // Notify components of the update with special flag
+    const displayNamesObject = Object.fromEntries(displayNamesCache);
+    dispatchDisplayNamesUpdate({
+      ...displayNamesObject,
+      __forceRefresh: true, // Add special flag for components to clear their local state
+      __updatedAddress: address,
+      __timestamp: Date.now()
+    });
     
+    console.log(`Display name for ${address} has been set to "${name}" and cache has been refreshed`);
     return true;
   } catch (error) {
     console.error('Error setting display name:', error);

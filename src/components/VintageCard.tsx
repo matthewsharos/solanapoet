@@ -268,8 +268,31 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
       if (!event.detail?.displayNames || !ownerAddress) return;
       
+      // Check if it's a forced refresh
+      if (event.detail.displayNames.__forceRefresh) {
+        console.log('Forced refresh detected in VintageCard, clearing display name cache');
+        setIsUpdatingDisplayName(true);
+        
+        // If this is the card for the updated address, prioritize the update
+        if (event.detail.displayNames.__updatedAddress === ownerAddress) {
+          console.log(`Direct update for this card's owner: ${ownerAddress}`);
+          // Update immediately, then the regular flow will run anyway
+          const newName = event.detail.displayNames[ownerAddress];
+          if (typeof newName === 'string') {
+            setOwnerDisplayName(newName);
+          }
+        }
+        
+        // Do a full update
+        setTimeout(() => {
+          updateOwnerDisplay();
+        }, 100);
+        return;
+      }
+      
+      // Regular update for a specific address
       const updatedName = event.detail.displayNames[ownerAddress];
-      if (updatedName) {
+      if (typeof updatedName === 'string') {
         setOwnerDisplayName(updatedName);
       }
     };
