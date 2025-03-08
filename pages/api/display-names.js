@@ -33,11 +33,13 @@ async function getGoogleSheetsClient() {
 // Next.js API route handler
 export default async function handler(req, res) {
   console.log('[API] Display names endpoint called with method:', req.method);
+  console.log('[API] Query parameters:', req.query);
+  console.log('[API] Request body:', req.body);
   
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   // Handle OPTIONS request
@@ -180,9 +182,99 @@ export default async function handler(req, res) {
     }
   }
 
+  // Handle PUT request - Update display name for the address in query
+  if (req.method === 'PUT') {
+    try {
+      // Get address from query parameters
+      const { address } = req.query;
+      // Get displayName from request body
+      const { displayName } = req.body;
+      
+      console.log('[API] PUT request params:', { address, displayName });
+      
+      if (!address) {
+        return res.status(400).json({
+          success: false,
+          message: 'address is required in the query parameters'
+        });
+      }
+      
+      if (!displayName) {
+        return res.status(400).json({
+          success: false,
+          message: 'displayName is required in the request body'
+        });
+      }
+      
+      console.log(`[API] Updating display name for ${address} to: ${displayName}`);
+      
+      // Initialize sheets client
+      const sheets = await getGoogleSheetsClient();
+      const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+      
+      if (!spreadsheetId) {
+        throw new Error('GOOGLE_SHEETS_SPREADSHEET_ID not configured');
+      }
+      
+      // First, check if the address already has a display name
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'display_names!A:C',
+      });
+      
+      const rows = response.data.values || [];
+      const rowIndex = rows.findIndex(row => row[0] === address);
+      
+      const timestamp = new Date().toISOString();
+      
+      // If address not found, append a new row
+      if (rowIndex === -1) {
+        console.log(`[API] Adding new display name for ${address}`);
+        
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: 'display_names!A:C',
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [[address, displayName, timestamp]]
+          }
+        });
+      } 
+      // If address found, update the existing row
+      else {
+        console.log(`[API] Updating existing display name for ${address} at row ${rowIndex + 1}`);
+        
+        // +1 because sheets are 1-indexed and header row counts
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `display_names!A${rowIndex + 1}:C${rowIndex + 1}`,
+          valueInputOption: 'RAW',
+          requestBody: {
+            values: [[address, displayName, timestamp]]
+          }
+        });
+      }
+      
+      console.log(`[API] Successfully updated display name for ${address}`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Display name updated successfully',
+        displayName: displayName
+      });
+    } catch (error) {
+      console.error('[API] Error updating display name:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Error updating display name',
+        error: error.message
+      });
+    }
+  }
+
   // Handle unsupported methods
   return res.status(405).json({
     success: false,
-    message: `Method ${req.method} not allowed. Use GET, POST, or OPTIONS.`
+    message: `Method ${req.method} not allowed. Use GET, POST, PUT, or OPTIONS.`
   });
 } 
