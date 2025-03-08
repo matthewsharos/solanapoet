@@ -35,19 +35,22 @@ const StyledCard = styled(Card)(({ theme }) => ({
     background: 'linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 30%)',
     pointerEvents: 'none',
   },
-  // Reduce margins for mobile
+  // Optimize spacing for mobile
   [theme.breakpoints.down('sm')]: {
     margin: '0',
-    borderRadius: '6px',
+    borderRadius: '4px',
+    width: '98%', // Take up more width
+    marginLeft: 'auto',
+    marginRight: 'auto',
   }
 }));
 
 const CardTitleContainer = styled(Box)(({ theme }) => ({
   padding: theme.spacing(2, 2, 1, 2),
   borderBottom: '1px solid rgba(139, 69, 19, 0.2)',
-  // Reduce padding for mobile
+  // Reduce padding equally on both sides for mobile
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(1, 1, 0.5, 1),
+    padding: theme.spacing(1, 0.5, 0.5, 0.5),
   }
 }));
 
@@ -72,6 +75,11 @@ const CardImageContainer = styled(Box)(({ theme }) => ({
   overflow: 'hidden',
   minHeight: '200px',
   position: 'relative',
+  // Make image container wider on mobile by reducing padding
+  [theme.breakpoints.down('sm')]: {
+    padding: theme.spacing(0.5),
+    minHeight: '180px',
+  }
 }));
 
 const CardImage = styled('img')({
@@ -103,11 +111,11 @@ const CardContentStyled = styled(CardContent)(({ theme }) => ({
   '&:last-child': {
     paddingBottom: theme.spacing(1.5),
   },
-  // Reduce padding for mobile
+  // Reduce padding equally on both sides for mobile
   [theme.breakpoints.down('sm')]: {
-    padding: theme.spacing(1),
+    padding: theme.spacing(0.75, 0.5),
     '&:last-child': {
-      paddingBottom: theme.spacing(1),
+      paddingBottom: theme.spacing(0.75),
     }
   }
 }));

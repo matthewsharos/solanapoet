@@ -882,7 +882,14 @@ const Market: React.FC = () => {
           ) : (
             <>
               {/* Show NFTs as they load */}
-              <Grid container spacing={3} sx={{ px: 3 }}>
+              <Grid 
+                container 
+                spacing={3} 
+                sx={{ 
+                  px: { xs: 0.5, sm: 3 },  // Reduce padding on mobile for more card width
+                  mx: 'auto'               // Center the grid
+                }}
+              >
                 {currentNFTs.map((nft) => (
                   <Grid item key={nft.mint} xs={12} sm={6} md={4} lg={3}>
                     <VintageCard 
