@@ -6,7 +6,7 @@ import NFTDetailModal from './NFTDetailModal';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { useWalletContext } from '../contexts/WalletContext';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets, getAllDisplayNames, clearDisplayNameForWallet } from '../utils/displayNames';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { WalletContextState } from '@solana/wallet-adapter-react';
 
 // Styled components for vintage card
 const StyledCard = styled(Card)(({ theme }) => ({
@@ -238,13 +238,13 @@ const shortenAddress = (address: string) => {
 // Update the interface to accept either type
 interface VintageCardProps {
   nft: NFT;
-  wallet: PhantomWalletAdapter | null;
+  wallet: { publicKey: string | null } | null;
   connected: boolean;
   displayName?: string;
 }
 
 const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displayName }) => {
-  const { wallet: contextWallet, connected: contextConnected } = useWalletContext();
+  const { publicKey } = useWalletContext();
   const [detailOpen, setDetailOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -366,9 +366,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
 
   // Check if the current user is the owner
   const isOwner = React.useMemo(() => {
-    if (!contextConnected || !contextWallet?.publicKey || !ownerAddress) return false;
-    return contextWallet.publicKey.toBase58() === ownerAddress;
-  }, [contextConnected, contextWallet?.publicKey, ownerAddress]);
+    if (!connected || !publicKey || !ownerAddress) return false;
+    return publicKey === ownerAddress;
+  }, [connected, publicKey, ownerAddress]);
 
   useEffect(() => {
     const loadImage = async () => {
@@ -412,9 +412,15 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
 
   const handleDownload = async (event: React.MouseEvent) => {
     event.stopPropagation();
-    if (!imageUrl) return;
-    
+    if (!connected || !publicKey) {
+      console.error('Wallet not connected');
+      return;
+    }
+
+    setIsProcessing(true);
     try {
+      if (!imageUrl) return;
+      
       const response = await fetch(imageUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -426,7 +432,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error downloading image:', error);
+      console.error('Error downloading NFT:', error);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -470,7 +478,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
       
       <TypewriterKeyButton 
         onClick={handleDownload} 
-        disabled={!imageLoaded || imageError}
+        disabled={!imageLoaded || imageError || isProcessing}
       >
         <KeyboardArrowDownIcon />
       </TypewriterKeyButton>

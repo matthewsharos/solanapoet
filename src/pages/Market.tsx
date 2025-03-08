@@ -24,6 +24,7 @@ import { fetchCollectionNFTs as fetchCollectionNFTsFromUtils, NFTMetadata } from
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
 import { styled } from '@mui/material/styles';
 import { useTheme, useMediaQuery } from '@mui/material';
+import { WalletContextState } from '@solana/wallet-adapter-react';
 
 // Define types from removed imports
 interface Collection {
@@ -503,7 +504,7 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
 }));
 
 const Market: React.FC = () => {
-  const { wallet, connected } = useWalletContext();
+  const { publicKey, connected, wallet } = useWalletContext();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [nfts, setNfts] = useState<NFT[]>([]);
@@ -810,11 +811,11 @@ const Market: React.FC = () => {
       // Check if the NFT matches the ownership filter
       const matchesOwner = !showMyNFTs || (
         connected && 
-        wallet?.publicKey && 
+        publicKey && 
         nft.owner && 
         (typeof nft.owner === 'string' 
-          ? nft.owner === wallet.publicKey.toString()
-          : (nft.owner.publicKey ? nft.owner.publicKey === wallet.publicKey.toString() : false))
+          ? nft.owner === publicKey
+          : (nft.owner.publicKey ? nft.owner.publicKey === publicKey : false))
       );
       
       return matchesSearch && matchesCollection && matchesOwner;
@@ -1125,16 +1126,12 @@ const Market: React.FC = () => {
                           pl: { xs: '10px', sm: 0 }, // Increased left padding from 6px to 10px on mobile only
                         }}
                       >
-                        <VintageCard 
-                          nft={nft} 
-                          wallet={wallet} 
+                        <VintageCard
+                          key={nft.mint}
+                          nft={nft}
+                          wallet={{ publicKey }}
                           connected={connected}
-                          displayName={
-                            !nft.owner ? undefined :
-                            typeof nft.owner === 'string'
-                              ? displayNames.get(nft.owner)
-                              : (nft.owner.publicKey ? displayNames.get(nft.owner.publicKey) : undefined)
-                          }
+                          displayName={nft.owner ? displayNames.get(typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey) : undefined}
                         />
                       </Grid>
                     ))}

@@ -5,9 +5,9 @@ import {
   SolflareWalletAdapter,
   CoinbaseWalletAdapter
 } from '@solana/wallet-adapter-wallets';
-import { ConnectionProvider, WalletProvider as SolanaWalletProvider, useWallet, Wallet } from '@solana/wallet-adapter-react';
+import { ConnectionProvider, WalletProvider as SolanaWalletProvider, useWallet, WalletContextState } from '@solana/wallet-adapter-react';
 import { WalletModalProvider, useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl } from '@solana/web3.js';
+import { clusterApiUrl, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { API_BASE_URL } from '../types/api';
 
@@ -17,7 +17,7 @@ require('@solana/wallet-adapter-react-ui/styles.css');
 interface WalletContextType {
   publicKey: string | null;
   connected: boolean;
-  wallet: Wallet | null;
+  wallet: WalletContextState['wallet'];
   isAuthorizedMinter: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
@@ -101,18 +101,13 @@ const WalletContextProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 };
 
 export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // You can add custom RPC URL here
   const endpoint = useMemo(() => clusterApiUrl(WalletAdapterNetwork.Mainnet), []);
   
-  // Initialize all supported wallet adapters
   const wallets = useMemo(
     () => [
-      // Specific adapters for enhanced mobile support
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
       new CoinbaseWalletAdapter()
-      // Note: Backpack and other standard-compliant wallets are automatically detected
-      // through the Solana Wallet Standard, no need for explicit adapters
     ],
     []
   );

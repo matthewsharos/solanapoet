@@ -8,7 +8,8 @@ import {
   Button, 
   Typography,
   Box,
-  CircularProgress
+  CircularProgress,
+  useTheme
 } from '@mui/material';
 import { useWalletContext } from '../contexts/WalletContext';
 import { formatWalletAddress } from '../utils/helpers';
@@ -27,6 +28,7 @@ interface DisplayNameEditorProps {
 
 const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) => {
   const { publicKey } = useWalletContext();
+  const theme = useTheme();
   const [displayName, setDisplayName] = useState('');
   const [currentDisplayName, setCurrentDisplayName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,25 +162,30 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
         fontFamily: '"Satisfy", "Dancing Script", cursive',
         fontSize: '1.8rem',
         textAlign: 'center',
-        background: '#f8f5e6',
-        borderBottom: '1px solid #d4af37'
+        background: theme.palette.mode === 'dark' ? '#000000' : '#f8f5e6',
+        borderBottom: '1px solid #d4af37',
+        color: theme.palette.mode === 'dark' ? '#ffffff' : 'inherit'
       }}>
         Set Display Name
       </DialogTitle>
       
-      <DialogContent sx={{ pt: 3, background: '#f8f5e6' }}>
+      <DialogContent sx={{ 
+        pt: 3, 
+        background: theme.palette.mode === 'dark' ? '#000000' : '#f8f5e6',
+        color: theme.palette.mode === 'dark' ? '#ffffff' : 'inherit'
+      }}>
         {!publicKey ? (
           <Typography color="error" align="center" sx={{ my: 2 }}>
             Please connect your wallet to set a display name
           </Typography>
         ) : (
           <>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ mb: 2, color: theme.palette.mode === 'dark' ? '#cccccc' : 'text.secondary' }}>
               Your display name will be shown instead of your wallet address when displaying NFTs you own.
             </Typography>
             
             <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1, color: '#666' }}>
+              <Typography variant="subtitle2" sx={{ mb: 1, color: theme.palette.mode === 'dark' ? '#999999' : '#666666' }}>
                 Current Display Name:
               </Typography>
               <Typography variant="body1" sx={{ fontWeight: 500 }}>
@@ -200,15 +207,26 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
               helperText={error}
               disabled={loading}
               InputProps={{
-                sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
+                sx: { 
+                  fontFamily: '"Arial", "Helvetica", sans-serif',
+                  '& .MuiOutlinedInput-notchedOutline': {
+                    borderColor: theme.palette.mode === 'dark' ? '#666666' : 'rgba(0, 0, 0, 0.23)'
+                  },
+                  '&:hover .MuiOutlinedInput-notchedOutline': {
+                    borderColor: theme.palette.mode === 'dark' ? '#999999' : 'rgba(0, 0, 0, 0.87)'
+                  }
+                }
               }}
               InputLabelProps={{
-                sx: { fontFamily: '"Arial", "Helvetica", sans-serif' }
+                sx: { 
+                  fontFamily: '"Arial", "Helvetica", sans-serif',
+                  color: theme.palette.mode === 'dark' ? '#cccccc' : 'inherit'
+                }
               }}
             />
             
             <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-              <Typography variant="caption" sx={{ color: '#666' }}>
+              <Typography variant="caption" sx={{ color: theme.palette.mode === 'dark' ? '#999999' : '#666666' }}>
                 Your wallet: {formatWalletAddress(publicKey.toString())}
               </Typography>
             </Box>
@@ -222,8 +240,19 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
         )}
       </DialogContent>
 
-      <DialogActions sx={{ background: '#f8f5e6', borderTop: '1px solid #d4af37', p: 2 }}>
-        <Button onClick={onClose} color="inherit" disabled={loading}>
+      <DialogActions sx={{ 
+        background: theme.palette.mode === 'dark' ? '#000000' : '#f8f5e6', 
+        borderTop: '1px solid #d4af37', 
+        p: 2 
+      }}>
+        <Button 
+          onClick={onClose} 
+          color="inherit" 
+          disabled={loading}
+          sx={{
+            color: theme.palette.mode === 'dark' ? '#cccccc' : 'inherit'
+          }}
+        >
           Cancel
         </Button>
         <Button 
@@ -232,6 +261,7 @@ const DisplayNameEditor: React.FC<DisplayNameEditorProps> = ({ open, onClose }) 
           disabled={!publicKey || loading || (displayName === currentDisplayName)}
           sx={{
             backgroundColor: '#d4af37',
+            color: '#000000',
             '&:hover': {
               backgroundColor: '#b4941f'
             }
