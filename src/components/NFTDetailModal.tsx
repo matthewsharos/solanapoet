@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Dialog, 
   DialogContent, 
@@ -12,7 +12,8 @@ import {
   useTheme,
   useMediaQuery,
   CircularProgress,
-  Tooltip
+  Tooltip,
+  Grid
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -22,6 +23,8 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { NFT } from '../types/nft';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
 import { collections } from '../api/client';
+import { format } from 'date-fns';
+import CheckIcon from '@mui/icons-material/Check';
 
 // Gallery-inspired styled components
 const DetailDialog = styled(Dialog)(({ theme }) => ({
@@ -623,30 +626,57 @@ const DialogContentStyled = styled(DialogContent)(({ theme }) => ({
     gap: theme.spacing(2),
     padding: theme.spacing(2),
   },
-  // Vertical layout for mobile (image top, details bottom)
+  // Vertical layout for mobile (image top, details bottom) with unified scrolling
   [theme.breakpoints.down('sm')]: {
     flexDirection: 'column',
     padding: theme.spacing(2, 1),
     overflowY: 'auto',
     overflowX: 'hidden',
-    height: 'auto', // Allow content to determine height
+    height: 'auto', 
     maxHeight: '100%',
-    gap: theme.spacing(1),
+    gap: theme.spacing(2),
+    paddingBottom: theme.spacing(8), // Extra padding at bottom for better scrolling
   }
+}));
+
+// Detail section titles
+const DetailSectionTitle = styled(Typography)(({ theme }) => ({
+  color: theme.palette.mode === 'dark' ? '#ffffff' : '#000000',
+  textTransform: 'uppercase',
+  fontWeight: 600,
+  marginBottom: '10px',
+  fontSize: '18px',
+  [theme.breakpoints.down('sm')]: {
+    fontSize: '16px',
+    marginTop: '15px',  // Added top margin for better spacing on mobile
+    marginBottom: '8px',
+  },
+}));
+
+// Detail section container
+const DetailSection = styled(Box)(({ theme }) => ({
+  marginBottom: '20px',
+  [theme.breakpoints.down('sm')]: {
+    marginBottom: '15px',
+    paddingLeft: '5px',
+    paddingRight: '5px',
+  },
 }));
 
 const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, displayName }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [originalDimensions, setOriginalDimensions] = React.useState<{width: number, height: number} | null>(null);
   const [isLoadingDimensions, setIsLoadingDimensions] = React.useState(false);
   const [ownerDisplayName, setOwnerDisplayName] = React.useState<string>('');
-  const [isLoadingDisplayName, setIsLoadingDisplayName] = React.useState(false);
+  const [isLoadingDisplayName, setIsLoadingDisplayName] = React.useState<boolean>(false);
   const [creationDate, setCreationDate] = React.useState<string>('Loading...');
   const [isLoadingCreationDate, setIsLoadingCreationDate] = React.useState(false);
   const [collectionName, setCollectionName] = React.useState<string>('');
   const [isLoadingCollection, setIsLoadingCollection] = React.useState(false);
+  const [copied, setCopied] = React.useState<boolean>(false);
 
   // Safely determine the owner address
   const ownerAddress = React.useMemo(() => {
@@ -978,12 +1008,12 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
     }
   };
 
-  // Add this function inside the NFTDetailModal component before the return statement
-  const handleCopyMintId = async () => {
-    try {
-      await navigator.clipboard.writeText(nft.mint);
-    } catch (error) {
-      console.error('Failed to copy mint ID:', error);
+  // Copy mint ID handler
+  const handleCopyMintId = () => {
+    if (nft?.mint) {
+      navigator.clipboard.writeText(nft.mint);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -1063,21 +1093,21 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
                   xl: '55%'  // Back to original on xl
                 },
           flex: isMobile ? 'none' : 1,
-          // Height based on screen size
+          // Height based on screen size - more compact on mobile for unified scrolling
           height: isMobile 
             ? 'auto'
             : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
           maxHeight: isMobile 
-            ? '50vh' // Increased from 40vh to 50vh on mobile
+            ? '40vh' // Reduced from 50vh to 40vh for better mobile scrolling
             : 'calc(95vh - 80px)', // Slightly less than screen height for desktop/tablet
           ...(isMobile && {
-            marginBottom: '10px',
+            marginBottom: '20px', // Increased space between image and details on mobile
           })
         }}>
           <ArtworkFrame sx={{ 
             flex: 1, 
             height: isMobile ? '100%' : 'calc(100% - 20px)',
-            maxHeight: isMobile ? '50vh' : 'calc(95vh - 100px)',
+            maxHeight: isMobile ? '40vh' : 'calc(95vh - 100px)',
             '&::before': {
               top: isMobile ? -5 : -10,
               left: isMobile ? -5 : -10,
@@ -1112,32 +1142,36 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             : isTablet 
               ? theme.spacing(2) // Less padding on tablet
               : theme.spacing(3), // Reduced padding on all sizes
-          overflowY: 'auto',
+          // Only use scroll on non-mobile - let the parent container handle mobile scrolling
+          overflowY: isMobile ? 'visible' : 'auto',
           display: 'flex',
           flexDirection: 'column',
-          // Mobile-specific styles to ensure proper scrolling
+          // Mobile-specific styles to create unified scrolling experience
           ...(isMobile && {
-            minHeight: '50vh', // Ensure there's enough space to scroll
-            maxHeight: 'none', // Remove height constraint on mobile
+            minHeight: 'auto', // Let content determine height naturally
+            maxHeight: 'none', // No height constraint
             flexGrow: 1,       // Take up available space
-            overflowY: 'visible', // Let parent container handle scrolling
+            paddingBottom: theme.spacing(4), // Extra padding at bottom
+          }),
+          // Non-mobile styling
+          ...(!isMobile && {
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'rgba(0,0,0,0.05)',
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: 'rgba(139, 69, 19, 0.3)',
+              borderRadius: '4px',
+              '&:hover': {
+                background: 'rgba(139, 69, 19, 0.5)',
+              },
+            },
           }),
           '& > *:not(:last-child)': {
-            marginBottom: isMobile ? theme.spacing(1.5) : theme.spacing(2)
-          },
-          '&::-webkit-scrollbar': {
-            width: '8px',
-          },
-          '&::-webkit-scrollbar-track': {
-            background: 'rgba(0,0,0,0.05)',
-            borderRadius: '4px',
-          },
-          '&::-webkit-scrollbar-thumb': {
-            background: 'rgba(139, 69, 19, 0.3)',
-            borderRadius: '4px',
-            '&:hover': {
-              background: 'rgba(139, 69, 19, 0.5)',
-            },
+            marginBottom: isMobile ? theme.spacing(2) : theme.spacing(2)
           },
         }}>
           {/* Title at the top right */}
@@ -1149,140 +1183,96 @@ const NFTDetailModal: React.FC<NFTDetailModalProps> = ({ open, onClose, nft, dis
             {nft.name}
           </ArtworkTitle>
 
-          {/* Owner section */}
-          <OwnerSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
-            <MetadataLabel>Owner</MetadataLabel>
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'flex-start',
-              gap: 1
-            }}>
-              <Typography 
-                variant="h6" 
-                component="div"
-                sx={{ 
-                  fontFamily: '"Arial", sans-serif',
-                  fontWeight: 500,
-                  color: '#333',
-                  fontSize: '0.9rem',
-                  flex: 1,
-                  maxWidth: 'calc(100% - 40px)',
-                  whiteSpace: 'normal',
-                  overflowWrap: 'break-word'
-                }}
-              >
-                {isLoadingDisplayName ? (
-                  <CircularProgress size={20} sx={{ mr: 1 }} />
-                ) : ownerDisplayName}
-              </Typography>
-              <Tooltip title="Copy Owner Address">
-                <CopyButton onClick={handleCopyOwnerAddress} size="small">
-                  <ContentCopyIcon />
-                </CopyButton>
-              </Tooltip>
-            </Box>
-          </OwnerSection>
-
-          {/* Collection section */}
-          <CollectionSection sx={{ marginBottom: isMobile ? 1 : 2 }}>
-            <MetadataLabel sx={{ color: '#6B5900' }}>Collection</MetadataLabel>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <CollectionIconBadge>★</CollectionIconBadge>
-              <CollectionName variant="h6">
-                {isLoadingCollection ? (
-                  <CircularProgress size={16} sx={{ mr: 1 }} />
-                ) : collectionName}
-              </CollectionName>
-            </Box>
-          </CollectionSection>
-
-          {/* Metadata section */}
-          <MetadataSection sx={{ 
-            padding: isMobile ? 2 : 3,
-            '& .MuiTypography-root': {
-              marginBottom: isMobile ? 1 : 2,
-            }
-          }}>
-            <MetadataLabel>Description</MetadataLabel>
-            <MetadataValue>{nft.description}</MetadataValue>
-            
-            <MetadataLabel>Traits</MetadataLabel>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', mb: 2 }}>
-              {nft.attributes?.map((attr) => (
-                <TraitChip 
-                  key={`${attr.trait_type}-${attr.value}`}
-                  label={`${attr.trait_type}: ${attr.value}`} 
-                  variant="outlined"
-                />
-              ))}
-            </Box>
-            
-            <MetadataLabel>Created</MetadataLabel>
-            <MetadataValue>
-              {isLoadingCreationDate ? (
-                <CircularProgress size={16} sx={{ mr: 1 }} />
-              ) : creationDate}
-            </MetadataValue>
-            
-            <MetadataLabel>Mint ID</MetadataLabel>
-            <MetadataValue sx={{ display: 'flex', alignItems: 'center' }}>
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center',
-                color: '#8b4513',
-                wordBreak: 'break-all',
-                flex: 1
+          {/* NFT Details */}
+          <DetailContent>
+            {/* Description Section */}
+            <DetailSection>
+              <DetailSectionTitle>Description</DetailSectionTitle>
+              <Typography variant="body1" sx={{ 
+                mb: 2, 
+                fontSize: { xs: '14px', sm: '15px', md: '16px' },
+                lineHeight: { xs: 1.4, sm: 1.5, md: 1.6 },
+                whiteSpace: 'pre-wrap',
               }}>
-                <Link
-                  href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{
-                    color: 'inherit',
-                    textDecoration: 'none',
-                    display: 'inline-block'
-                  }}
-                >
-                  {nft.mint}
-                </Link>
-                <Link 
-                  href={`https://explorer.solana.com/address/${nft.mint}?cluster=mainnet`} 
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    color: 'inherit',
-                    ml: 1
-                  }}
-                >
-                  <OpenInNewIcon sx={{ fontSize: '0.9rem', flexShrink: 0 }} />
-                </Link>
-                <Tooltip title="Copy Mint ID">
-                  <CopyButton onClick={handleCopyMintId} size="small">
-                    <ContentCopyIcon />
-                  </CopyButton>
-                </Tooltip>
-              </Box>
-            </MetadataValue>
-            
-            <MetadataLabel>Original Dimensions</MetadataLabel>
-            <MetadataValue>{getDimensionsDisplay()}</MetadataValue>
-            
-            {nft.lastSoldPrice && (
-              <>
-                <MetadataLabel>Last Sold</MetadataLabel>
-                <Typography variant="h6" sx={{ 
-                  fontFamily: '"Arial", sans-serif',
-                  color: '#8b4513',
-                  fontWeight: 600,
-                  mb: 2
-                }}>
-                  {nft.lastSoldPrice} SOL
-                </Typography>
-              </>
+                {nft?.description || 'No description available'}
+              </Typography>
+            </DetailSection>
+
+            {/* Traits Section */}
+            {nft?.attributes && nft.attributes.length > 0 && (
+              <DetailSection>
+                <DetailSectionTitle>Traits</DetailSectionTitle>
+                <Grid container spacing={2}>
+                  {nft.attributes.map((attr, index) => (
+                    <Grid item xs={6} sm={4} md={4} key={index}>
+                      <Box
+                        sx={{
+                          border: '1px solid',
+                          borderColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+                          borderRadius: '8px',
+                          padding: { xs: '10px', sm: '12px' },
+                          height: '100%',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '11px', sm: '12px' } }}>
+                          {attr.trait_type}
+                        </Typography>
+                        <Typography sx={{ mt: 0.5, fontWeight: '500', fontSize: { xs: '13px', sm: '14px' } }}>
+                          {attr.value}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              </DetailSection>
             )}
-          </MetadataSection>
+
+            {/* Metadata Section */}
+            <DetailSection>
+              <DetailSectionTitle>Details</DetailSectionTitle>
+              <Grid container spacing={2} sx={{ mb: 1 }}>
+                {/* Created */}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '12px', sm: '13px' } }}>
+                    Created
+                  </Typography>
+                  <Typography sx={{ fontSize: { xs: '13px', sm: '14px' }, fontWeight: '500' }}>
+                    {nft?.createdAt ? format(new Date(nft.createdAt), 'MMM d, yyyy') : 'Unknown'}
+                  </Typography>
+                </Grid>
+
+                {/* Mint ID with copy button */}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '12px', sm: '13px' } }}>
+                    Mint ID
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Typography sx={{ 
+                      fontSize: { xs: '13px', sm: '14px' }, 
+                      fontWeight: '500',
+                      maxWidth: { xs: '190px', sm: '100%' },
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {nft?.mint || 'Unknown'}
+                    </Typography>
+                    {nft?.mint && (
+                      <IconButton 
+                        onClick={handleCopyMintId}
+                        size="small" 
+                        sx={{ p: '2px' }}
+                      >
+                        {copied ? <CheckIcon fontSize="small" color="success" /> : <ContentCopyIcon fontSize="small" />}
+                      </IconButton>
+                    )}
+                  </Box>
+                </Grid>
+              </Grid>
+            </DetailSection>
+          </DetailContent>
         </DetailContent>
 
         <TypewriterKeyButton
