@@ -236,10 +236,126 @@ const getUltimateNFTs = async (): Promise<UltimateNFT[]> => {
 const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
   try {
     const nfts = await fetchCollectionNFTsWithRetry(collection, 1);
-    return nfts.map(nftData => {
+    return Promise.all(nfts.map(async nftData => {
       // Add defensive checks for missing data structures
       const ownership = nftData.ownership || {};
       
+      // Get the creation date using the same logic as NFT Detail Modal
+      let createdAt = null;
+      
+      try {
+        // First try to get the asset from Helius API
+        const assetResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 'my-id',
+            method: 'getAsset',
+            params: { id: nftData.id }
+          })
+        });
+
+        if (assetResponse.ok) {
+          const assetData = await assetResponse.json();
+          const isCompressed = assetData.result?.compression?.compressed;
+
+          if (isCompressed && assetData.result?.compression?.created_at) {
+            createdAt = assetData.result.compression.created_at;
+          } else {
+            // Try to get the mint transaction for compressed NFTs
+            const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 'my-id',
+                method: isCompressed ? 'getSignaturesForAsset' : 'getSignaturesForAddress',
+                params: isCompressed ? 
+                  { id: nftData.id, page: 1, limit: 1000 } : 
+                  [nftData.id, { limit: 1000 }]
+              })
+            });
+
+            if (signaturesResponse.ok) {
+              const signaturesData = await signaturesResponse.json();
+              const signatures = isCompressed ? 
+                signaturesData.result?.items?.[0]?.[0] : 
+                signaturesData.result;
+
+              if (signatures) {
+                const signature = isCompressed ? signatures : 
+                  signatures.sort((a: any, b: any) => a.blockTime - b.blockTime)[0];
+
+                // Get transaction details
+                const txResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'my-id',
+                    method: 'getTransaction',
+                    params: [isCompressed ? signature : signature.signature]
+                  })
+                });
+
+                if (txResponse.ok) {
+                  const txData = await txResponse.json();
+                  if (txData.result?.blockTime) {
+                    createdAt = new Date(txData.result.blockTime * 1000).toISOString();
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // If still no date, try DAS API
+        if (!createdAt) {
+          const dasResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 'my-id',
+              method: 'searchAssets',
+              params: {
+                ownerAddress: ownership.owner,
+                compressed: true,
+                limit: 1000
+              }
+            })
+          });
+
+          if (dasResponse.ok) {
+            const dasData = await dasResponse.json();
+            const matchingAsset = dasData.result?.items?.find((asset: any) => 
+              asset.id === nftData.id || 
+              asset.content?.metadata?.name === (nftData.content?.metadata?.name || nftData.content?.json?.name)
+            );
+
+            if (matchingAsset?.content?.metadata?.created_at) {
+              createdAt = matchingAsset.content.metadata.created_at;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching creation date:', error);
+      }
+
+      // Use fallbacks if no creation date found
+      if (!createdAt) {
+        createdAt = nftData.content?.metadata?.created_at || 
+                   nftData.compression?.created_at || 
+                   nftData.content?.metadata?.attributes?.find((attr: any) => 
+                     attr.trait_type === 'created' || 
+                     attr.trait_type === 'Creation Date'
+                   )?.value ||
+                   collection.creationDate || 
+                   collection.firstNftDate || 
+                   new Date().toISOString();
+      }
+
       return {
         mint: nftData.id,
         name: nftData.content?.metadata?.name || nftData.content?.json?.name || 'Unknown NFT',
@@ -261,14 +377,9 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
         tokenStandard: nftData.tokenStandard || null,
         content: nftData.content,
         compression: nftData.compression,
-        createdAt: nftData.content?.metadata?.created_at || 
-                   nftData.compression?.created_at || 
-                   nftData.content?.metadata?.attributes?.find((attr: any) => attr.trait_type === 'created' || attr.trait_type === 'Creation Date')?.value ||
-                   collection.creationDate || 
-                   collection.firstNftDate || 
-                   new Date().toISOString(),
+        createdAt
       };
-    });
+    }));
   } catch (error) {
     console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
     return [];
@@ -525,6 +636,60 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
     margin: '20px 0 10px 0',
   }
 }));
+
+// Add helper function for parsing dates
+const parseNFTDate = (dateStr: string | undefined): number => {
+  if (!dateStr) return 0;
+  
+  try {
+    // Try parsing as ISO string first
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.getTime();
+    }
+    
+    // Try parsing Unix timestamp (seconds)
+    if (/^\d{10}$/.test(dateStr)) {
+      return parseInt(dateStr) * 1000;
+    }
+    
+    // Try parsing Unix timestamp (milliseconds)
+    if (/^\d{13}$/.test(dateStr)) {
+      return parseInt(dateStr);
+    }
+    
+    // Try parsing other common formats
+    const formats = [
+      'YYYY-MM-DD',
+      'MM/DD/YYYY',
+      'DD/MM/YYYY',
+      'YYYY/MM/DD'
+    ];
+    
+    for (const format of formats) {
+      const parsed = new Date(dateStr.replace(format, (match) => {
+        return match.replace(/[YMD]/g, (char) => {
+          switch (char) {
+            case 'Y': return '\\d{4}';
+            case 'M': return '\\d{2}';
+            case 'D': return '\\d{2}';
+            default: return char;
+          }
+        });
+      }));
+      
+      if (!isNaN(parsed.getTime())) {
+        return parsed.getTime();
+      }
+    }
+    
+    console.warn(`Could not parse date: ${dateStr}`);
+    return 0;
+  } catch (error) {
+    console.error(`Error parsing date ${dateStr}:`, error);
+    return 0;
+  }
+};
 
 const Market: React.FC = () => {
   const { publicKey, connected, wallet } = useWalletContext();
@@ -854,17 +1019,31 @@ const Market: React.FC = () => {
     if (showMyNFTs || selectedCollection) {
       return [{ 
         collectionName: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
-        nfts: filtered.sort((a, b) => {
+        nfts: filtered.sort((a: NFT, b: NFT) => {
           // Sort by creation date (newest first)
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          console.log(`Comparing NFTs:`, {
+            a: {
+              name: a.name,
+              mint: a.mint,
+              createdAt: a.createdAt,
+              parsedDate: a.createdAt ? new Date(parseNFTDate(a.createdAt)) : null
+            },
+            b: {
+              name: b.name,
+              mint: b.mint,
+              createdAt: b.createdAt,
+              parsedDate: b.createdAt ? new Date(parseNFTDate(b.createdAt)) : null
+            }
+          });
+          const dateA = parseNFTDate(a.createdAt);
+          const dateB = parseNFTDate(b.createdAt);
           return dateB - dateA;
         })
       }];
     }
     
     // Group NFTs by collection name
-    const groupedNFTs = filtered.reduce((acc, nft) => {
+    const groupedNFTs = filtered.reduce((acc, nft: NFT) => {
       const collectionName = nft.collectionName || 'Unknown Collection';
       
       if (!acc[collectionName]) {
@@ -879,10 +1058,24 @@ const Market: React.FC = () => {
     return Object.entries(groupedNFTs)
       .map(([collectionName, nfts]) => ({ 
         collectionName, 
-        nfts: nfts.sort((a, b) => {
+        nfts: nfts.sort((a: NFT, b: NFT) => {
           // Sort by creation date (newest first)
-          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          console.log(`Comparing NFTs in ${collectionName}:`, {
+            a: {
+              name: a.name,
+              mint: a.mint,
+              createdAt: a.createdAt,
+              parsedDate: a.createdAt ? new Date(parseNFTDate(a.createdAt)) : null
+            },
+            b: {
+              name: b.name,
+              mint: b.mint,
+              createdAt: b.createdAt,
+              parsedDate: b.createdAt ? new Date(parseNFTDate(b.createdAt)) : null
+            }
+          });
+          const dateA = parseNFTDate(a.createdAt);
+          const dateB = parseNFTDate(b.createdAt);
           return dateB - dateA;
         })
       }))
