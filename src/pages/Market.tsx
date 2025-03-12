@@ -36,6 +36,7 @@ interface Collection {
   creationDate?: string;
   ultimates?: boolean;
   collectionId?: string;
+  firstNftDate?: string;
 }
 
 interface UltimateNFT {
@@ -89,6 +90,7 @@ interface NFTApiResponse extends ApiResponse<never> {
         description?: string;
         image?: string;
         attributes?: NFTAttribute[];
+        created_at?: string;
       };
       json?: {
         name?: string;
@@ -99,6 +101,9 @@ interface NFTApiResponse extends ApiResponse<never> {
       links?: {
         image?: string;
       };
+    };
+    compression?: {
+      created_at?: string;
     };
   };
 }
@@ -254,6 +259,14 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
         creators: nftData.creators || [],
         royalty: nftData.royalty || null,
         tokenStandard: nftData.tokenStandard || null,
+        content: nftData.content,
+        compression: nftData.compression,
+        createdAt: nftData.content?.metadata?.created_at || 
+                   nftData.compression?.created_at || 
+                   nftData.content?.metadata?.attributes?.find((attr: any) => attr.trait_type === 'created' || attr.trait_type === 'Creation Date')?.value ||
+                   collection.creationDate || 
+                   collection.firstNftDate || 
+                   new Date().toISOString(),
       };
     });
   } catch (error) {
@@ -279,12 +292,13 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
     let collectionName = '';
     let collectionAddress = '';
     let imageUrl = nftData.image || '';
+    let collectionInfo: Collection | undefined;
     
     if (ultimate?.collection_id) {
-      const collection = collections.find(c => c.address === ultimate.collection_id);
-      if (collection) {
-        collectionName = collection.name;
-        collectionAddress = collection.address;
+      collectionInfo = collections.find(c => c.address === ultimate.collection_id);
+      if (collectionInfo) {
+        collectionName = collectionInfo.name;
+        collectionAddress = collectionInfo.address;
         // For ultimates, use the NFT's image directly
         imageUrl = nftData.image || '';
       }
@@ -316,6 +330,14 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       creators: nftData.creators || [],
       royalty: nftData.royalty || null,
       tokenStandard: nftData.tokenStandard || null,
+      content: nftData.content,
+      compression: nftData.compression,
+      createdAt: nftData.content?.metadata?.created_at || 
+                 nftData.compression?.created_at || 
+                 nftData.content?.metadata?.attributes?.find((attr: any) => attr.trait_type === 'created' || attr.trait_type === 'Creation Date')?.value ||
+                 collectionInfo?.creationDate || 
+                 collectionInfo?.firstNftDate || 
+                 new Date().toISOString(),
     };
   } catch (error) {
     console.error(`Failed to fetch NFT ${nftAddress}:`, error);
@@ -455,7 +477,8 @@ const validateCollection = (collection: any): Collection | null => {
     addedAt: collection.addedAt || Date.now(),
     creationDate: collection.creationDate || '',
     ultimates: collection.ultimates || false,
-    collectionId: collection.collectionId || collection.address
+    collectionId: collection.collectionId || collection.address,
+    firstNftDate: collection.firstNftDate || '',
   };
   
   console.log('Validated collection:', result);

@@ -40,4 +40,16 @@ export interface NFT {
   imageWidth?: number;
   imageHeight?: number;
   lastSoldPrice?: number;
+  content?: {
+    metadata?: {
+      name?: string;
+      description?: string;
+      image?: string;
+      attributes?: NFTAttribute[];
+      created_at?: string;
+    };
+  };
+  compression?: {
+    created_at?: string;
+  };
 } 
