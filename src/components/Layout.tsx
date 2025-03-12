@@ -364,19 +364,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   };
 
-  useEffect(() => {
-    if (!connected) {
-      const autoConnect = async () => {
-        try {
-          await connect();
-        } catch (error) {
-          console.error('Failed to auto-connect:', error);
-        }
-      };
-      autoConnect();
-    }
-  }, [connect, connected]);
-
   const handleWalletClick = async (event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();

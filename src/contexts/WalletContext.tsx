@@ -105,7 +105,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   
   const wallets = useMemo(
     () => [
-      new PhantomWalletAdapter(),
+      new PhantomWalletAdapter({ autoConnect: false }),
       new SolflareWalletAdapter(),
       new CoinbaseWalletAdapter()
     ],
