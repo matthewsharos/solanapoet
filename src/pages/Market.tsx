@@ -242,6 +242,7 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
       
       // Get the creation date using the same logic as NFT Detail Modal
       let createdAt = null;
+      let blockTime = null;
       
       try {
         // First try to get the asset from Helius API
@@ -262,50 +263,27 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
 
           if (isCompressed && assetData.result?.compression?.created_at) {
             createdAt = assetData.result.compression.created_at;
-          } else {
-            // Try to get the mint transaction for compressed NFTs
-            const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 'my-id',
-                method: isCompressed ? 'getSignaturesForAsset' : 'getSignaturesForAddress',
-                params: isCompressed ? 
-                  { id: nftData.id, page: 1, limit: 1000 } : 
-                  [nftData.id, { limit: 1000 }]
-              })
-            });
+          }
+        }
 
-            if (signaturesResponse.ok) {
-              const signaturesData = await signaturesResponse.json();
-              const signatures = isCompressed ? 
-                signaturesData.result?.items?.[0]?.[0] : 
-                signaturesData.result;
+        // If no creation date found, get the mint transaction
+        if (!createdAt) {
+          const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 'my-id',
+              method: 'getSignaturesForAddress',
+              params: [nftData.id, { limit: 1 }]
+            })
+          });
 
-              if (signatures) {
-                const signature = isCompressed ? signatures : 
-                  signatures.sort((a: any, b: any) => a.blockTime - b.blockTime)[0];
-
-                // Get transaction details
-                const txResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    jsonrpc: '2.0',
-                    id: 'my-id',
-                    method: 'getTransaction',
-                    params: [isCompressed ? signature : signature.signature]
-                  })
-                });
-
-                if (txResponse.ok) {
-                  const txData = await txResponse.json();
-                  if (txData.result?.blockTime) {
-                    createdAt = new Date(txData.result.blockTime * 1000).toISOString();
-                  }
-                }
-              }
+          if (signaturesResponse.ok) {
+            const signaturesData = await signaturesResponse.json();
+            if (signaturesData.result?.[0]?.blockTime) {
+              blockTime = signaturesData.result[0].blockTime;
+              createdAt = new Date(blockTime * 1000).toISOString();
             }
           }
         }
@@ -356,6 +334,9 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
                    new Date().toISOString();
       }
 
+      // Store the blockTime separately for sorting
+      const finalCreatedAt = blockTime ? blockTime * 1000 : new Date(createdAt).getTime();
+
       return {
         mint: nftData.id,
         name: nftData.content?.metadata?.name || nftData.content?.json?.name || 'Unknown NFT',
@@ -377,7 +358,7 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
         tokenStandard: nftData.tokenStandard || null,
         content: nftData.content,
         compression: nftData.compression,
-        createdAt
+        createdAt: finalCreatedAt.toString() // Store as timestamp string for consistent sorting
       };
     }));
   } catch (error) {
@@ -642,45 +623,15 @@ const parseNFTDate = (dateStr: string | undefined): number => {
   if (!dateStr) return 0;
   
   try {
-    // Try parsing as ISO string first
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      return date.getTime();
-    }
-    
-    // Try parsing Unix timestamp (seconds)
-    if (/^\d{10}$/.test(dateStr)) {
-      return parseInt(dateStr) * 1000;
-    }
-    
-    // Try parsing Unix timestamp (milliseconds)
-    if (/^\d{13}$/.test(dateStr)) {
+    // If it's already a timestamp string, parse it directly
+    if (/^\d+$/.test(dateStr)) {
       return parseInt(dateStr);
     }
     
-    // Try parsing other common formats
-    const formats = [
-      'YYYY-MM-DD',
-      'MM/DD/YYYY',
-      'DD/MM/YYYY',
-      'YYYY/MM/DD'
-    ];
-    
-    for (const format of formats) {
-      const parsed = new Date(dateStr.replace(format, (match) => {
-        return match.replace(/[YMD]/g, (char) => {
-          switch (char) {
-            case 'Y': return '\\d{4}';
-            case 'M': return '\\d{2}';
-            case 'D': return '\\d{2}';
-            default: return char;
-          }
-        });
-      }));
-      
-      if (!isNaN(parsed.getTime())) {
-        return parsed.getTime();
-      }
+    // Try parsing as ISO string
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.getTime();
     }
     
     console.warn(`Could not parse date: ${dateStr}`);
