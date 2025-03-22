@@ -683,6 +683,25 @@ const parseNFTDate = (dateStr: string | undefined): number => {
   }
 };
 
+// Sort NFTs by creation date (newest first) with collection info as context
+const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
+  // First try to compare by NFT createdAt date
+  const dateA = parseNFTDate(a.createdAt);
+  const dateB = parseNFTDate(b.createdAt);
+  
+  // If both have proper dates, use those
+  if (dateA > 0 && dateB > 0) {
+    return dateB - dateA;
+  }
+  
+  // If one has a date and the other doesn't, the one with a date is newer
+  if (dateA > 0) return -1;
+  if (dateB > 0) return 1;
+  
+  // If neither has a date, use mint addresses to ensure consistent sorting
+  return a.mint.localeCompare(b.mint);
+};
+
 // Extend the NFT interface to support loading state
 interface NFTWithLoadingState extends NFT {
   loading?: boolean;
@@ -996,7 +1015,9 @@ const Market: React.FC = () => {
               collectionAddress: collection.address,
               creators: [],
               royalty: 0,
-              tokenStandard: 'NonFungible'
+              tokenStandard: 'NonFungible',
+              // Add creation date - use collection creation date or current time as fallback
+              createdAt: collection.creationDate || new Date().toISOString()
             };
             
             // Update NFTs state
@@ -1100,26 +1121,7 @@ const Market: React.FC = () => {
     if (showMyNFTs || selectedCollection) {
       return [{ 
         collectionName: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
-        nfts: filtered.sort((a: NFT, b: NFT) => {
-          // Sort by creation date (newest first)
-          console.log(`Comparing NFTs:`, {
-            a: {
-              name: a.name,
-              mint: a.mint,
-              createdAt: a.createdAt,
-              parsedDate: a.createdAt ? new Date(parseNFTDate(a.createdAt)) : null
-            },
-            b: {
-              name: b.name,
-              mint: b.mint,
-              createdAt: b.createdAt,
-              parsedDate: b.createdAt ? new Date(parseNFTDate(b.createdAt)) : null
-            }
-          });
-          const dateA = parseNFTDate(a.createdAt);
-          const dateB = parseNFTDate(b.createdAt);
-          return dateB - dateA;
-        })
+        nfts: filtered.sort(sortNFTsByCreationDate)
       }];
     }
     
@@ -1139,26 +1141,7 @@ const Market: React.FC = () => {
     return Object.entries(groupedNFTs)
       .map(([collectionName, nfts]) => ({ 
         collectionName, 
-        nfts: nfts.sort((a: NFT, b: NFT) => {
-          // Sort by creation date (newest first)
-          console.log(`Comparing NFTs in ${collectionName}:`, {
-            a: {
-              name: a.name,
-              mint: a.mint,
-              createdAt: a.createdAt,
-              parsedDate: a.createdAt ? new Date(parseNFTDate(a.createdAt)) : null
-            },
-            b: {
-              name: b.name,
-              mint: b.mint,
-              createdAt: b.createdAt,
-              parsedDate: b.createdAt ? new Date(parseNFTDate(b.createdAt)) : null
-            }
-          });
-          const dateA = parseNFTDate(a.createdAt);
-          const dateB = parseNFTDate(b.createdAt);
-          return dateB - dateA;
-        })
+        nfts: nfts.sort(sortNFTsByCreationDate)
       }))
       .sort((a, b) => a.collectionName.localeCompare(b.collectionName));
   }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
