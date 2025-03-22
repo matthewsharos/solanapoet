@@ -9,12 +9,25 @@ import {
   Box,
   Slider,
   Typography,
-  Fade
+  Fade,
+  CircularProgress
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import ZoomInIcon from '@mui/icons-material/ZoomIn';
 import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+
+// TypeScript declaration for the global image cache
+declare global {
+  interface Window {
+    nftImageCache: Map<string, boolean>;
+  }
+}
+
+// Initialize global cache if it doesn't exist
+if (typeof window !== 'undefined' && !window.nftImageCache) {
+  window.nftImageCache = new Map<string, boolean>();
+}
 
 interface ImageZoomModalProps {
   open: boolean;
@@ -139,6 +152,19 @@ const BackgroundOverlay = styled(Box)({
   zIndex: 5, // Above the image but below controls
 });
 
+const LoadingOverlay = styled(Box)({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  zIndex: 5,
+});
+
 const StyledSlider = styled(Slider)({
   width: 120,
   color: 'white',
@@ -147,34 +173,69 @@ const StyledSlider = styled(Slider)({
 const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc, imageAlt }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [scale, setScale] = useState<number>(1);
-  const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState<boolean>(false);
-  const [startPos, setStartPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [startPosition, setStartPosition] = useState({ x: 0, y: 0 });
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [showHint, setShowHint] = useState<boolean>(true);
   const [lastTap, setLastTap] = useState<number>(0);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  // Reset zoom and position when modal opens
+  // Reset zoom and position when modal opens or image changes
   useEffect(() => {
     if (open) {
-      setScale(1);
+      setZoom(1);
       setPosition({ x: 0, y: 0 });
-      setIsDragging(false);
+      setImageLoaded(false);
+      setLoadError(false);
       setShowHint(true);
+      
+      // Preload the high-resolution image
+      const preloadImage = () => {
+        // Check if image is already cached
+        if (window.nftImageCache.has(imageSrc)) {
+          const isLoaded = window.nftImageCache.get(imageSrc);
+          setImageLoaded(isLoaded || false);
+          setLoadError(!isLoaded);
+          return;
+        }
+        
+        const img = new Image();
+        
+        img.onload = () => {
+          window.nftImageCache.set(imageSrc, true);
+          setImageLoaded(true);
+          setLoadError(false);
+        };
+        
+        img.onerror = () => {
+          window.nftImageCache.set(imageSrc, false);
+          setImageLoaded(true);
+          setLoadError(true);
+        };
+        
+        img.src = imageSrc;
+      };
+      
+      preloadImage();
       
       // Hide the hint after 3 seconds
       const timer = setTimeout(() => {
         setShowHint(false);
       }, 3000);
       
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+      };
     }
-  }, [open]);
+  }, [open, imageSrc]);
 
   // Show hint when zoomed in
   useEffect(() => {
-    if (scale > 1) {
+    if (zoom > 1) {
       setShowHint(true);
       const timer = setTimeout(() => {
         setShowHint(false);
@@ -182,29 +243,29 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       
       return () => clearTimeout(timer);
     }
-  }, [scale]);
+  }, [zoom]);
 
   const handleZoomIn = () => {
-    setScale((prev) => Math.min(prev + 0.25, 5));
+    setZoom((prev) => Math.min(prev + 0.25, 5));
   };
 
   const handleZoomOut = () => {
-    setScale((prev) => Math.max(prev - 0.25, 0.5));
+    setZoom((prev) => Math.max(prev - 0.25, 0.5));
   };
 
   const handleReset = () => {
-    setScale(1);
+    setZoom(1);
     setPosition({ x: 0, y: 0 });
   };
 
   const handleSliderChange = (_event: Event, newValue: number | number[]) => {
-    setScale(newValue as number);
+    setZoom(newValue as number);
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (scale > 1) {
+    if (zoom > 1) {
       setIsDragging(true);
-      setStartPos({
+      setDragStart({
         x: e.clientX - position.x,
         y: e.clientY - position.y,
       });
@@ -212,9 +273,9 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLImageElement>) => {
-    if (scale > 1 && e.touches.length === 1) {
+    if (zoom > 1 && e.touches.length === 1) {
       setIsDragging(true);
-      setStartPos({
+      setStartPosition({
         x: e.touches[0].clientX - position.x,
         y: e.touches[0].clientY - position.y,
       });
@@ -222,26 +283,26 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
     
     // Handle double tap to exit when not zoomed
     const now = Date.now();
-    if (scale === 1 && now - lastTap < 300) {
+    if (zoom === 1 && now - lastTap < 300) {
       onClose();
     }
     setLastTap(now);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (isDragging && scale > 1) {
+    if (isDragging && zoom > 1) {
       setPosition({
-        x: e.clientX - startPos.x,
-        y: e.clientY - startPos.y,
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
       });
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLImageElement>) => {
-    if (isDragging && scale > 1 && e.touches.length === 1) {
+    if (isDragging && zoom > 1 && e.touches.length === 1) {
       setPosition({
-        x: e.touches[0].clientX - startPos.x,
-        y: e.touches[0].clientY - startPos.y,
+        x: e.touches[0].clientX - startPosition.x,
+        y: e.touches[0].clientY - startPosition.y,
       });
     }
   };
@@ -256,12 +317,12 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
 
   // Handle double tap/click to zoom in and out
   const handleDoubleClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    if (scale > 1) {
+    if (zoom > 1) {
       // If already zoomed in, reset
       handleReset();
     } else {
       // Zoom in to 2x
-      setScale(2);
+      setZoom(2);
       if (imageRef.current) {
         const rect = imageRef.current.getBoundingClientRect();
         // Center on the clicked position
@@ -275,17 +336,23 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
   
   // Handle background click/tap to exit when not zoomed in
   const handleBackgroundClick = () => {
-    if (scale === 1) {
+    if (zoom === 1) {
       onClose();
     }
   };
 
   return (
-    <ZoomDialog open={open} onClose={onClose} fullScreen>
-      <ZoomDialogContent>
-        {/* Enhanced close button */}
-        <CloseButton onClick={onClose} aria-label="Close zoom view">
-          <CloseIcon fontSize={isMobile ? "medium" : "large"} />
+    <ZoomDialog
+      open={open}
+      onClose={onClose}
+      maxWidth={false}
+      fullWidth
+      TransitionComponent={Fade}
+      transitionDuration={300}
+    >
+      <ZoomDialogContent onClick={handleBackgroundClick}>
+        <CloseButton onClick={onClose} aria-label="close">
+          <CloseIcon />
         </CloseButton>
         
         {/* Mobile hint that appears at the top */}
@@ -293,7 +360,7 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
           <Fade in={showHint} timeout={300}>
             <MobileExitHint>
               <Typography variant="body2">
-                {scale > 1 
+                {zoom > 1 
                   ? "Reset zoom or use ✕ to exit" 
                   : "Tap image to exit, double-tap to zoom"}
               </Typography>
@@ -303,51 +370,85 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         )}
         
         {/* Background overlay that can be tapped to exit when not zoomed */}
-        {scale === 1 && (
+        {zoom === 1 && (
           <BackgroundOverlay onClick={handleBackgroundClick} />
         )}
         
-        <ImageContainer
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onTouchEnd={handleTouchEnd}
-        >
+        <ImageContainer>
+          {!imageLoaded && !loadError && (
+            <LoadingOverlay>
+              <Box textAlign="center">
+                <CircularProgress color="inherit" size={50} thickness={4} />
+                <Typography variant="body2" color="white" sx={{ mt: 2 }}>
+                  Loading high resolution image...
+                </Typography>
+              </Box>
+            </LoadingOverlay>
+          )}
+          
+          {loadError && (
+            <Box textAlign="center" color="white">
+              <Typography variant="h6">
+                Unable to load image
+              </Typography>
+            </Box>
+          )}
+          
           <ZoomableImage
             ref={imageRef}
             src={imageSrc}
             alt={imageAlt}
             style={{
-              transform: `scale(${scale}) translate(${position.x / scale}px, ${position.y / scale}px)`,
-              cursor: isDragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in'),
+              transform: `translate(${position.x}px, ${position.y}px) scale(${zoom})`,
+              opacity: imageLoaded && !loadError ? 1 : 0.3,
+              transition: isDragging ? 'none' : 'transform 0.3s ease-out, opacity 0.3s ease'
             }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             onDoubleClick={handleDoubleClick}
+            onClick={(e) => e.stopPropagation()}
+            onLoad={() => {
+              setImageLoaded(true);
+              window.nftImageCache.set(imageSrc, true);
+            }}
+            onError={() => {
+              setLoadError(true);
+              window.nftImageCache.set(imageSrc, false);
+            }}
             draggable={false}
           />
         </ImageContainer>
         
-        <ControlsContainer>
-          <IconButton onClick={handleZoomOut} color="inherit" size={isMobile ? "small" : "medium"}>
+        <ControlsContainer onClick={(e) => e.stopPropagation()}>
+          <IconButton onClick={handleZoomOut} disabled={zoom <= 1} size="small" color="inherit">
             <ZoomOutIcon />
           </IconButton>
           
-          <StyledSlider
-            value={scale}
-            onChange={handleSliderChange}
-            min={0.5}
-            max={5}
+          <Slider
+            value={zoom}
+            min={1}
+            max={3}
             step={0.1}
-            aria-label="Zoom"
+            onChange={handleSliderChange}
+            sx={{
+              width: isMobile ? '50%' : 150,
+              color: 'white',
+              '& .MuiSlider-thumb': {
+                width: 16,
+                height: 16,
+              },
+            }}
           />
           
-          <IconButton onClick={handleZoomIn} color="inherit" size={isMobile ? "small" : "medium"}>
+          <IconButton onClick={handleZoomIn} disabled={zoom >= 3} size="small" color="inherit">
             <ZoomInIcon />
           </IconButton>
           
-          <IconButton onClick={handleReset} color="inherit" size={isMobile ? "small" : "medium"}>
+          <IconButton onClick={handleReset} disabled={zoom === 1 && position.x === 0 && position.y === 0} size="small" color="inherit">
             <RestartAltIcon />
           </IconButton>
         </ControlsContainer>
