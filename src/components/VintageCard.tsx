@@ -326,8 +326,6 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     if (!nft.owner) return;
 
     try {
-      setIsProcessing(true);
-
       // First try to use the passed displayName prop
       if (displayName) {
         setOwnerDisplay(displayName);
@@ -353,8 +351,8 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
         console.log(`VintageCard: No display name found, using abbreviated address for ${nft.owner.toString()}`);
         setOwnerDisplay(formatWalletAddress(nft.owner.toString()));
       }
-    } finally {
-      setIsProcessing(false);
+    } catch (error) {
+      console.error('Error updating owner display name:', error);
     }
   };
   
@@ -519,6 +517,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
         {isProcessing && (
           <LoadingImage>
             <CircularProgress size={40} />
+            <Typography variant="caption" color="textSecondary" sx={{ mt: 1 }}>
+              Downloading...
+            </Typography>
           </LoadingImage>
         )}
       </CardImageContainer>
