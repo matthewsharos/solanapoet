@@ -1,5 +1,12 @@
 import { google } from 'googleapis';
 
+// In-memory cache for collections
+let collectionsCache = {
+  data: null,
+  timestamp: 0,
+  expiresIn: 10 * 60 * 1000 // 10 minutes
+};
+
 // Helper function to initialize Google Sheets client
 async function getGoogleSheetsClient() {
   try {
@@ -60,6 +67,27 @@ export default async function handler(req, res) {
 // Get all collections
 async function getAllCollections(req, res) {
   try {
+    // Check for force refresh query parameter
+    const forceRefresh = req.query.refresh === 'true';
+    
+    // Check cache validity
+    const now = Date.now();
+    const cacheValid = !forceRefresh && 
+                       collectionsCache.data && 
+                       now - collectionsCache.timestamp < collectionsCache.expiresIn;
+    
+    // Return cached data if valid
+    if (cacheValid) {
+      console.log('[serverless] Returning cached collections data');
+      return res.status(200).json({
+        success: true,
+        cached: true,
+        length: collectionsCache.data.length,
+        sample: collectionsCache.data.length > 0 ? collectionsCache.data[0] : null,
+        collections: collectionsCache.data
+      });
+    }
+    
     // Debug logging for environment variables
     console.log('[serverless] Environment variables check:', {
       hasGoogleClientEmail: !!process.env.GOOGLE_CLIENT_EMAIL,
@@ -108,6 +136,13 @@ async function getAllCollections(req, res) {
       collectionId: row[0] || ''
     })).filter(collection => collection.address && collection.name);
     
+    // Update cache
+    collectionsCache = {
+      data: collections,
+      timestamp: now,
+      expiresIn: collectionsCache.expiresIn
+    };
+    
     // Separate collections into ultimates and regular for logging
     const ultimateCollections = collections.filter(c => c.ultimates === true);
     const regularCollections = collections.filter(c => !c.ultimates);
@@ -118,12 +153,27 @@ async function getAllCollections(req, res) {
     // Return the collections
     return res.status(200).json({
       success: true,
+      cached: false,
       length: collections.length,
       sample: collections.length > 0 ? collections[0] : null,
       collections: collections
     });
   } catch (error) {
     console.error('[serverless] Collections endpoint error:', error);
+    
+    // If there was an error but we have cached data, return it
+    if (collectionsCache.data) {
+      console.log('[serverless] Returning cached collections data after error');
+      return res.status(200).json({
+        success: true,
+        cached: true,
+        fromErrorFallback: true,
+        length: collectionsCache.data.length,
+        sample: collectionsCache.data.length > 0 ? collectionsCache.data[0] : null,
+        collections: collectionsCache.data
+      });
+    }
+    
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching collections',

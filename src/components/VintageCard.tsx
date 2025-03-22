@@ -134,6 +134,39 @@ const LoadingImage = styled('div')({
   backgroundColor: 'rgba(240, 234, 214, 0.3)',
 });
 
+const PlaceholderImage = styled('div')(({ theme }) => ({
+  width: '100%',
+  height: '200px',
+  backgroundColor: '#f0ead6',
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '4px',
+  overflow: 'hidden',
+  '&::before': {
+    content: '""',
+    position: 'absolute',
+    top: 0,
+    left: -100,
+    width: '100%',
+    height: '100%',
+    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
+    animation: 'shimmer 1.5s infinite',
+  },
+  '@keyframes shimmer': {
+    '0%': {
+      transform: 'translateX(0)',
+    },
+    '100%': {
+      transform: 'translateX(200%)',
+    },
+  },
+  [theme.breakpoints.down('sm')]: {
+    height: '170px',
+  },
+}));
+
 const CardContentStyled = styled(CardContent)(({ theme }) => ({
   padding: theme.spacing(1.5),
   borderTop: '1px solid rgba(139, 69, 19, 0.2)',
@@ -248,61 +281,85 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   const [detailOpen, setDetailOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string>('');
-  const [ownerDisplayName, setOwnerDisplayName] = useState<string>('');
-  const [isUpdatingDisplayName, setIsUpdatingDisplayName] = useState(false);
-  const updateTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [ownerDisplay, setOwnerDisplay] = useState<string>('');
+  const imageRef = useRef<string | null>(null);
+  const observer = useRef<IntersectionObserver | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isInView, setIsInView] = useState(false);
   
-  // Safely determine the owner address based on the owner type
-  const ownerAddress = React.useMemo(() => {
-    if (!nft.owner) return '';
-    return typeof nft.owner === 'string' 
-      ? nft.owner 
-      : (nft.owner.publicKey || '');
-  }, [nft.owner]);
-
-  // Effect to handle display name updates
-  React.useEffect(() => {
-    const updateOwnerDisplay = async () => {
-      if (!ownerAddress) return;
-
-      try {
-        setIsUpdatingDisplayName(true);
-
-        // First try to use the passed displayName prop
-        if (displayName) {
-          setOwnerDisplayName(displayName);
-          return;
-        }
-
-        // Then try to use the owner's displayName if it exists
-        if (typeof nft.owner !== 'string' && nft.owner?.displayName) {
-          setOwnerDisplayName(nft.owner.displayName);
-          return;
-        }
-
-        console.log(`VintageCard: Getting fresh display name for ${ownerAddress}`);
-        
-        // Force a fresh fetch from the server
-        const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
-        
-        if (freshDisplayName) {
-          console.log(`VintageCard: Found fresh display name for ${ownerAddress}: ${freshDisplayName}`);
-          setOwnerDisplayName(freshDisplayName);
-        } else {
-          // Show abbreviated wallet address in vintage card for better UI
-          console.log(`VintageCard: No display name found, using abbreviated address for ${ownerAddress}`);
-          setOwnerDisplayName(formatWalletAddress(ownerAddress));
-        }
-      } finally {
-        setIsUpdatingDisplayName(false);
+  // Load and cache owner display name
+  useEffect(() => {
+    updateOwnerDisplay();
+  }, [nft, displayName]);
+  
+  // Add intersection observer for lazy loading
+  useEffect(() => {
+    observer.current = new IntersectionObserver((entries) => {
+      const [entry] = entries;
+      setIsInView(entry.isIntersecting);
+    }, {
+      rootMargin: '100px', // Load images 100px before they enter the viewport
+      threshold: 0.1
+    });
+    
+    if (cardRef.current) {
+      observer.current.observe(cardRef.current);
+    }
+    
+    return () => {
+      if (observer.current) {
+        observer.current.disconnect();
       }
     };
+  }, []);
+  
+  // Only load image when card is in view or we're in the first 6 NFTs
+  useEffect(() => {
+    if (isInView && nft.image && !imageLoaded) {
+      loadImage();
+    }
+  }, [isInView, nft.image]);
+  
+  // Function to update owner display name
+  const updateOwnerDisplay = async () => {
+    if (!nft.owner) return;
 
-    // Update immediately
-    void updateOwnerDisplay();
+    try {
+      setIsProcessing(true);
 
+      // First try to use the passed displayName prop
+      if (displayName) {
+        setOwnerDisplay(displayName);
+        return;
+      }
+
+      // Then try to use the owner's displayName if it exists
+      if (typeof nft.owner !== 'string' && nft.owner?.displayName) {
+        setOwnerDisplay(nft.owner.displayName);
+        return;
+      }
+
+      console.log(`VintageCard: Getting fresh display name for ${nft.owner.toString()}`);
+      
+      // Force a fresh fetch from the server
+      const freshDisplayName = await getDisplayNameForWallet(nft.owner.toString());
+      
+      if (freshDisplayName) {
+        console.log(`VintageCard: Found fresh display name for ${nft.owner.toString()}: ${freshDisplayName}`);
+        setOwnerDisplay(freshDisplayName);
+      } else {
+        // Show abbreviated wallet address in vintage card for better UI
+        console.log(`VintageCard: No display name found, using abbreviated address for ${nft.owner.toString()}`);
+        setOwnerDisplay(formatWalletAddress(nft.owner.toString()));
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+  
+  // Function to register listeners for display name updates
+  useEffect(() => {
     interface DisplayNamesUpdateEvent extends CustomEvent {
       detail: {
         displayNames: {
@@ -315,40 +372,29 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     }
 
     const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
-      if (!event.detail?.displayNames || !ownerAddress) return;
+      if (!event.detail?.displayNames || !nft.owner) return;
       
       const displayNames = event.detail.displayNames;
-      const updatedName = displayNames[ownerAddress];
-      const isDirectUpdate = displayNames.__updatedAddress === ownerAddress;
+      const updatedName = displayNames[nft.owner.toString()];
+      const isDirectUpdate = displayNames.__updatedAddress === nft.owner.toString();
       const timestamp = displayNames.__timestamp as number || Date.now();
-      
-      // Clear any pending updates
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
-        updateTimeoutRef.current = undefined;
-      }
       
       // Handle force refresh
       if (displayNames.__forceRefresh) {
-        console.log(`Force refresh detected for ${ownerAddress}`);
+        console.log(`Force refresh detected for ${nft.owner.toString()}`);
         
         // For direct updates, update immediately with the new value
         if (isDirectUpdate && typeof updatedName === 'string') {
-          console.log(`Direct update with force refresh for ${ownerAddress}: ${updatedName}`);
-          setOwnerDisplayName(updatedName);
-        } else {
-          // For non-direct updates, fetch fresh data after a short delay
-          updateTimeoutRef.current = setTimeout(() => {
-            updateOwnerDisplay();
-          }, 100);
+          console.log(`Direct update with force refresh for ${nft.owner.toString()}: ${updatedName}`);
+          setOwnerDisplay(updatedName);
         }
         return;
       }
       
       // Handle regular updates
       if (typeof updatedName === 'string') {
-        console.log(`Regular update for ${ownerAddress}: ${updatedName}`);
-        setOwnerDisplayName(updatedName);
+        console.log(`Regular update for ${nft.owner.toString()}: ${updatedName}`);
+        setOwnerDisplay(updatedName);
       }
     };
 
@@ -357,50 +403,46 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
 
     return () => {
       window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
-        updateTimeoutRef.current = undefined;
-      }
     };
-  }, [ownerAddress, displayName, nft.owner]);
-
-  // Check if the current user is the owner
-  const isOwner = React.useMemo(() => {
-    if (!connected || !publicKey || !ownerAddress) return false;
-    return publicKey === ownerAddress;
-  }, [connected, publicKey, ownerAddress]);
-
-  useEffect(() => {
-    const loadImage = async () => {
-      if (!nft.image) {
-        setImageError(true);
-        return;
+  }, [nft.owner]);
+  
+  // Function to load image with optimizations
+  const loadImage = async () => {
+    if (!nft.image || imageLoaded || imageRef.current === nft.image) {
+      return;
+    }
+    
+    // Store the current image URL to prevent duplicate loads
+    imageRef.current = nft.image;
+    
+    try {
+      // Create a new image object to preload
+      const img = new Image();
+      
+      img.onload = () => {
+        setImageLoaded(true);
+        setImageFailed(false);
+      };
+      
+      img.onerror = () => {
+        setImageLoaded(true);
+        setImageFailed(true);
+        console.error(`Failed to load image for NFT: ${nft.name}`);
+      };
+      
+      // Set source to start loading
+      img.src = nft.image;
+      
+      // If image is cached and loads immediately, onload may not fire
+      if (img.complete) {
+        setImageLoaded(true);
       }
-
-      try {
-        setImageLoaded(false);
-        setImageError(false);
-
-        // Try to load the image
-        const img = new Image();
-        img.onload = () => {
-          setImageUrl(nft.image);
-          setImageLoaded(true);
-        };
-        img.onerror = () => {
-          setImageError(true);
-          setImageLoaded(false);
-        };
-        img.src = nft.image;
-      } catch (error) {
-        console.error('Error loading image:', error);
-        setImageError(true);
-        setImageLoaded(false);
-      }
-    };
-
-    loadImage();
-  }, [nft.image]);
+    } catch (error) {
+      console.error(`Error loading image for NFT ${nft.name}:`, error);
+      setImageLoaded(true);
+      setImageFailed(true);
+    }
+  };
 
   const handleCardClick = () => {
     setDetailOpen(true);
@@ -419,9 +461,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
 
     setIsProcessing(true);
     try {
-      if (!imageUrl) return;
+      if (!nft.image) return;
       
-      const response = await fetch(imageUrl);
+      const response = await fetch(nft.image);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -439,55 +481,70 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   };
 
   return (
-    <StyledCard onClick={handleCardClick}>
+    <StyledCard ref={cardRef} onClick={handleCardClick} elevation={3}>
       <CardTitleContainer>
-        <CardTitle>{nft.name}</CardTitle>
+        <CardTitle variant="h5">
+          {typeof nft.name === 'string' ? nft.name : 'Unnamed NFT'}
+        </CardTitle>
       </CardTitleContainer>
       
       <CardImageContainer>
-        {!imageLoaded && !imageError && (
-          <LoadingImage>
-            <CircularProgress />
-          </LoadingImage>
+        {!imageLoaded && (
+          <PlaceholderImage>
+            <CircularProgress size={30} thickness={4} color="secondary" />
+          </PlaceholderImage>
         )}
-        {imageLoaded && !imageError && (
-          <CardImage
-            src={imageUrl}
-            alt={nft.name}
-            style={{ opacity: imageLoaded ? 1 : 0 }}
+        
+        {imageLoaded && !imageFailed && nft.image && (
+          <CardImage 
+            src={nft.image} 
+            alt={typeof nft.name === 'string' ? nft.name : 'NFT Image'}
+            loading="lazy"
+            decoding="async"
           />
         )}
-        {imageError && (
-          <Box sx={{ 
+        
+        {imageLoaded && imageFailed && (
+          <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center',
             height: '100%',
             color: '#666'
           }}>
-            Image not available
-          </Box>
+            Image unavailable
+          </div>
+        )}
+        
+        {isProcessing && (
+          <LoadingImage>
+            <CircularProgress size={40} />
+          </LoadingImage>
         )}
       </CardImageContainer>
       
       <CardContentStyled>
+        <Typography variant="body2" color="textSecondary" align="center">
+          Collection: {typeof nft.collection === 'string' ? nft.collection : 'Unknown'}
+        </Typography>
         <OwnerTypography>
-          Owner: {ownerDisplayName || formatWalletAddress(ownerAddress)}
+          Owner: {ownerDisplay || (nft.owner ? shortenAddress(nft.owner.toString()) : 'Unknown')}
         </OwnerTypography>
       </CardContentStyled>
       
-      <TypewriterKeyButton 
-        onClick={handleDownload} 
-        disabled={!imageLoaded || imageError || isProcessing}
+      <TypewriterKeyButton
+        size="small"
+        onClick={(e) => handleDownload(e)}
+        aria-label="Download NFT"
       >
-        <KeyboardArrowDownIcon />
+        <KeyboardArrowDownIcon fontSize="small" />
       </TypewriterKeyButton>
-
+      
       <NFTDetailModal
         open={detailOpen}
         onClose={handleDetailClose}
         nft={nft}
-        displayName={ownerDisplayName}
+        displayName={displayName}
       />
     </StyledCard>
   );

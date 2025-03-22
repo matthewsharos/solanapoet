@@ -1,5 +1,9 @@
 import axios from 'axios';
 
+// In-memory cache for collection assets
+const assetsCache = new Map();
+const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 // Serverless function for fetching collection assets
 export default async function handler(req, res) {
   console.log('[serverless] Collection assets endpoint called with query:', req.query);
@@ -21,7 +25,8 @@ export default async function handler(req, res) {
 
   try {
     // Get query parameters
-    const { collectionId, page = 1, limit = 10 } = req.query;
+    const { collectionId, page = 1, limit = 10, refresh = 'false' } = req.query;
+    const forceRefresh = refresh === 'true';
     
     if (!collectionId) {
       return res.status(400).json({
@@ -30,7 +35,24 @@ export default async function handler(req, res) {
       });
     }
     
-    console.log(`Fetching assets for collection: ${collectionId}, page: ${page}, limit: ${limit}`);
+    console.log(`Fetching assets for collection: ${collectionId}, page: ${page}, limit: ${limit}, forceRefresh: ${forceRefresh}`);
+    
+    // Create cache key from parameters
+    const cacheKey = `${collectionId}:${page}:${limit}`;
+    
+    // Check if data exists in cache and isn't stale
+    if (!forceRefresh && assetsCache.has(cacheKey)) {
+      const cachedData = assetsCache.get(cacheKey);
+      const now = Date.now();
+      
+      if (now - cachedData.timestamp < CACHE_DURATION) {
+        console.log(`Returning cached data for ${cacheKey}`);
+        return res.status(200).json({
+          ...cachedData.data,
+          fromCache: true
+        });
+      }
+    }
     
     // Get Helius API key from environment variables
     const heliusApiKey = process.env.HELIUS_API_KEY;
@@ -98,11 +120,26 @@ export default async function handler(req, res) {
       };
     }
     
+    // Save to cache with timestamp
+    assetsCache.set(cacheKey, {
+      data: formattedResponse,
+      timestamp: Date.now()
+    });
+    
+    // Auto-clear cache after expiration to prevent memory leaks
+    setTimeout(() => {
+      if (assetsCache.has(cacheKey)) {
+        assetsCache.delete(cacheKey);
+        console.log(`Cache entry for ${cacheKey} expired and was removed`);
+      }
+    }, CACHE_DURATION);
+    
     // Return the formatted response
     return res.status(200).json(formattedResponse);
   } catch (error) {
     console.error('Collection assets endpoint error:', error);
-    // Even in error case, provide the expected structure
+    
+    // Return the expected structure even in error case
     return res.status(200).json({ 
       status: 500,
       result: {

@@ -9,8 +9,60 @@ export interface NFTMetadata {
 }
 
 // Cache to prevent redundant fetches
-const collectionCache = new Map<string, NFTMetadata[]>();
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const collectionCache = new Map<string, {
+  data: NFTMetadata[],
+  timestamp: number
+}>();
+
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes, increased from 10
+
+// Image preloading queue to control parallel loads
+const preloadQueue: string[] = [];
+const MAX_CONCURRENT_PRELOADS = 6;
+let activePreloads = 0;
+
+// Helper function to preload images
+const preloadImage = (imageUrl: string): Promise<void> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      activePreloads--;
+      processQueue();
+      resolve();
+    };
+    img.onerror = () => {
+      activePreloads--;
+      processQueue();
+      resolve(); // Resolve even on error to continue the queue
+    };
+    img.src = imageUrl;
+  });
+};
+
+// Process the preload queue
+const processQueue = () => {
+  while (activePreloads < MAX_CONCURRENT_PRELOADS && preloadQueue.length > 0) {
+    const nextUrl = preloadQueue.shift();
+    if (nextUrl) {
+      activePreloads++;
+      preloadImage(nextUrl).catch(() => {
+        // Just log and continue
+        console.error(`Failed to preload image: ${nextUrl}`);
+      });
+    }
+  }
+};
+
+// Add an image URL to the preload queue
+export const queueImagePreload = (imageUrl: string | null | undefined): void => {
+  if (!imageUrl) return;
+  
+  // Don't add duplicates
+  if (preloadQueue.includes(imageUrl)) return;
+  
+  preloadQueue.push(imageUrl);
+  processQueue();
+};
 
 export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NFTMetadata[]> => {
   try {
@@ -22,10 +74,20 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
     
     // Check cache first
     const cacheKey = collectionAddress;
-    const cached = collectionCache.get(cacheKey);
-    if (cached) {
+    const cachedEntry = collectionCache.get(cacheKey);
+    const now = Date.now();
+    
+    if (cachedEntry && (now - cachedEntry.timestamp < CACHE_DURATION)) {
       console.log(`Using cached NFTs for collection ${collectionAddress}`);
-      return cached;
+      
+      // Preload images for cached NFTs to improve perceived performance
+      cachedEntry.data.slice(0, 12).forEach(nft => {
+        if (nft.image) {
+          queueImagePreload(nft.image);
+        }
+      });
+      
+      return cachedEntry.data;
     }
 
     console.log(`Fetching NFTs for collection ${collectionAddress} from server...`);
@@ -38,11 +100,18 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
         if (data.success && Array.isArray(data.nfts)) {
           console.log(`Received ${data.nfts.length} NFTs from server for collection ${collectionAddress}`);
           
-          // Cache the results
-          collectionCache.set(cacheKey, data.nfts);
+          // Preload the first few images to improve perceived performance
+          data.nfts.slice(0, 12).forEach((nft: NFTMetadata) => {
+            if (nft.image) {
+              queueImagePreload(nft.image);
+            }
+          });
           
-          // Set a timer to clear the cache entry
-          setTimeout(() => collectionCache.delete(cacheKey), CACHE_DURATION);
+          // Cache the results
+          collectionCache.set(cacheKey, {
+            data: data.nfts,
+            timestamp: now
+          });
           
           return data.nfts;
         }
@@ -119,11 +188,18 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
       description: item.content?.metadata?.description || ''
     }));
     
-    // Cache the results
-    collectionCache.set(cacheKey, nfts);
+    // Preload the first few images
+    nfts.slice(0, 12).forEach((nft: NFTMetadata) => {
+      if (nft.image) {
+        queueImagePreload(nft.image);
+      }
+    });
     
-    // Set a timer to clear the cache entry
-    setTimeout(() => collectionCache.delete(cacheKey), CACHE_DURATION);
+    // Cache the results
+    collectionCache.set(cacheKey, {
+      data: nfts,
+      timestamp: now
+    });
     
     console.log(`Fetched ${nfts.length} NFTs for collection ${collectionAddress}`);
     return nfts;

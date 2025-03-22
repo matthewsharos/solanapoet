@@ -1,5 +1,12 @@
 import { google } from 'googleapis';
 
+// In-memory cache for ultimate NFTs
+let ultimatesCache = {
+  data: null,
+  timestamp: 0,
+  expiresIn: 10 * 60 * 1000 // 10 minutes
+};
+
 // Helper function to initialize Google Sheets client
 async function getGoogleSheetsClient() {
   try {
@@ -49,6 +56,27 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Check for force refresh query parameter
+    const forceRefresh = req.query.refresh === 'true';
+    
+    // Check cache validity
+    const now = Date.now();
+    const cacheValid = !forceRefresh && 
+                       ultimatesCache.data && 
+                       now - ultimatesCache.timestamp < ultimatesCache.expiresIn;
+    
+    // Return cached data if valid
+    if (cacheValid) {
+      console.log('[serverless] Returning cached ultimates data');
+      return res.status(200).json({
+        success: true,
+        cached: true,
+        length: ultimatesCache.data.length,
+        sample: ultimatesCache.data.length > 0 ? ultimatesCache.data[0] : null,
+        data: ultimatesCache.data
+      });
+    }
+    
     // Get ultimate NFTs directly from Google Sheets
     console.log('Fetching ultimates directly from Google Sheets...');
     
@@ -87,15 +115,37 @@ export default async function handler(req, res) {
       };
     }).filter(nft => nft["NFT Address"] && nft.collection_id);
     
+    // Update cache
+    ultimatesCache = {
+      data: ultimateNFTs,
+      timestamp: now,
+      expiresIn: ultimatesCache.expiresIn
+    };
+    
     // Return the data with some debugging info
     return res.status(200).json({
       success: true,
+      cached: false,
       length: ultimateNFTs.length,
       sample: ultimateNFTs.length > 0 ? ultimateNFTs[0] : null,
       data: ultimateNFTs
     });
   } catch (error) {
     console.error('Ultimates endpoint error:', error);
+    
+    // If there was an error but we have cached data, return it
+    if (ultimatesCache.data) {
+      console.log('[serverless] Returning cached ultimates data after error');
+      return res.status(200).json({
+        success: true,
+        cached: true,
+        fromErrorFallback: true,
+        length: ultimatesCache.data.length,
+        sample: ultimatesCache.data.length > 0 ? ultimatesCache.data[0] : null,
+        data: ultimatesCache.data
+      });
+    }
+    
     return res.status(500).json({ 
       success: false, 
       message: 'Error fetching ultimates',
