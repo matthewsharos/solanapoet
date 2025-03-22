@@ -6,6 +6,14 @@ export interface NFTMetadata {
   image: string;
   description?: string;
   mint: string;
+  owner?: {
+    publicKey: string;
+    ownershipModel?: string;
+    delegated?: boolean;
+    delegate?: string | null;
+    frozen?: boolean;
+  } | string;
+  createdAt?: string;
 }
 
 // Cache to prevent redundant fetches
@@ -185,7 +193,14 @@ export const fetchCollectionNFTs = async (collectionAddress: string): Promise<NF
       mint: item.id,
       name: item.content?.metadata?.name || 'Untitled',
       image: item.content?.files?.[0]?.uri || item.content?.links?.image || '',
-      description: item.content?.metadata?.description || ''
+      description: item.content?.metadata?.description || '',
+      owner: item.ownership?.owner ? {
+        publicKey: item.ownership.owner,
+        ownershipModel: item.ownership.ownershipModel || 'single',
+        delegated: item.ownership.delegated || false,
+        delegate: item.ownership.delegate || null,
+        frozen: item.ownership.frozen || false
+      } : ''
     }));
     
     // Preload the first few images
