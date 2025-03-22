@@ -24,7 +24,7 @@ declare global {
   }
 }
 
-// Initialize global cache if it doesn't exist
+// Initialize global cache with proper type checking
 if (typeof window !== 'undefined' && !window.nftImageCache) {
   window.nftImageCache = new Map<string, boolean>();
 }
@@ -191,11 +191,12 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       setPosition({ x: 0, y: 0 });
       setImageLoaded(false);
       setLoadError(false);
+      setShowHint(true);
       
       // Preload the high-resolution image
       const preloadImage = () => {
         // Check if image is already cached
-        if (window.nftImageCache.has(imageSrc)) {
+        if (window.nftImageCache?.has(imageSrc)) {
           const isLoaded = window.nftImageCache.get(imageSrc);
           setImageLoaded(isLoaded || false);
           setLoadError(!isLoaded);
@@ -205,7 +206,9 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         const img = new Image();
         
         img.onload = () => {
-          window.nftImageCache.set(imageSrc, true);
+          if (window.nftImageCache) {
+            window.nftImageCache.set(imageSrc, true);
+          }
           // Only update state if modal is still open
           if (open) {
             setImageLoaded(true);
@@ -214,7 +217,9 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         };
         
         img.onerror = () => {
-          window.nftImageCache.set(imageSrc, false);
+          if (window.nftImageCache) {
+            window.nftImageCache.set(imageSrc, false);
+          }
           // Only update state if modal is still open
           if (open) {
             setImageLoaded(true);
@@ -224,7 +229,9 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         
         // If image is already cached by browser, onload may not fire
         if (img.complete) {
-          window.nftImageCache.set(imageSrc, true);
+          if (window.nftImageCache) {
+            window.nftImageCache.set(imageSrc, true);
+          }
           setImageLoaded(true);
           setLoadError(false);
         } else {
@@ -235,20 +242,17 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       
       // Start preloading immediately
       preloadImage();
-    }
-  }, [open, imageSrc]);
-
-  // Show hint when zoomed in
-  useEffect(() => {
-    if (zoom > 1) {
-      setShowHint(true);
+      
+      // Show and hide the hint after a delay
       const timer = setTimeout(() => {
         setShowHint(false);
-      }, 2000);
+      }, 3000);
       
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+      };
     }
-  }, [zoom]);
+  }, [open, imageSrc]);
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.25, 5));

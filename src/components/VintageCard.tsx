@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, Typography, Box, styled, IconButton, Button, CircularProgress } from '@mui/material';
 import { NFT, NFTOwner } from '../types/nft';
 import { formatWalletAddress } from '../utils/helpers';
@@ -285,8 +285,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   const imgElementRef = useRef<HTMLImageElement | null>(null);
   
   // Global image cache to prevent reloading across components
-  // Using a static variable to persist across component instances
-  if (!window.nftImageCache) {
+  if (typeof window !== 'undefined' && !window.nftImageCache) {
     window.nftImageCache = new Map<string, boolean>();
   }
   
@@ -380,7 +379,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     }
     
     // Check if this image URL is already cached
-    if (window.nftImageCache.has(nft.image)) {
+    if (window.nftImageCache?.has(nft.image)) {
       const isLoaded = window.nftImageCache.get(nft.image);
       setImageLoaded(true);
       setImageFailed(!isLoaded);
@@ -396,7 +395,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     img.onload = () => {
       // Only update state if this component is still trying to load the same image
       if (imageRef.current === nft.image) {
-        window.nftImageCache.set(nft.image, true);
+        if (window.nftImageCache) {
+          window.nftImageCache.set(nft.image, true);
+        }
         setImageLoaded(true);
         setImageFailed(false);
       }
@@ -405,7 +406,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     img.onerror = () => {
       // Only update state if this component is still trying to load the same image
       if (imageRef.current === nft.image) {
-        window.nftImageCache.set(nft.image, false);
+        if (window.nftImageCache) {
+          window.nftImageCache.set(nft.image, false);
+        }
         setImageLoaded(true);
         setImageFailed(true);
       }
@@ -413,7 +416,9 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     
     // If the image is already in browser cache, it may load immediately
     if (img.complete) {
-      window.nftImageCache.set(nft.image, true);
+      if (window.nftImageCache) {
+        window.nftImageCache.set(nft.image, true);
+      }
       setImageLoaded(true);
       setImageFailed(false);
     } else {

@@ -796,16 +796,16 @@ if (typeof window !== 'undefined' && !window.nftImageCache) {
   window.nftImageCache = new Map<string, boolean>();
 }
 
-// Improved helper function to preload images in batches
+// Optimized preloadImages function that avoids redundant loading
 const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
-  if (!urls.length) return;
+  if (!urls || urls.length === 0) return;
   
   // Skip URLs that are already cached or null/undefined
   const urlsToLoad = urls.filter(url => 
     url && !window.nftImageCache.has(url)
   );
   
-  if (!urlsToLoad.length) return;
+  if (urlsToLoad.length === 0) return;
   
   console.log(`Preloading ${urlsToLoad.length} NFT images in batches of ${batchSize}`);
   
@@ -824,6 +824,7 @@ const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
         
         const img = new Image();
         
+        // Single function to handle completion
         const onFinish = () => {
           img.onload = null;
           img.onerror = null;
@@ -978,34 +979,6 @@ const Market: React.FC = () => {
     }
   }, [loadedNFTs, displayNamesLoaded]);
 
-  // Update NFTs when collection changes
-  const updateNFTs = useCallback((newNFT: NFT) => {
-    setLoadedNFTs(prevNFTs => {
-      const index = prevNFTs.findIndex(nft => nft.mint === newNFT.mint);
-      if (index > -1) {
-        const updatedNFTs = [...prevNFTs];
-        updatedNFTs[index] = { ...newNFT };
-        return updatedNFTs;
-      }
-      return [...prevNFTs, newNFT];
-    });
-    
-    // Update UI with the new NFT immediately
-    setNFTs(loadedNFTs.map(nft => {
-      if (nft.mint === newNFT.mint) {
-        return { ...newNFT };
-      }
-      return nft;
-    }));
-  }, [loadedNFTs]);
-
-  // Reset NFTs when collection changes
-  const resetNFTs = useCallback(() => {
-    setLoadedNFTs([]);
-    setNFTs([]);
-    setFilteredNFTs([]);
-  }, []);
-
   // Load more NFTs (for pagination)
   const loadMoreNFTs = useCallback(() => {
     if (isLoadingMore || !nfts.length) return;
@@ -1138,14 +1111,16 @@ const Market: React.FC = () => {
           }
         });
         
-        // Update the UI with initial NFTs immediately
-        setLoadedNFTs(initialNFTs);
-        setNFTs(initialNFTs);
-        setFilteredNFTs(initialNFTs);
-        
-        // Start preloading initial images
-        const imageUrls = initialNFTs.map(nft => nft.image).filter(Boolean) as string[];
-        preloadImages(imageUrls);
+        // Update the UI with initial NFTs immediately to show something quickly
+        if (initialNFTs.length > 0) {
+          setLoadedNFTs(initialNFTs);
+          setNFTs(initialNFTs);
+          setFilteredNFTs(initialNFTs);
+          
+          // Start preloading initial images
+          const imageUrls = initialNFTs.map(nft => nft.image).filter(Boolean) as string[];
+          preloadImages(imageUrls);
+        }
       } catch (error) {
         console.error('Error pre-fetching initial NFTs:', error);
       }
