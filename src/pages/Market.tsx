@@ -821,48 +821,74 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
 
 // Sort NFTs by creation date (newest first)
 const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
+  // Add extensive logging to debug the comparison
+  console.log(`SORTING INFO - Comparing NFTs:
+    A: ${a.name} (${a.mint}), Date: ${a.createdAt} 
+    B: ${b.name} (${b.mint}), Date: ${b.createdAt}`);
+  
   // Try to get dates as millisecond timestamps
   let dateA: number | null = null;
   let dateB: number | null = null;
   
-  try {
-    // Try parsing as timestamp string first (which is how our app stores dates)
-    if (a.createdAt && /^\d+$/.test(a.createdAt)) {
-      dateA = parseInt(a.createdAt);
-    }
-    
-    if (b.createdAt && /^\d+$/.test(b.createdAt)) {
-      dateB = parseInt(b.createdAt);
-    }
-    
-    // If still null, try parsing as ISO string
-    if (dateA === null && a.createdAt) {
+  // First try parsing as timestamp string
+  if (a.createdAt && /^\d+$/.test(a.createdAt)) {
+    dateA = parseInt(a.createdAt);
+    console.log(`A parsed as numeric timestamp: ${dateA}, Date: ${new Date(dateA).toISOString()}`);
+  }
+  
+  if (b.createdAt && /^\d+$/.test(b.createdAt)) {
+    dateB = parseInt(b.createdAt);
+    console.log(`B parsed as numeric timestamp: ${dateB}, Date: ${new Date(dateB).toISOString()}`);
+  }
+  
+  // If still null, try parsing as ISO string
+  if (dateA === null && a.createdAt) {
+    try {
       const dateObj = new Date(a.createdAt);
       if (!isNaN(dateObj.getTime())) {
         dateA = dateObj.getTime();
+        console.log(`A parsed as ISO string: ${dateA}, Date: ${dateObj.toISOString()}`);
+      } else {
+        console.log(`A has invalid date format: ${a.createdAt}`);
       }
+    } catch (e) {
+      console.error(`Error parsing date A: ${a.createdAt}`, e);
     }
-    
-    if (dateB === null && b.createdAt) {
+  }
+  
+  if (dateB === null && b.createdAt) {
+    try {
       const dateObj = new Date(b.createdAt);
       if (!isNaN(dateObj.getTime())) {
         dateB = dateObj.getTime();
+        console.log(`B parsed as ISO string: ${dateB}, Date: ${dateObj.toISOString()}`);
+      } else {
+        console.log(`B has invalid date format: ${b.createdAt}`);
       }
+    } catch (e) {
+      console.error(`Error parsing date B: ${b.createdAt}`, e);
     }
-  } catch (error) {
-    console.error('Error parsing dates for sorting:', error);
   }
 
   // Compare the dates if we have them
   if (dateA !== null && dateB !== null) {
+    console.log(`Comparing dates: A(${new Date(dateA).toISOString()}) vs B(${new Date(dateB).toISOString()})`);
+    console.log(`Result: ${dateB > dateA ? 'B is newer' : 'A is newer'}, returning ${dateB - dateA}`);
     return dateB - dateA; // Descending order (newest first)
   }
   
   // Handle cases where one or both dates are missing
-  if (dateA !== null) return -1; // A has date, B doesn't - A comes first
-  if (dateB !== null) return 1;  // B has date, A doesn't - B comes first
+  if (dateA !== null) {
+    console.log('Only A has date, A comes first');
+    return -1; 
+  }
+  if (dateB !== null) {
+    console.log('Only B has date, B comes first');
+    return 1;
+  }
   
   // If neither has a date, sort by mint for consistency
+  console.log('No dates found, sorting by mint');
   return a.mint.localeCompare(b.mint);
 };
 
@@ -1305,8 +1331,7 @@ const Market: React.FC = () => {
           const processedCollectionNFTs: NFT[] = [];
           
           for (const nftData of collectionNFTs) {
-            // Try to parse the date properly - collection.creationDate is our best source here
-            // since NFTMetadata doesn't contain createdAt
+            // Process creation date correctly
             let createdDate = '';
             
             // Try to get creation date from collection
@@ -1320,6 +1345,22 @@ const Market: React.FC = () => {
               const randomOffset = Math.floor(Math.random() * 60000); // Random offset up to 1 minute
               createdDate = new Date(now - randomOffset).toISOString();
             }
+            
+            // Use our parseNFTCreationDate function for consistent handling
+            const parsedDate = parseNFTCreationDate(
+              {
+                id: nftData.mint,
+                ...nftData,
+                content: {
+                  metadata: {
+                    created_at: createdDate
+                  }
+                }
+              }, 
+              collection
+            );
+            
+            console.log(`NFT ${nftData.mint} parsed date: ${parsedDate.createdAt}, from collection ${collection.name}`);
             
             // Create NFT object from metadata
             const nft: NFT = {
@@ -1342,8 +1383,8 @@ const Market: React.FC = () => {
               creators: [],
               royalty: 0,
               tokenStandard: 'NonFungible',
-              // Store the creation date as an ISO string for consistent parsing
-              createdAt: parseAndNormalizeDate(createdDate)
+              // Store the timestamp for consistent sorting
+              createdAt: String(new Date(parsedDate.createdAt).getTime())
             };
             
             processedCollectionNFTs.push(nft);
