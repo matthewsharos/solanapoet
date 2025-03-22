@@ -643,37 +643,59 @@ const parseNFTDate = (dateStr: string | undefined): number => {
 };
 
 // Define cache for ultimates at the module level
-const ultimatesCache = {
+const ultimatesCache: {
+  data: UltimateNFT[] | null;
+  timestamp: number;
+  expiresIn: number;
+} = {
   data: null,
   timestamp: 0,
   expiresIn: 5 * 60 * 1000 // 5 minutes
 };
 
 // Define cache for collections at the module level
-const collectionsCache = {
+const collectionsCache: {
+  data: Collection[] | null;
+  timestamp: number;
+  expiresIn: number;
+} = {
   data: null,
   timestamp: 0,
   expiresIn: 5 * 60 * 1000 // 5 minutes
 };
 
+// Extend the NFT interface to support loading state
+interface NFTWithLoadingState extends NFT {
+  loading?: boolean;
+  status?: string;
+}
+
+// Modified type for ultmates handling
+interface NFTWithCollection extends Omit<NFTWithLoadingState, 'collection'> {
+  collection: string; // This will temporarily hold the collection name during creation
+}
+
 const Market: React.FC = () => {
   const { publicKey, connected, wallet } = useWalletContext();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const [nfts, setNfts] = useState<NFT[]>([]);
+  const isLargeScreen = useMediaQuery(theme.breakpoints.up('lg'));
+  
+  // State for NFTs, collections, and UI
+  const [nfts, setNFTs] = useState<NFTWithLoadingState[]>([]);
+  const [filteredNFTs, setFilteredNFTs] = useState<NFTWithLoadingState[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCollection, setSelectedCollection] = useState<string>('');
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
-  const [displayNamesLoaded, setDisplayNamesLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showMyNFTs, setShowMyNFTs] = useState(false);
-
-  // Add state for progressive loading
-  const [loadedNFTs, setLoadedNFTs] = useState<NFT[]>([]);
+  const [loadedNFTs, setLoadedNFTs] = useState<NFTWithLoadingState[]>([]);
   const [page, setPage] = useState(1);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
+  const [displayNamesLoaded, setDisplayNamesLoaded] = useState(false);
+  const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
 
   // Effect to uncheck "My NFTs" when wallet disconnects
   useEffect(() => {
@@ -707,7 +729,7 @@ const Market: React.FC = () => {
   useEffect(() => {
     if (!displayNamesLoaded) return;
     
-    setNfts(loadedNFTs.map(nft => {
+    setNFTs(loadedNFTs.map(nft => {
       // Add defensive check to handle cases where nft.owner is undefined
       if (!nft.owner) {
         return {
@@ -750,69 +772,122 @@ const Market: React.FC = () => {
     }
   }, [loadedNFTs, displayNamesLoaded]);
 
+  // Update NFTs when collection changes
   const updateNFTs = useCallback((newNFT: NFT) => {
-    setLoadedNFTs(prev => {
-      // Check if NFT already exists to avoid duplicates
-      if (prev.some(n => n.mint === newNFT.mint)) {
-        return prev;
+    setLoadedNFTs(prevNFTs => {
+      const index = prevNFTs.findIndex(nft => nft.mint === newNFT.mint);
+      if (index > -1) {
+        const updatedNFTs = [...prevNFTs];
+        updatedNFTs[index] = { ...newNFT };
+        return updatedNFTs;
       }
-
-      return [...prev, newNFT];
+      return [...prevNFTs, newNFT];
     });
+    
+    // Update UI with the new NFT immediately
+    setNFTs(loadedNFTs.map(nft => {
+      if (nft.mint === newNFT.mint) {
+        return { ...newNFT };
+      }
+      return nft;
+    }));
+  }, [loadedNFTs]);
+
+  // Reset NFTs when collection changes
+  const resetNFTs = useCallback(() => {
+    setLoadedNFTs([]);
+    setNFTs([]);
+    setFilteredNFTs([]);
   }, []);
+
+  // Load more NFTs (for pagination)
+  const loadMoreNFTs = useCallback(() => {
+    if (isLoadingMore || !nfts.length) return;
+    
+    setIsLoadingMore(true);
+    try {
+      // Load next page of NFTs
+      const nextPage = page + 1;
+      setPage(nextPage);
+      
+      // Here you would typically fetch more NFTs from an API
+      // For now, let's just show more from the loaded set
+      
+      setNFTs(loadedNFTs);
+      setIsLoadingMore(false);
+    } catch (error) {
+      console.error('Error loading more NFTs:', error);
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, nfts.length, page, loadedNFTs]);
 
   const fetchAllNFTs = async () => {
     if (loading) return;
     
     try {
       setLoading(true);
+      setError(null);
       setLoadingMessage('Fetching collections...');
       
       // First, try loading from cache for initial render speed
-      let collections = collectionsCache.data;
-      let ultimates = ultimatesCache.data;
+      let collectionsData = collectionsCache.data;
+      let ultimatesData = ultimatesCache.data;
       
       // Check if we need to fetch collections (either no cache or expired)
-      const needToFetchCollections = !collections || 
+      const needToFetchCollections = !collectionsData || 
         (Date.now() - collectionsCache.timestamp > collectionsCache.expiresIn);
       
       // Check if we need to fetch ultimates
-      const needToFetchUltimates = !ultimates || 
+      const needToFetchUltimates = !ultimatesData || 
         (Date.now() - ultimatesCache.timestamp > ultimatesCache.expiresIn);
         
       // If we have cached collections, use them immediately
-      if (collections && !needToFetchCollections) {
-        console.log('Using cached collections:', collections.length);
-        setCollections(collections);
+      if (collectionsData && !needToFetchCollections) {
+        console.log('Using cached collections:', collectionsData.length);
+        setCollections(collectionsData);
       }
         
       // Create a placeholder for the first 6 NFTs to be shown immediately
-      const initialNFTs: NFT[] = [];
+      const initialNFTs: NFTWithLoadingState[] = [];
       let hasInitialNFTs = false;
       
       // If we have cached ultimates, use them to show initial NFTs without waiting
-      if (ultimates && !needToFetchUltimates && collections) {
+      if (ultimatesData && !needToFetchUltimates && collectionsData) {
         try {
           // Create initial NFTs from ultimates cache
           console.log('Creating initial NFTs from cache...');
-          const firstUltimates = ultimates.slice(0, 6);
+          const firstUltimates = ultimatesData.slice(0, 6);
           for (const ultNft of firstUltimates) {
-            const collection = collections.find(c => c.address === ultNft.collection_id);
+            const collection = collectionsData.find(c => c.address === ultNft.collection_id);
             if (collection) {
-              initialNFTs.push({
-                address: ultNft["NFT Address"],
+              // Create a temporary object with collection as string
+              const tempNft: NFTWithCollection = {
+                mint: ultNft["NFT Address"],
                 name: ultNft.Name,
-                image: null, // We'll need to fetch images still
+                image: '', // Empty string instead of null for type compatibility
                 description: '',
                 attributes: [],
-                collection: collection.name,
+                collection: collection.name, // String for name
                 collectionAddress: collection.address,
                 owner: ultNft.Owner,
-                mintDate: undefined,
+                listed: false,
+                collectionName: collection.name,
+                creators: [],
+                royalty: 0,
                 tokenStandard: 'NonFungible',
                 loading: true,
-                // Add placeholder image to trigger loading state
                 status: 'loading'
+              };
+              
+              // Now convert to NFTWithLoadingState with proper collection object
+              initialNFTs.push({
+                ...tempNft,
+                collection: {
+                  name: collection.name,
+                  address: collection.address,
+                  description: collection.description,
+                  image: collection.image
+                }
               });
             }
           }
@@ -831,50 +906,65 @@ const Market: React.FC = () => {
       // If we need to fetch collections, do so now
       if (needToFetchCollections) {
         console.log('Fetching fresh collections...');
-        collections = await fetchCollections();
-        console.log('Fetched collections:', collections.length);
+        collectionsData = await fetchCollections();
+        console.log('Fetched collections:', collectionsData.length);
         
         // Update cache
-        collectionsCache.data = collections;
+        collectionsCache.data = collectionsData;
         collectionsCache.timestamp = Date.now();
         
-        setCollections(collections);
+        setCollections(collectionsData);
       }
       
       // If we need to fetch ultimates, do so now
       if (needToFetchUltimates) {
         setLoadingMessage('Fetching ultimate NFTs...');
         console.log('Fetching fresh ultimates...');
-        ultimates = await getUltimateNFTs();
-        console.log('Fetched ultimates:', ultimates.length);
+        ultimatesData = await getUltimateNFTs();
+        console.log('Fetched ultimates:', ultimatesData.length);
         
         // Update cache
-        ultimatesCache.data = ultimates;
+        ultimatesCache.data = ultimatesData;
         ultimatesCache.timestamp = Date.now();
       }
       
       // If we don't have initial NFTs yet and now have collections and ultimates
-      if (!hasInitialNFTs && collections && ultimates) {
+      if (!hasInitialNFTs && collectionsData && ultimatesData) {
         try {
           // Create initial NFTs from just-fetched data
           console.log('Creating initial NFTs from fresh data...');
-          const firstUltimates = ultimates.slice(0, 6);
+          const firstUltimates = ultimatesData.slice(0, 6);
           for (const ultNft of firstUltimates) {
-            const collection = collections.find(c => c.address === ultNft.collection_id);
+            const collection = collectionsData.find(c => c.address === ultNft.collection_id);
             if (collection) {
-              initialNFTs.push({
-                address: ultNft["NFT Address"],
+              // Create a temporary object with collection as string
+              const tempNft: NFTWithCollection = {
+                mint: ultNft["NFT Address"],
                 name: ultNft.Name,
-                image: null,
+                image: '', // Empty string instead of null for type compatibility
                 description: '',
                 attributes: [],
-                collection: collection.name,
+                collection: collection.name, // String for name
                 collectionAddress: collection.address,
                 owner: ultNft.Owner,
-                mintDate: undefined,
+                listed: false,
+                collectionName: collection.name,
+                creators: [],
+                royalty: 0,
                 tokenStandard: 'NonFungible',
                 loading: true,
                 status: 'loading'
+              };
+              
+              // Now convert to NFTWithLoadingState with proper collection object
+              initialNFTs.push({
+                ...tempNft,
+                collection: {
+                  name: collection.name,
+                  address: collection.address,
+                  description: collection.description,
+                  image: collection.image
+                }
               });
             }
           }
@@ -896,9 +986,9 @@ const Market: React.FC = () => {
         const initialPromises = initialNFTs.map(async (nft, index) => {
           try {
             // Prioritize first 6 images
-            const nftData = await fetchNFTWithRetries(nft.address, 
-              ultimates.find(u => u["NFT Address"] === nft.address) || null, 
-              collections);
+            const nftData = await fetchNFTWithRetries(nft.mint, 
+              ultimatesData?.find(u => u["NFT Address"] === nft.mint) || null, 
+              collectionsData || []);
             
             if (nftData) {
               // Update the initialNFTs array with image data
@@ -914,7 +1004,7 @@ const Market: React.FC = () => {
               setFilteredNFTs([...initialNFTs]);
             }
           } catch (e) {
-            console.error(`Error fetching initial NFT ${nft.address}:`, e);
+            console.error(`Error fetching initial NFT ${nft.mint}:`, e);
           }
         });
         
@@ -925,105 +1015,110 @@ const Market: React.FC = () => {
       }
       
       // Continue with loading the remaining NFTs
-      console.log('Processing ultimates:', ultimates.length);
-      setLoadingMessage('Transforming data...');
+      if (ultimatesData) {
+        console.log('Processing ultimates:', ultimatesData.length);
+        setLoadingMessage('Transforming data...');
 
-      // Process ultimates in batches to avoid freezing the UI
-      const allNFTs: NFT[] = [...initialNFTs]; // Start with initial NFTs
-      
-      // Skip the first 6 ultimates that were already processed
-      const remainingUltimates = ultimates.slice(6);
-      const batches = chunk(remainingUltimates, BATCH_SIZE);
-      let processedCount = initialNFTs.length;
-      
-      for (const batch of batches) {
-        const batchNFTs = batch.map(ultNft => {
-          // Find collection for this NFT
-          const collection = collections.find(c => c.address === ultNft.collection_id);
-          
-          if (!collection) {
-            console.warn(`Collection not found for NFT ${ultNft["NFT Address"]}`);
-            return null;
-          }
-          
-          return {
-            address: ultNft["NFT Address"],
-            name: ultNft.Name,
-            image: null, // Will be populated later
-            description: '',
-            attributes: [],
-            collection: collection.name,
-            collectionAddress: collection.address,
-            owner: ultNft.Owner,
-            mintDate: undefined,
-            tokenStandard: 'NonFungible',
-            loading: true,
-            status: 'loading'
-          };
-        }).filter(Boolean) as NFT[];
+        // Process ultimates in batches to avoid freezing the UI
+        const allNFTs: NFTWithLoadingState[] = [...initialNFTs]; // Start with initial NFTs
         
-        allNFTs.push(...batchNFTs);
-        processedCount += batchNFTs.length;
+        // Skip the first 6 ultimates that were already processed
+        const remainingUltimates = ultimatesData.slice(6);
+        const batches = chunk(remainingUltimates, BATCH_SIZE);
+        let processedCount = initialNFTs.length;
         
-        // Update loading message
-        setLoadingMessage(`Processed ${processedCount} of ${ultimates.length} NFTs...`);
-        
-        // Allow UI to update
-        await new Promise(resolve => setTimeout(resolve, 10));
-      }
-      
-      // Set all NFTs before fetching individual metadata
-      setNFTs(allNFTs);
-      setFilteredNFTs(allNFTs);
-      
-      // Now fetch metadata for the remaining NFTs in batches
-      setLoadingMessage('Fetching NFT metadata...');
-      const remainingNFTs = allNFTs.slice(initialNFTs.length);
-      const nftBatches = chunk(remainingNFTs, BATCH_SIZE);
-      
-      let completedCount = initialNFTs.length;
-      
-      // Create a copy of allNFTs that we can update as we go
-      const updatedNFTs = [...allNFTs];
-      
-      for (const [batchIndex, batch] of nftBatches.entries()) {
-        // Create an array of promises for this batch
-        const promises = batch.map(async (nft, nftIndex) => {
-          try {
-            const originalIndex = initialNFTs.length + (batchIndex * BATCH_SIZE) + nftIndex;
-            const nftData = await fetchNFTWithRetries(
-              nft.address, 
-              ultimates.find(u => u["NFT Address"] === nft.address) || null, 
-              collections
-            );
+        for (const batch of batches) {
+          const batchNFTs = batch.map(ultNft => {
+            // Find collection for this NFT
+            const collection = collectionsData?.find(c => c.address === ultNft.collection_id);
             
-            if (nftData) {
-              // Update the NFT in our copy
-              updatedNFTs[originalIndex] = {
-                ...updatedNFTs[originalIndex],
-                ...nftData,
-                loading: false,
-                status: 'loaded'
-              };
+            if (!collection) {
+              console.warn(`Collection not found for NFT ${ultNft["NFT Address"]}`);
+              return null;
             }
-          } catch (error) {
-            console.error(`Error fetching NFT ${nft.address}:`, error);
+            
+            return {
+              mint: ultNft["NFT Address"],
+              name: ultNft.Name,
+              image: '', // Empty string instead of null for type compatibility
+              description: '',
+              attributes: [],
+              collection: collection.name,
+              collectionAddress: collection.address,
+              owner: ultNft.Owner,
+              listed: false,
+              collectionName: collection.name,
+              creators: [],
+              royalty: 0,
+              tokenStandard: 'NonFungible',
+              loading: true,
+              status: 'loading'
+            };
+          }).filter(Boolean) as NFTWithLoadingState[];
+          
+          allNFTs.push(...batchNFTs);
+          processedCount += batchNFTs.length;
+          
+          // Update loading message
+          setLoadingMessage(`Processed ${processedCount} of ${ultimatesData.length} NFTs...`);
+          
+          // Allow UI to update
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        
+        // Set all NFTs before fetching individual metadata
+        setNFTs(allNFTs);
+        setFilteredNFTs(allNFTs);
+        
+        // Now fetch metadata for the remaining NFTs in batches
+        setLoadingMessage('Fetching NFT metadata...');
+        const remainingNFTs = allNFTs.slice(initialNFTs.length);
+        const nftBatches = chunk(remainingNFTs, BATCH_SIZE);
+        
+        let completedCount = initialNFTs.length;
+        
+        // Create a copy of allNFTs that we can update as we go
+        const updatedNFTs = [...allNFTs];
+        
+        for (const [batchIndex, batch] of nftBatches.entries()) {
+          // Create an array of promises for this batch
+          const promises = batch.map(async (nft, nftIndex) => {
+            try {
+              const originalIndex = initialNFTs.length + (batchIndex * BATCH_SIZE) + nftIndex;
+              const nftData = await fetchNFTWithRetries(
+                nft.mint, 
+                ultimatesData?.find(u => u["NFT Address"] === nft.mint) || null, 
+                collectionsData || []
+              );
+              
+              if (nftData) {
+                // Update the NFT in our copy
+                updatedNFTs[originalIndex] = {
+                  ...updatedNFTs[originalIndex],
+                  ...nftData,
+                  loading: false,
+                  status: 'loaded'
+                };
+              }
+            } catch (error) {
+              console.error(`Error fetching NFT ${nft.mint}:`, error);
+            }
+          });
+          
+          // Wait for all promises in this batch to complete
+          await Promise.all(promises);
+          
+          completedCount += batch.length;
+          setLoadingMessage(`Fetched metadata for ${completedCount} of ${allNFTs.length} NFTs...`);
+          
+          // Update the state with the latest data
+          setNFTs([...updatedNFTs]);
+          setFilteredNFTs(filterNFTs([...updatedNFTs], searchTerm, selectedCollection));
+          
+          // Small delay to prevent UI freezing
+          if (batchIndex < nftBatches.length - 1) {
+            await delay(BATCH_DELAY);
           }
-        });
-        
-        // Wait for all promises in this batch to complete
-        await Promise.all(promises);
-        
-        completedCount += batch.length;
-        setLoadingMessage(`Fetched metadata for ${completedCount} of ${allNFTs.length} NFTs...`);
-        
-        // Update the state with the latest data
-        setNFTs([...updatedNFTs]);
-        setFilteredNFTs(filterNFTs([...updatedNFTs], searchTerm, selectedCollection));
-        
-        // Small delay to prevent UI freezing
-        if (batchIndex < nftBatches.length - 1) {
-          await delay(BATCH_DELAY);
         }
       }
       
@@ -1044,7 +1139,7 @@ const Market: React.FC = () => {
 
   // Update main NFTs state when loadedNFTs changes
   useEffect(() => {
-    setNfts(loadedNFTs);
+    setNFTs(loadedNFTs);
   }, [loadedNFTs]);
 
   // Add new function to consolidate collections by name
