@@ -416,128 +416,6 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
   }
 };
 
-// Enhanced helper function for parsing dates with better format handling
-const parseNFTDate = (dateStr: string | undefined): number => {
-  // Special case handling for specific NFTs based on mint address
-  const manualDates: Record<string, string> = {
-    'EKdL7Crz8pRoCvRG76qmL1GYrRBHJVH1QrrEfFd3WueA': '2025-03-21T00:00:00.000Z',
-    '7ZJyPrzChJTYaACtR9TJooaQtL6ggZd5FEcgbDPAbxps': '2023-10-01T00:00:00.000Z'
-  };
-  
-  if (!dateStr) {
-    return 0;
-  }
-  
-  try {
-    // For logging
-    const originalInput = dateStr;
-    
-    // If it's already a timestamp string (all digits), parse it directly
-    if (/^\d+$/.test(dateStr)) {
-      const timestamp = parseInt(dateStr);
-      
-      // Validate the timestamp is reasonable
-      const now = Date.now();
-      const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
-      const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
-      
-      // Log suspicious timestamps
-      if (timestamp < oneYearAgo || timestamp > oneWeekFuture) {
-        console.warn(`Suspicious timestamp detected: ${dateStr} parses to ${new Date(timestamp).toISOString()}`);
-      }
-      
-      // Reject wildly incorrect timestamps (future dates)
-      const oneDayInMs = 24 * 60 * 60 * 1000;
-      if (timestamp > now + oneDayInMs) {
-        console.warn(`Rejecting future date ${new Date(timestamp).toISOString()} for ${dateStr}`);
-        return 0;
-      }
-      
-      return timestamp;
-    }
-    
-    // Handle ISO strings or similar formats
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) {
-      const timestamp = date.getTime();
-      
-      // Validate the date is reasonable
-      const now = Date.now();
-      const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
-      const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
-      
-      // Log suspicious dates
-      if (timestamp < oneYearAgo || timestamp > oneWeekFuture) {
-        console.warn(`Suspicious date detected: ${dateStr} parses to ${date.toISOString()}`);
-      }
-      
-      // Reject wildly incorrect timestamps (future dates)
-      const oneDayInMs = 24 * 60 * 60 * 1000;
-      if (timestamp > now + oneDayInMs) {
-        console.warn(`Rejecting future date ${date.toISOString()} for ${dateStr}`);
-        return 0;
-      }
-      
-      return timestamp;
-    }
-    
-    // Try handling some common date formats
-    const formats = [
-      // Unix timestamp (seconds, not milliseconds)
-      /^(\d{10})$/,
-      // MM/DD/YYYY
-      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
-      // YYYY/MM/DD
-      /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
-      // YYYY-MM-DD (without time)
-      /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
-    ];
-    
-    for (const format of formats) {
-      const match = dateStr.match(format);
-      if (match) {
-        let parsedDate: Date | null = null;
-        
-        if (format === formats[0]) {
-          // Unix timestamp in seconds
-          parsedDate = new Date(parseInt(match[1]) * 1000);
-        } else if (format === formats[1]) {
-          // MM/DD/YYYY
-          parsedDate = new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
-        } else if (format === formats[2]) {
-          // YYYY/MM/DD
-          parsedDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-        } else if (format === formats[3]) {
-          // YYYY-MM-DD
-          parsedDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-        }
-        
-        if (parsedDate && !isNaN(parsedDate.getTime())) {
-          const timestamp = parsedDate.getTime();
-          
-          // Validate the date is reasonable
-          const now = Date.now();
-          const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
-          
-          // Reject future dates
-          if (timestamp > oneWeekFuture) {
-            console.warn(`Rejected future date from format matching: ${parsedDate.toISOString()} for ${dateStr}`);
-            continue;
-          }
-          
-          return timestamp;
-        }
-      }
-    }
-    
-    console.warn(`Could not parse date: "${dateStr}"`);
-    return 0;
-  } catch (error) {
-    console.error(`Error parsing date ${dateStr}:`, error);
-    return 0;
-  }
-};
-
 // Improved helper for fetching NFT data with retries and rate limiting
 const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | null = null, collections: Collection[], retries = 3): Promise<NFT | null> => {
   try {
@@ -625,7 +503,6 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
 
     // Ensure we have all required data
     return {
-      ...nftData,
       mint: nftAddress,
       name: nftData.name || (ultimate?.Name || 'Unknown NFT'),
       description: nftData.description || '',
@@ -640,7 +517,7 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       tokenStandard: nftData.tokenStandard || null,
       content: nftData.content,
       compression: nftData.compression,
-      createdAt: createdAt,
+      createdAt: parseAndNormalizeDate(createdAt),
     };
   } catch (error) {
     console.error(`Failed to fetch NFT ${nftAddress}:`, error);
@@ -829,56 +706,47 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
   }
 }));
 
-// Sort NFTs by creation date (newest first) with collection info as context
+// Sort NFTs by creation date (newest first)
 const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
-  // Special handling for specific NFTs that need fixed sorting
-  const specialCases: Record<string, number> = {
-    // Set specific ordering timestamps for known problematic NFTs
-    'EKdL7Crz8pRoCvRG76qmL1GYrRBHJVH1QrrEfFd3WueA': Date.parse('2025-03-21'), // March 21, 2025 - should be newest
-    '7ZJyPrzChJTYaACtR9TJooaQtL6ggZd5FEcgbDPAbxps': Date.parse('2023-10-01'), // October 1, 2023 - should be older
-    'Amz2HLPDCC3pNbysbxCwtacGHUfcxnj6mwUJtwxTt8b': Date.parse('2025-03-01'), // March 1, 2025
-    'HxThsVQpxPtZfLkrjMnKuMYu1M2cQ91TcCtag9CTjegC': Date.parse('2024-01-01') // January 1, 2024
-  };
+  // Get the creation dates as timestamps
+  let dateA = 0;
+  let dateB = 0;
   
-  // Handle known NFTs with fixed dates
-  if (specialCases[a.mint] && specialCases[b.mint]) {
-    return specialCases[b.mint] - specialCases[a.mint]; // Descending order
-  } else if (specialCases[a.mint]) {
-    return -1; // a has a special date - prioritize it
-  } else if (specialCases[b.mint]) {
-    return 1; // b has a special date - prioritize it
-  }
-  
-  // Parse the creation dates - with detailed logging
-  const dateA = parseNFTDate(a.createdAt);
-  const dateB = parseNFTDate(b.createdAt);
-  
-  // For particularly important NFTs, log their dates for debugging
-  if (a.mint === 'EKdL7Crz8pRoCvRG76qmL1GYrRBHJVH1QrrEfFd3WueA' || 
-      a.mint === '7ZJyPrzChJTYaACtR9TJooaQtL6ggZd5FEcgbDPAbxps' ||
-      b.mint === 'EKdL7Crz8pRoCvRG76qmL1GYrRBHJVH1QrrEfFd3WueA' || 
-      b.mint === '7ZJyPrzChJTYaACtR9TJooaQtL6ggZd5FEcgbDPAbxps') {
-    console.log('Sorting important NFTs:', {
-      a: {
-        mint: a.mint,
-        name: a.name,
-        rawDate: a.createdAt,
-        parsedDate: dateA ? new Date(dateA).toISOString() : 'Invalid',
-        timestamp: dateA
-      },
-      b: {
-        mint: b.mint,
-        name: b.name,
-        rawDate: b.createdAt,
-        parsedDate: dateB ? new Date(dateB).toISOString() : 'Invalid',
-        timestamp: dateB
+  try {
+    // First try parsing as ISO string
+    if (a.createdAt) {
+      const dateObj = new Date(a.createdAt);
+      if (!isNaN(dateObj.getTime())) {
+        dateA = dateObj.getTime();
+      } else if (/^\d+$/.test(a.createdAt)) {
+        // If it's a timestamp as string, parse directly
+        dateA = parseInt(a.createdAt);
       }
-    });
+    }
+    
+    if (b.createdAt) {
+      const dateObj = new Date(b.createdAt);
+      if (!isNaN(dateObj.getTime())) {
+        dateB = dateObj.getTime();
+      } else if (/^\d+$/.test(b.createdAt)) {
+        // If it's a timestamp as string, parse directly
+        dateB = parseInt(b.createdAt);
+      }
+    }
+    
+    // Log difficult to parse dates for debugging
+    if ((a.createdAt && dateA === 0) || (b.createdAt && dateB === 0)) {
+      console.warn('Unable to parse dates:', {
+        nftA: { mint: a.mint, name: a.name, date: a.createdAt },
+        nftB: { mint: b.mint, name: b.name, date: b.createdAt }
+      });
+    }
+  } catch (error) {
+    console.error('Error parsing dates for sorting:', error);
   }
-  
+
   // Sort by creation date (newest first)
   if (dateA > 0 && dateB > 0) {
-    // Both have valid dates, sort by date (newest first)
     return dateB - dateA; // Descending order (newest first)
   }
   
@@ -991,6 +859,38 @@ const LoadingIndicator = ({ message }: { message: string }) => (
     </Typography>
   </Box>
 );
+
+// Function to normalize dates to ISO string format for consistent parsing
+const parseAndNormalizeDate = (dateInput: string | number | undefined | null): string => {
+  if (!dateInput) {
+    return new Date().toISOString(); // Default to current time if no date provided
+  }
+  
+  try {
+    // If it's already a timestamp number, convert directly
+    if (typeof dateInput === 'number') {
+      return new Date(dateInput).toISOString();
+    }
+    
+    // If it's a timestamp string (all digits), parse it directly
+    if (typeof dateInput === 'string' && /^\d+$/.test(dateInput)) {
+      return new Date(parseInt(dateInput)).toISOString();
+    }
+    
+    // Try to parse as a date string
+    const parsedDate = new Date(dateInput);
+    if (!isNaN(parsedDate.getTime())) {
+      return parsedDate.toISOString();
+    }
+    
+    // Fallback to current time if date is invalid
+    console.warn(`Could not parse date: ${dateInput}, using current time`);
+    return new Date().toISOString();
+  } catch (error) {
+    console.error(`Error normalizing date ${dateInput}:`, error);
+    return new Date().toISOString();
+  }
+};
 
 const Market: React.FC = () => {
   const { publicKey, connected, wallet } = useWalletContext();
@@ -1334,8 +1234,8 @@ const Market: React.FC = () => {
               creators: [],
               royalty: 0,
               tokenStandard: 'NonFungible',
-              // Store the creation date as an ISO string
-              createdAt: createdDate
+              // Store the creation date as an ISO string for consistent parsing
+              createdAt: parseAndNormalizeDate(createdDate)
             };
             
             processedCollectionNFTs.push(nft);
