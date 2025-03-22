@@ -1276,12 +1276,8 @@ const Market: React.FC = () => {
 
   // Filter NFTs based on search term, collection, and ownership
   const filterNFTs = (nfts: NFT[], searchTerm: string, selectedCollection: string): NFT[] => {
-    // Get all collection addresses for the selected collection name
-    const collectionAddresses = selectedCollection 
-      ? consolidatedCollections.find(c => c.name === selectedCollection)?.addresses || []
-      : [];
-      
     const searchLower = searchTerm.toLowerCase();
+    const selectedCollectionLower = selectedCollection.toLowerCase();
     
     return nfts.filter(nft => {
       const nftName = nft.name?.toLowerCase() || '';
@@ -1294,12 +1290,8 @@ const Market: React.FC = () => {
       
       // Check if the NFT matches the selected collection
       // If no collection is selected, all NFTs match
-      // If a collection is selected, the NFT matches if:
-      // 1. Its collectionAddress is in the list of addresses for the selected collection name
-      // 2. Or its collectionName exactly matches the selected collection name
       const matchesCollection = selectedCollection === '' || 
-        collectionAddresses.includes(nft.collectionAddress || '') ||
-        nft.collectionName === selectedCollection;
+        collectionName === selectedCollectionLower;
       
       // Check if the NFT matches the ownership filter
       const matchesOwner = !showMyNFTs || (
@@ -1455,11 +1447,18 @@ const Market: React.FC = () => {
                 id="collection-select"
                 value={selectedCollection}
                 label="Collection"
-                onChange={e => setSelectedCollection(e.target.value as string)}
+                onChange={e => {
+                  const value = e.target.value as string;
+                  console.log('Selected collection:', value);
+                  console.log('NFTs in collection:', nfts.filter(nft => 
+                    nft.collectionName.toLowerCase() === value.toLowerCase()
+                  ).length);
+                  setSelectedCollection(value);
+                }}
               >
                 <MenuItem value="">All Collections</MenuItem>
-                {collections.map(collection => (
-                  <MenuItem key={collection.address} value={collection.address}>
+                {consolidatedCollections.map(collection => (
+                  <MenuItem key={collection.name} value={collection.name}>
                     {collection.name}
                   </MenuItem>
                 ))}
