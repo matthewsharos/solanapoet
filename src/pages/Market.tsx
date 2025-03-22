@@ -20,15 +20,14 @@ import {
   Checkbox,
 } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-material';
-import NFTCard from '../components/NFTCard';
-import { NFT } from '../types/nft';
-import { FIXED_NFT_DATES, parseNFTCreationDate, compareNFTsByCreationDate } from '../utils/nft';
+import type { NFT, NFTOwner, NFTAttribute } from '../types/nft';
+import VintageCard from '../components/VintageCard';
 import { useWalletContext } from '../contexts/WalletContext';
 import { fetchCollectionNFTs as fetchCollectionNFTsFromUtils, NFTMetadata } from '../utils/nftUtils';
 import { getDisplayNameForWallet, syncDisplayNamesFromSheets } from '../utils/displayNames';
 import { useTheme, useMediaQuery } from '@mui/material';
 import { WalletContextState } from '@solana/wallet-adapter-react';
-import { chunk } from '../utils/arrays';
+import { parseNFTCreationDate, compareNFTsByCreationDate } from '../utils/nft';
 
 // TypeScript declaration for the global image cache
 declare global {
@@ -1701,7 +1700,7 @@ const Market: React.FC = () => {
                           pl: { xs: '10px', sm: 0 }, // Increased left padding from 6px to 10px on mobile only
                         }}
                       >
-                        <NFTCard
+                        <VintageCard
                           nft={nft}
                           wallet={{ publicKey }}
                           connected={connected}
