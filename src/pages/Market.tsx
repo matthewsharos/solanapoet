@@ -14,6 +14,7 @@ import {
   Pagination,
   FormControlLabel,
   Checkbox,
+  Button,
 } from '@mui/material';
 import { Search as SearchIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import axios from 'axios';
@@ -799,7 +800,7 @@ if (typeof window !== 'undefined' && !window.nftImageCache) {
 const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
   if (!urls.length) return;
   
-  // Skip URLs that are already cached
+  // Skip URLs that are already cached or null/undefined
   const urlsToLoad = urls.filter(url => 
     url && !window.nftImageCache.has(url)
   );
@@ -815,6 +816,12 @@ const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
     // Start loading all images in this batch concurrently
     const promises = batch.map(url => {
       return new Promise<void>(resolve => {
+        // Skip if already cached while processing previous batches
+        if (window.nftImageCache.has(url)) {
+          resolve();
+          return;
+        }
+        
         const img = new Image();
         
         const onFinish = () => {
@@ -844,7 +851,10 @@ const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
     });
     
     // Wait for all images in this batch to load
-    await Promise.all(promises);
+    await Promise.all(promises).catch(err => {
+      // Log errors but don't block the loading process
+      console.error('Error preloading image batch:', err);
+    });
     
     // Add a small delay between batches to avoid overwhelming the browser
     if (delayMs > 0 && batches.length > 1) {
@@ -852,6 +862,24 @@ const preloadImages = async (urls: string[], batchSize = 8, delayMs = 50) => {
     }
   }
 };
+
+// Loading component with message
+const LoadingIndicator = ({ message }: { message: string }) => (
+  <Box sx={{ 
+    display: 'flex', 
+    flexDirection: 'column',
+    alignItems: 'center', 
+    justifyContent: 'center',
+    height: '50vh',
+    width: '100%',
+    gap: 3
+  }}>
+    <CircularProgress size={50} thickness={4} />
+    <Typography variant="h6" color="text.secondary" align="center">
+      {message || 'Loading NFTs...'}
+    </Typography>
+  </Box>
+);
 
 const Market: React.FC = () => {
   const { publicKey, connected, wallet } = useWalletContext();
@@ -1012,7 +1040,10 @@ const Market: React.FC = () => {
     setLoading(true);
     setError(null);
     setLoadedNFTs([]);
+    setFilteredNFTs([]);
+    setNFTs([]);
     setIsLoadingMore(false);
+    setLoadingMessage('Loading collections...');
     
     try {
       // Fetch display names first
@@ -1023,6 +1054,7 @@ const Market: React.FC = () => {
       let retryCount = 0;
       let collectionsData = null;
       
+      setLoadingMessage('Fetching collections...');
       console.log('2. Fetching collections from API...');
       while (retryCount < 3) {
         try {
@@ -1067,7 +1099,11 @@ const Market: React.FC = () => {
         regularCollections
       });
 
+      // Create an array to accumulate all NFTs
+      const allNFTs: NFT[] = [];
+
       // 1. Handle Ultimate NFTs
+      setLoadingMessage('Loading Ultimate NFTs...');
       console.log('4. Fetching ultimate NFTs...');
       const ultimateNFTs = await getUltimateNFTs();
       console.log('Ultimates data received:', {
@@ -1098,14 +1134,24 @@ const Market: React.FC = () => {
         results.forEach(nft => {
           if (nft) {
             initialNFTs.push(nft);
-            updateNFTs(nft);
+            allNFTs.push(nft);
           }
         });
+        
+        // Update the UI with initial NFTs immediately
+        setLoadedNFTs(initialNFTs);
+        setNFTs(initialNFTs);
+        setFilteredNFTs(initialNFTs);
+        
+        // Start preloading initial images
+        const imageUrls = initialNFTs.map(nft => nft.image).filter(Boolean) as string[];
+        preloadImages(imageUrls);
       } catch (error) {
         console.error('Error pre-fetching initial NFTs:', error);
       }
         
       // 3. Process Ultimate NFTs - in small batches to avoid UI freezing
+      setLoadingMessage('Loading more Ultimate NFTs...');
       console.log('5. Processing remaining ultimate NFTs...');
       // Skip the first 6 we already processed
       const remainingAddresses = validUltimateAddresses.slice(6);
@@ -1126,9 +1172,22 @@ const Market: React.FC = () => {
           const validNFTs = batchResults.filter((nft): nft is NFT => nft !== null);
           
           processedCount += batch.length;
+          setLoadingMessage(`Processing Ultimate NFTs (${processedCount}/${totalCount})...`);
           console.log(`Batch ${batchIndex + 1}: Processed ${processedCount}/${totalCount} NFTs`);
           
-          validNFTs.forEach(nft => updateNFTs(nft));
+          // Add to allNFTs array
+          allNFTs.push(...validNFTs);
+          
+          // Update UI every few batches to show progress without causing too many re-renders
+          if (batchIndex % 3 === 2 || batchIndex === batches.length - 1) {
+            setLoadedNFTs([...allNFTs]);
+            setNFTs([...allNFTs]);
+            setFilteredNFTs([...allNFTs]);
+            
+            // Preload images for this batch
+            const batchImageUrls = validNFTs.map(nft => nft.image).filter(Boolean) as string[];
+            preloadImages(batchImageUrls);
+          }
 
           // Add a small delay between batches to keep UI responsive
           if (batchIndex < batches.length - 1) {
@@ -1143,12 +1202,15 @@ const Market: React.FC = () => {
       console.log('6. Loading NFTs from regular collections...');
       
       // Process each regular collection
-      for (const collection of regularCollections) {
+      for (const [collectionIndex, collection] of regularCollections.entries()) {
         try {
+          setLoadingMessage(`Loading collection ${collectionIndex + 1}/${regularCollections.length}: ${collection.name}`);
           console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
           const collectionNFTs = await fetchCollectionNFTsFromUtils(collection.address);
           
           // Map the NFT metadata to our NFT format
+          const processedCollectionNFTs: NFT[] = [];
+          
           for (const nftData of collectionNFTs) {
             // Create NFT object from metadata
             const nft: NFT = {
@@ -1168,11 +1230,22 @@ const Market: React.FC = () => {
               createdAt: collection.creationDate || new Date().toISOString()
             };
             
-            // Update NFTs state
-            updateNFTs(nft);
+            processedCollectionNFTs.push(nft);
           }
           
-          console.log(`Added ${collectionNFTs.length} NFTs from collection ${collection.name}`);
+          // Add to the allNFTs array
+          allNFTs.push(...processedCollectionNFTs);
+          
+          // Batch update the UI to avoid too many re-renders
+          setLoadedNFTs([...allNFTs]);
+          setNFTs([...allNFTs]);
+          setFilteredNFTs([...allNFTs]);
+          
+          // Preload images for this collection
+          const collectionImageUrls = processedCollectionNFTs.map(nft => nft.image).filter(Boolean) as string[];
+          preloadImages(collectionImageUrls);
+          
+          console.log(`Added ${processedCollectionNFTs.length} NFTs from collection ${collection.name}`);
           
           // Add a small delay between collections to avoid rate limiting
           await delay(200);
@@ -1182,15 +1255,12 @@ const Market: React.FC = () => {
       }
       
       console.log('7. All NFTs processed successfully');
+      setLoadingMessage('');
       
-      // Process NFTs after loading
-      if (initialNFTs.length > 0) {
-        setLoadedNFTs(initialNFTs);
-        
-        // Start preloading images as soon as we have the NFT data
-        const imageUrls = initialNFTs.map(nft => nft.image).filter(Boolean) as string[];
-        preloadImages(imageUrls);
-      }
+      // Final UI update with all NFTs
+      setLoadedNFTs(allNFTs);
+      setNFTs(allNFTs);
+      setFilteredNFTs(allNFTs);
       
     } catch (error) {
       console.error('Error in fetchAllNFTs:', error);
@@ -1198,6 +1268,7 @@ const Market: React.FC = () => {
     } finally {
       // Make sure loading stops even if there's an error
       setLoading(false);
+      setLoadingMessage('');
     }
   };
 
@@ -1270,14 +1341,14 @@ const Market: React.FC = () => {
   };
 
   // Group NFTs by collection name for display
-  const groupedNFTsByCollection = useMemo(() => {
+  const groupedNFTs = useMemo(() => {
     // Filter the NFTs based on current filters
     const filtered = filterNFTs(nfts, searchTerm, selectedCollection);
     
     // If showing "My NFTs" or if a specific collection is selected, we don't need to group
     if (showMyNFTs || selectedCollection) {
       return [{ 
-        collectionName: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
+        collection: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
         nfts: filtered.sort(sortNFTsByCreationDate)
       }];
     }
@@ -1297,19 +1368,19 @@ const Market: React.FC = () => {
     // Convert to array, sort collections alphabetically, and sort NFTs within each collection by date
     return Object.entries(groupedNFTs)
       .map(([collectionName, nfts]) => ({ 
-        collectionName, 
+        collection: collectionName, 
         nfts: nfts.sort(sortNFTsByCreationDate)
       }))
-      .sort((a, b) => a.collectionName.localeCompare(b.collectionName));
+      .sort((a, b) => a.collection.localeCompare(b.collection));
   }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
   
   // Get the current page's NFTs, possibly from multiple collections
   const currentPageGroupedNFTs = useMemo(() => {
     // If we have a specific collection or showing My NFTs, just paginate the single group
     if (showMyNFTs || selectedCollection) {
-      const group = groupedNFTsByCollection[0];
+      const group = groupedNFTs[0];
       return [{
-        collectionName: group.collectionName,
+        collection: group.collection,
         nfts: group.nfts.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
       }];
     }
@@ -1320,9 +1391,9 @@ const Market: React.FC = () => {
     const endIdx = page * ITEMS_PER_PAGE;
     
     // Find which collections should be included on this page
-    const result: { collectionName: string; nfts: NFT[] }[] = [];
+    const result: { collection: string; nfts: NFT[] }[] = [];
     
-    for (const group of groupedNFTsByCollection) {
+    for (const group of groupedNFTs) {
       // Skip collections that end before our page starts
       if (nftsCount + group.nfts.length <= startIdx) {
         nftsCount += group.nfts.length;
@@ -1341,7 +1412,7 @@ const Market: React.FC = () => {
       
       if (collectionNFTs.length > 0) {
         result.push({
-          collectionName: group.collectionName,
+          collection: group.collection,
           nfts: collectionNFTs
         });
       }
@@ -1350,12 +1421,12 @@ const Market: React.FC = () => {
     }
     
     return result;
-  }, [groupedNFTsByCollection, page, showMyNFTs, selectedCollection]);
+  }, [groupedNFTs, page, showMyNFTs, selectedCollection]);
   
   // Calculate total filtered NFTs for pagination
   const totalFilteredNFTs = useMemo(() => {
-    return groupedNFTsByCollection.reduce((acc, group) => acc + group.nfts.length, 0);
-  }, [groupedNFTsByCollection]);
+    return groupedNFTs.reduce((acc, group) => acc + group.nfts.length, 0);
+  }, [groupedNFTs]);
   
   // Update page count based on total filtered NFTs
   const pageCount = Math.ceil(totalFilteredNFTs / ITEMS_PER_PAGE);
@@ -1366,194 +1437,145 @@ const Market: React.FC = () => {
     window.scrollTo(0, 0);
   };
 
+  // Calculate card width based on screen size
+  const cardWidth = useMemo(() => {
+    if (isLargeScreen) return 3; // 4 cards per row on large screens
+    return 0; // Let MUI handle it on smaller screens
+  }, [isLargeScreen]);
+
+  // Handle refresh button click
+  const handleRefresh = () => {
+    // Reset filters
+    setSearchTerm('');
+    setSelectedCollection('');
+    setPage(1);
+    
+    // Refetch NFTs
+    fetchAllNFTs();
+  };
+
   return (
-    <Container 
-      maxWidth={false}
-      sx={{
-        px: { xs: '0px', sm: 1, md: 1 }, // Reduce padding further
-        width: '100%',
-        maxWidth: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center'
-      }}
-    >
-      <Box sx={{ 
-        py: { xs: 2, sm: 4 },
-        px: { xs: 0, sm: 0 }, // Remove horizontal padding completely
-        width: { xs: '100%', sm: '98%' }, // Full width on mobile, slightly constrained on desktop
-        maxWidth: { xs: '100%', sm: '98%' }, // Full width on mobile, slightly constrained on desktop
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center'
-      }}>
-        <Grid 
-          container 
-          spacing={{ xs: 2, sm: 3 }} // Less spacing on mobile
-          sx={{ width: '100%', m: 0 }} // Full width, no margin
-        >
-          <Grid item xs={12} sx={{ 
-            px: 0,
-            width: '100%', 
-            maxWidth: '100%',
-            mx: 'auto'
-          }}> 
-            {/* Search and filter UI - stack vertically on mobile */}
-            <Box 
+    <Container maxWidth="xl" sx={{ pt: 2, pb: 5 }}>
+      <Box sx={{ mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={4} md={3}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              placeholder="Search NFTs..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              InputProps={{
+                startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+              }}
+              size="small"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={4} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="collection-select-label">Collection</InputLabel>
+              <Select
+                labelId="collection-select-label"
+                id="collection-select"
+                value={selectedCollection}
+                label="Collection"
+                onChange={e => setSelectedCollection(e.target.value as string)}
+              >
+                <MenuItem value="">All Collections</MenuItem>
+                {collections.map(collection => (
+                  <MenuItem key={collection.address} value={collection.address}>
+                    {collection.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          {connected && (
+            <Grid item xs={12} sm={4} md={3}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showMyNFTs}
+                    onChange={e => setShowMyNFTs(e.target.checked)}
+                  />
+                }
+                label="Show My NFTs"
+              />
+            </Grid>
+          )}
+          
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', justifyContent: { xs: 'center', md: 'flex-end' } }}>
+            <IconButton 
+              onClick={handleRefresh} 
+              disabled={loading}
+              size="small"
+              color="primary"
               sx={{ 
-                display: 'flex', 
-                flexDirection: { xs: 'column', sm: 'row' },
-                gap: { xs: 1, sm: 2 }, // Smaller gap on mobile
-                mb: { xs: 2, sm: 3 }, // Less margin on mobile
-                width: '100%', // Full width
-                maxWidth: '100%'
+                backgroundColor: 'background.paper',
+                border: '1px solid',
+                borderColor: 'divider',
+                boxShadow: 1,
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                }
               }}
             >
-              {/* First row on mobile: Search bar and My NFT checkbox */}
-              <Box 
-                sx={{ 
-                  display: 'flex', 
-                  gap: {xs: 1, sm: 2}, // Reduce gap on mobile
-                  width: '100%',
-                  alignItems: 'center'
-                }}
-              >
-                <TextField
-                  label="Search NFTs"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    endAdornment: (
-                      <IconButton>
-                        <SearchIcon />
-                      </IconButton>
-                    ),
-                  }}
-                  sx={{ 
-                    flex: {xs: 3, sm: 1}, // Make search bar take more space on mobile
-                    '& .MuiInputBase-root': {
-                      paddingRight: { xs: '8px', sm: '14px' } // Less padding on mobile
-                    }
-                  }}
-                />
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={showMyNFTs}
-                      onChange={(e) => setShowMyNFTs(e.target.checked)}
-                      disabled={!connected}
-                      size="small" // Slightly smaller checkbox on mobile
-                    />
-                  }
-                  label="My NFTs"
-                  sx={{ 
-                    minWidth: {xs: 90, sm: 100}, // Slightly narrower on desktop too
-                    opacity: connected ? 1 : 0.5,
-                    cursor: connected ? 'pointer' : 'not-allowed',
-                    ml: {xs: 'auto', sm: 0}, // Auto margin on mobile pushes to right
-                    '& .MuiFormControlLabel-label': {
-                      fontSize: {xs: '0.85rem', sm: '1rem'}, // Smaller text on mobile
-                    }
-                  }}
-                />
-              </Box>
-              
-              {/* Second row on mobile: Collections dropdown */}
-              <FormControl sx={{ 
-                width: '100%', 
-                mt: { xs: 0, sm: 1 },
-                maxWidth: { sm: '100%', md: '100%' } // Ensure dropdown takes full width of its container
-              }}>
-                <InputLabel>Collection</InputLabel>
-                <Select
-                  value={selectedCollection}
-                  label="Collection"
-                  onChange={(e) => {
-                    const selected = e.target.value;
-                    console.log(`Collection selected: "${selected}"`);
-                    
-                    if (selected) {
-                      const selectedCollectionInfo = consolidatedCollections.find(c => c.name === selected);
-                      console.log('Selected collection addresses:', selectedCollectionInfo?.addresses);
-                      
-                      // Count how many NFTs match this collection
-                      const matchingNFTs = nfts.filter(nft => 
-                        selectedCollectionInfo?.addresses.includes(nft.collectionAddress || '') || 
-                        nft.collectionName === selected
-                      );
-                      console.log(`Found ${matchingNFTs.length} NFTs matching collection "${selected}"`);
-                    }
-                    
-                    setSelectedCollection(selected);
-                    setPage(1); // Reset to first page when changing collection
-                  }}
-                  MenuProps={{
-                    PaperProps: {
-                      style: {
-                        maxHeight: 300
-                      },
-                    },
-                  }}
-                  sx={{
-                    '& .MuiInputBase-root': {
-                      paddingRight: { xs: '8px', sm: '14px' } // Less padding on mobile
-                    }
-                  }}
-                >
-                  <MenuItem value="">All Collections</MenuItem>
-                  {consolidatedCollections.map((collection) => (
-                    <MenuItem 
-                      key={collection.name} 
-                      value={collection.name}
-                    >
-                      {collection.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+              <RefreshIcon />
+            </IconButton>
           </Grid>
-
-          {error ? (
-            <Grid item xs={12}>
-              <Typography color="error" align="center">
-                {error}
-              </Typography>
-            </Grid>
-          ) : (
-            <>
-              {/* Replace the existing NFT grid with grouped collection sections */}
-              {currentPageGroupedNFTs.map((group) => (
-                <React.Fragment key={group.collectionName}>
-                  {/* Collection Title */}
-                  <CollectionTitle variant="h4">
-                    {group.collectionName}
-                  </CollectionTitle>
-                  
-                  {/* NFTs Grid */}
+        </Grid>
+      </Box>
+      
+      <Box sx={{ width: '100%', mb: 3 }}>
+        {error && (
+          <Typography color="error" align="center" gutterBottom>
+            {error}
+          </Typography>
+        )}
+        
+        {loading && filteredNFTs.length === 0 ? (
+          <LoadingIndicator message={loadingMessage} />
+        ) : (
+          <Grid container spacing={isMobile ? 2 : 3}>
+            {currentPageGroupedNFTs.map((group) => (
+              <React.Fragment key={group.collection}>
+                {/* Only show header when it's not "No Collection" group or if there are multiple collections */}
+                {(group.collection !== 'No Collection' || groupedNFTs.length > 1) && (
+                  <Grid item xs={12}>
+                    <Typography 
+                      variant="h6" 
+                      sx={{ 
+                        mt: groupedNFTs.length > 1 ? 4 : 0, 
+                        mb: 1,
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        pb: 1,
+                        fontFamily: '"Dancing Script", cursive',
+                        fontSize: '2rem'
+                      }}
+                    >
+                      {group.collection}
+                    </Typography>
+                  </Grid>
+                )}
+                
+                <Grid item xs={12}>
                   <Grid 
                     container 
-                    spacing={{ xs: 2, sm: 1, md: 1 }}
-                    sx={{ 
-                      px: 0,
-                      mx: 'auto',
-                      justifyContent: 'center',
-                      width: '100%',
-                      maxWidth: '100%',
-                      alignItems: 'center'
+                    spacing={isMobile ? 3 : 4}
+                    justifyContent="flex-start"
+                    sx={{
+                      mt: { xs: 0, sm: -1 }, // Fix for spacing issues
                     }}
                   >
                     {group.nfts.map((nft) => (
                       <Grid 
                         item 
                         key={nft.mint} 
-                        xs={12} 
-                        sm={6} 
-                        md={4} 
-                        lg={3}
-                        sx={{
+                        xs={12} sm={6} md={4} lg={cardWidth > 0 ? cardWidth : 3}
+                        sx={{ 
                           px: { xs: 0, sm: '2px' },  // No padding on mobile
                           py: { xs: 1, sm: 1 },
                           display: 'flex',
@@ -1573,50 +1595,75 @@ const Market: React.FC = () => {
                       </Grid>
                     ))}
                   </Grid>
-                </React.Fragment>
-              ))}
-              
-              {/* Loading indicator */}
-              {(loading || isLoadingMore) && (
-                <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 2,
-                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                    borderRadius: 1,
-                    padding: '8px 16px',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                  }}>
-                    <CircularProgress size={20} sx={{ color: 'primary.main' }} />
-                    <Typography variant="body2" color="text.secondary">
-                      Loading more NFTs...
-                    </Typography>
-                  </Box>
                 </Grid>
-              )}
-              
-              {/* Pagination */}
-              {pageCount > 1 && (
-                <Box sx={{ mt: 4, mb: 2, display: 'flex', justifyContent: 'center' }}>
-                  <Pagination 
-                    count={pageCount} 
-                    page={page} 
-                    onChange={handlePageChange}
-                    variant="outlined"
-                    shape="rounded"
-                    size={isMobile ? "small" : "medium"}
-                    sx={{
-                      '& .MuiPaginationItem-root': {
-                        bgcolor: 'background.paper',
-                      }
-                    }}
-                  />
+              </React.Fragment>
+            ))}
+            
+            {/* Loading indicator */}
+            {(loading || isLoadingMore) && filteredNFTs.length > 0 && (
+              <Grid item xs={12} sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 2,
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  borderRadius: 1,
+                  padding: '8px 16px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                }}>
+                  <CircularProgress size={20} sx={{ color: 'primary.main' }} />
+                  <Typography variant="body2" color="text.secondary">
+                    {loadingMessage || 'Loading more NFTs...'}
+                  </Typography>
                 </Box>
-              )}
-            </>
-          )}
-        </Grid>
+              </Grid>
+            )}
+            
+            {/* Pagination */}
+            {pageCount > 1 && (
+              <Box sx={{ mt: 4, mb: 2, display: 'flex', justifyContent: 'center' }}>
+                <Pagination 
+                  count={pageCount} 
+                  page={page} 
+                  onChange={handlePageChange}
+                  variant="outlined"
+                  shape="rounded"
+                  size={isMobile ? "small" : "medium"}
+                  sx={{
+                    '& .MuiPaginationItem-root': {
+                      bgcolor: 'background.paper',
+                    }
+                  }}
+                />
+              </Box>
+            )}
+            
+            {!loading && filteredNFTs.length === 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  height: '30vh',
+                  width: '100%',
+                  gap: 2
+                }}>
+                  <Typography variant="h6" color="text.secondary">
+                    No NFTs found
+                  </Typography>
+                  <Button 
+                    variant="outlined" 
+                    onClick={handleRefresh}
+                    startIcon={<RefreshIcon />}
+                  >
+                    Refresh
+                  </Button>
+                </Box>
+              </Grid>
+            )}
+          </Grid>
+        )}
       </Box>
     </Container>
   );

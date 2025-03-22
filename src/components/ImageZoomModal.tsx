@@ -191,7 +191,6 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
       setPosition({ x: 0, y: 0 });
       setImageLoaded(false);
       setLoadError(false);
-      setShowHint(true);
       
       // Preload the high-resolution image
       const preloadImage = () => {
@@ -207,29 +206,35 @@ const ImageZoomModal: React.FC<ImageZoomModalProps> = ({ open, onClose, imageSrc
         
         img.onload = () => {
           window.nftImageCache.set(imageSrc, true);
-          setImageLoaded(true);
-          setLoadError(false);
+          // Only update state if modal is still open
+          if (open) {
+            setImageLoaded(true);
+            setLoadError(false);
+          }
         };
         
         img.onerror = () => {
           window.nftImageCache.set(imageSrc, false);
-          setImageLoaded(true);
-          setLoadError(true);
+          // Only update state if modal is still open
+          if (open) {
+            setImageLoaded(true);
+            setLoadError(true);
+          }
         };
         
-        img.src = imageSrc;
+        // If image is already cached by browser, onload may not fire
+        if (img.complete) {
+          window.nftImageCache.set(imageSrc, true);
+          setImageLoaded(true);
+          setLoadError(false);
+        } else {
+          // Start loading
+          img.src = imageSrc;
+        }
       };
       
+      // Start preloading immediately
       preloadImage();
-      
-      // Hide the hint after 3 seconds
-      const timer = setTimeout(() => {
-        setShowHint(false);
-      }, 3000);
-      
-      return () => {
-        clearTimeout(timer);
-      };
     }
   }, [open, imageSrc]);
 

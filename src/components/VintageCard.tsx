@@ -390,6 +390,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     // Set a loading reference to prevent duplicate loads
     imageRef.current = nft.image;
     
+    // Use a single Image instance for consistent loading
     const img = new Image();
     
     img.onload = () => {
