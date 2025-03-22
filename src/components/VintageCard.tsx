@@ -259,7 +259,13 @@ type NFTWithObjectOwner = Omit<NFT, 'owner'> & {
   owner: string | NFTOwner;
 };
 
-// Add utility function to shorten addresses
+// Add utility function for getting the owner address as a string
+const getOwnerAddress = (owner: string | NFTOwner): string => {
+  if (!owner) return '';
+  return typeof owner === 'string' ? owner : owner.publicKey || '';
+};
+
+// Add improved utility function to shorten addresses
 const shortenAddress = (address: string) => {
   if (!address) return '';
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
@@ -292,81 +298,62 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   // Effect to update owner display
   useEffect(() => {
     const updateOwnerDisplay = async () => {
-      if (!nft.owner) return;
-      
-      // Use displayName from props if available
+      // First try to use displayName from props
       if (displayName) {
         setOwnerDisplay(displayName);
         return;
       }
       
+      // Get the owner address
+      const ownerAddress = getOwnerAddress(nft.owner);
+      if (!ownerAddress) {
+        setOwnerDisplay('Unknown');
+        return;
+      }
+      
       try {
-        const ownerAddress = typeof nft.owner === 'string' 
-          ? nft.owner 
-          : nft.owner.publicKey;
-          
-        if (!ownerAddress) return;
-        
+        // Try to get a display name for the owner
         const freshDisplayName = await getDisplayNameForWallet(ownerAddress);
         
         if (freshDisplayName) {
           setOwnerDisplay(freshDisplayName);
         } else {
+          // Fall back to a formatted wallet address
           setOwnerDisplay(formatWalletAddress(ownerAddress));
         }
       } catch (error) {
         console.error('Error updating display name:', error);
-        const ownerAddress = typeof nft.owner === 'string' 
-          ? nft.owner 
-          : nft.owner.publicKey;
-          
-        if (ownerAddress) {
-          setOwnerDisplay(formatWalletAddress(ownerAddress));
-        }
+        // Always fall back to the address if there's an error
+        setOwnerDisplay(formatWalletAddress(ownerAddress));
       }
     };
     
+    // Always update the owner display when the component mounts
     updateOwnerDisplay();
     
-    // Register custom event listener for display name updates
-    interface DisplayNamesUpdateEvent extends CustomEvent {
-      detail: {
-        displayNames: {
-          [key: string]: string | boolean | number | undefined;
-          __forceRefresh?: boolean;
-          __updatedAddress?: string;
-          __timestamp?: number;
-        }
-      };
-    }
-    
-    const handleDisplayNameUpdate = (event: DisplayNamesUpdateEvent) => {
-      if (!nft.owner) return;
+    // Register for display name updates
+    const handleDisplayNameUpdate = (event: any) => {
+      if (!event.detail?.displayNames) return;
       
-      const ownerAddress = typeof nft.owner === 'string' 
-        ? nft.owner.toLowerCase() 
-        : (nft.owner.publicKey ? nft.owner.publicKey.toLowerCase() : '');
+      const displayNames = event.detail.displayNames;
+      const ownerAddress = getOwnerAddress(nft.owner);
       
       if (!ownerAddress) return;
       
-      const displayNames = event.detail?.displayNames;
-      if (!displayNames) return;
-      
-      // Check if this specific wallet address was updated
-      const updatedName = displayNames[ownerAddress];
+      // Check for direct updates
+      const updatedName = displayNames[ownerAddress.toLowerCase()];
       
       if (typeof updatedName === 'string') {
         setOwnerDisplay(updatedName);
       } else if (displayNames.__forceRefresh) {
-        // If force refresh, update display name again
         updateOwnerDisplay();
       }
     };
     
-    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
+    window.addEventListener('displayNamesUpdated', handleDisplayNameUpdate);
     
     return () => {
-      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate as EventListener);
+      window.removeEventListener('displayNamesUpdated', handleDisplayNameUpdate);
     };
   }, [nft.owner, displayName]);
   
@@ -520,7 +507,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
             textOverflow: 'ellipsis'
           }}
         >
-          Owned by: {ownerDisplay || shortenAddress(typeof nft.owner === 'string' ? nft.owner : nft.owner.publicKey)}
+          Owned by: {ownerDisplay || formatWalletAddress(getOwnerAddress(nft.owner))}
         </Typography>
       </CardContent>
       

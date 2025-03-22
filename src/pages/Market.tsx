@@ -763,20 +763,20 @@ const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
     return -1;
   }
   
-  // First try to compare by NFT createdAt date
+  // Parse the creation dates
   const dateA = parseNFTDate(a.createdAt);
   const dateB = parseNFTDate(b.createdAt);
   
-  // If both have proper dates, use those
+  // Sort by creation date (newest first)
   if (dateA > 0 && dateB > 0) {
-    return dateB - dateA;
+    return dateB - dateA; // Descending order (newest first)
   }
   
-  // If one has a date and the other doesn't, the one with a date is newer
+  // If one has a date and the other doesn't, prioritize the one with a date
   if (dateA > 0) return -1;
   if (dateB > 0) return 1;
   
-  // If neither has a date, use mint addresses to ensure consistent sorting
+  // If neither has a date, fall back to mint address for consistent sorting
   return a.mint.localeCompare(b.mint);
 };
 
@@ -1538,7 +1538,7 @@ const Market: React.FC = () => {
                 <Grid item xs={12}>
                   <Grid 
                     container 
-                    spacing={isMobile ? 3 : 4}
+                    spacing={isMobile ? 2.1 : 2.8}
                     justifyContent="flex-start"
                     sx={{
                       mt: { xs: 0, sm: -1 }, // Fix for spacing issues
@@ -1560,7 +1560,6 @@ const Market: React.FC = () => {
                         }}
                       >
                         <VintageCard
-                          key={nft.mint}
                           nft={nft}
                           wallet={{ publicKey }}
                           connected={connected}
