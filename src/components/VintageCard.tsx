@@ -507,7 +507,17 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
             textOverflow: 'ellipsis'
           }}
         >
-          Owned by: {ownerDisplay || formatWalletAddress(getOwnerAddress(nft.owner))}
+          Owned by: {
+            // First try to use the display name that has been set
+            ownerDisplay || 
+            // Then try to use the owner address directly
+            (nft.owner ? 
+              (typeof nft.owner === 'string' ? 
+                formatWalletAddress(nft.owner) : 
+                (nft.owner.publicKey ? formatWalletAddress(nft.owner.publicKey) : 'Unknown')
+              ) : 'Unknown'
+            )
+          }
         </Typography>
       </CardContent>
       

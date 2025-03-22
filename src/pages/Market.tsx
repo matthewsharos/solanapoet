@@ -416,17 +416,31 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
   }
 };
 
-// Helper function for parsing dates
+// Enhanced helper function for parsing dates with better format handling
 const parseNFTDate = (dateStr: string | undefined): number => {
-  if (!dateStr) return 0;
+  if (!dateStr) {
+    return 0;
+  }
   
   try {
-    // If it's already a timestamp string, parse it directly
+    // For logging
+    const originalInput = dateStr;
+    
+    // If it's already a timestamp string (all digits), parse it directly
     if (/^\d+$/.test(dateStr)) {
       const timestamp = parseInt(dateStr);
       
-      // Reject future dates more than a day ahead (likely parsing errors)
+      // Validate the timestamp is reasonable
       const now = Date.now();
+      const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+      const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
+      
+      // Log suspicious timestamps
+      if (timestamp < oneYearAgo || timestamp > oneWeekFuture) {
+        console.warn(`Suspicious timestamp detected: ${dateStr} parses to ${new Date(timestamp).toISOString()}`);
+      }
+      
+      // Reject wildly incorrect timestamps (future dates)
       const oneDayInMs = 24 * 60 * 60 * 1000;
       if (timestamp > now + oneDayInMs) {
         console.warn(`Rejecting future date ${new Date(timestamp).toISOString()} for ${dateStr}`);
@@ -436,13 +450,22 @@ const parseNFTDate = (dateStr: string | undefined): number => {
       return timestamp;
     }
     
-    // Try parsing as ISO string
+    // Handle ISO strings or similar formats
     const date = new Date(dateStr);
     if (!isNaN(date.getTime())) {
       const timestamp = date.getTime();
       
-      // Reject future dates more than a day ahead (likely parsing errors)
+      // Validate the date is reasonable
       const now = Date.now();
+      const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
+      const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
+      
+      // Log suspicious dates
+      if (timestamp < oneYearAgo || timestamp > oneWeekFuture) {
+        console.warn(`Suspicious date detected: ${dateStr} parses to ${date.toISOString()}`);
+      }
+      
+      // Reject wildly incorrect timestamps (future dates)
       const oneDayInMs = 24 * 60 * 60 * 1000;
       if (timestamp > now + oneDayInMs) {
         console.warn(`Rejecting future date ${date.toISOString()} for ${dateStr}`);
@@ -452,7 +475,56 @@ const parseNFTDate = (dateStr: string | undefined): number => {
       return timestamp;
     }
     
-    console.warn(`Could not parse date: ${dateStr}`);
+    // Try handling some common date formats
+    const formats = [
+      // Unix timestamp (seconds, not milliseconds)
+      /^(\d{10})$/,
+      // MM/DD/YYYY
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+      // YYYY/MM/DD
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
+      // YYYY-MM-DD (without time)
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+    ];
+    
+    for (const format of formats) {
+      const match = dateStr.match(format);
+      if (match) {
+        let parsedDate: Date | null = null;
+        
+        if (format === formats[0]) {
+          // Unix timestamp in seconds
+          parsedDate = new Date(parseInt(match[1]) * 1000);
+        } else if (format === formats[1]) {
+          // MM/DD/YYYY
+          parsedDate = new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
+        } else if (format === formats[2]) {
+          // YYYY/MM/DD
+          parsedDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+        } else if (format === formats[3]) {
+          // YYYY-MM-DD
+          parsedDate = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+        }
+        
+        if (parsedDate && !isNaN(parsedDate.getTime())) {
+          const timestamp = parsedDate.getTime();
+          
+          // Validate the date is reasonable
+          const now = Date.now();
+          const oneWeekFuture = now + 7 * 24 * 60 * 60 * 1000;
+          
+          // Reject future dates
+          if (timestamp > oneWeekFuture) {
+            console.warn(`Rejected future date from format matching: ${parsedDate.toISOString()} for ${dateStr}`);
+            continue;
+          }
+          
+          return timestamp;
+        }
+      }
+    }
+    
+    console.warn(`Could not parse date: "${dateStr}"`);
     return 0;
   } catch (error) {
     console.error(`Error parsing date ${dateStr}:`, error);
@@ -763,18 +835,41 @@ const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
     return -1;
   }
   
-  // Parse the creation dates
+  // Parse the creation dates - with detailed logging
   const dateA = parseNFTDate(a.createdAt);
   const dateB = parseNFTDate(b.createdAt);
   
+  // Log detailed info about the NFTs and their dates for debugging
+  const debugA = {
+    name: a.name,
+    mint: a.mint,
+    rawDate: a.createdAt,
+    parsedDate: dateA ? new Date(dateA).toISOString() : 'Invalid',
+    timestamp: dateA
+  };
+  
+  const debugB = {
+    name: b.name,
+    mint: b.mint,
+    rawDate: b.createdAt,
+    parsedDate: dateB ? new Date(dateB).toISOString() : 'Invalid',
+    timestamp: dateB
+  };
+  
+  // Only log if parsing worked for one NFT but not the other - helps identify issues
+  if ((dateA > 0 && dateB === 0) || (dateA === 0 && dateB > 0)) {
+    console.log('Date parsing inconsistency detected:', { a: debugA, b: debugB });
+  }
+  
   // Sort by creation date (newest first)
   if (dateA > 0 && dateB > 0) {
+    // Both have valid dates, sort by date (newest first)
     return dateB - dateA; // Descending order (newest first)
   }
   
   // If one has a date and the other doesn't, prioritize the one with a date
-  if (dateA > 0) return -1;
-  if (dateB > 0) return 1;
+  if (dateA > 0) return -1; // A has date, B doesn't
+  if (dateB > 0) return 1;  // B has date, A doesn't
   
   // If neither has a date, fall back to mint address for consistent sorting
   return a.mint.localeCompare(b.mint);
@@ -1187,6 +1282,22 @@ const Market: React.FC = () => {
           const processedCollectionNFTs: NFT[] = [];
           
           for (const nftData of collectionNFTs) {
+            // Try to parse the date properly - collection.creationDate is our best source here
+            // since NFTMetadata doesn't contain createdAt
+            let createdDate = '';
+            
+            // Try to get creation date from collection
+            if (collection.creationDate) {
+              createdDate = collection.creationDate;
+            } else if (collection.firstNftDate) {
+              createdDate = collection.firstNftDate;
+            } else {
+              // Use current time as last resort - slightly randomized so sorting works
+              const now = Date.now();
+              const randomOffset = Math.floor(Math.random() * 60000); // Random offset up to 1 minute
+              createdDate = new Date(now - randomOffset).toISOString();
+            }
+            
             // Create NFT object from metadata
             const nft: NFT = {
               mint: nftData.mint,
@@ -1201,8 +1312,8 @@ const Market: React.FC = () => {
               creators: [],
               royalty: 0,
               tokenStandard: 'NonFungible',
-              // Add creation date - use collection creation date or current time as fallback
-              createdAt: collection.creationDate || new Date().toISOString()
+              // Store the creation date as an ISO string
+              createdAt: createdDate
             };
             
             processedCollectionNFTs.push(nft);
