@@ -972,7 +972,47 @@ const Market: React.FC = () => {
         }
       }
       
-      console.log('6. All NFTs processed successfully');
+      // 4. Now load NFTs from regular collections
+      console.log('6. Loading NFTs from regular collections...');
+      
+      // Process each regular collection
+      for (const collection of regularCollections) {
+        try {
+          console.log(`Fetching NFTs for collection: ${collection.name} (${collection.address})`);
+          const collectionNFTs = await fetchCollectionNFTsFromUtils(collection.address);
+          
+          // Map the NFT metadata to our NFT format
+          for (const nftData of collectionNFTs) {
+            // Create NFT object from metadata
+            const nft: NFT = {
+              mint: nftData.mint,
+              name: nftData.name || 'Unnamed NFT',
+              image: nftData.image || '',
+              description: nftData.description || '',
+              attributes: [],
+              owner: '', // We may not have owner info from the collection fetch
+              listed: false,
+              collectionName: collection.name,
+              collectionAddress: collection.address,
+              creators: [],
+              royalty: 0,
+              tokenStandard: 'NonFungible'
+            };
+            
+            // Update NFTs state
+            updateNFTs(nft);
+          }
+          
+          console.log(`Added ${collectionNFTs.length} NFTs from collection ${collection.name}`);
+          
+          // Add a small delay between collections to avoid rate limiting
+          await delay(200);
+        } catch (error) {
+          console.error(`Error fetching NFTs for collection ${collection.name}:`, error);
+        }
+      }
+      
+      console.log('7. All NFTs processed successfully');
       
     } catch (error) {
       console.error('Error in fetchAllNFTs:', error);
