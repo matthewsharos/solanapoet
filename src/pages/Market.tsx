@@ -166,7 +166,27 @@ const fetchNFTsByCollection = async (collectionName: string): Promise<NFT[]> => 
     while (retryCount < maxRetries) {
       try {
         const result = await fetchCollectionNFTsFromUtils(collectionName);
-        return result;
+        // Convert NFTMetadata[] to NFT[]
+        return result.map(item => {
+          // Create a properly typed NFT object from NFTMetadata
+          const nft: NFT = {
+            mint: item.mint,
+            name: item.name,
+            description: item.description || '',
+            image: item.image,
+            attributes: [], // Will be empty since not in NFTMetadata
+            owner: item.owner || '',
+            listed: false,
+            collectionName: collectionName,
+            collectionAddress: '', // Not available directly
+            creators: [], // Not available directly
+            royalty: null, // Not available directly
+            tokenStandard: null, // Not available directly
+            createdAt: item.createdAt,
+          };
+          
+          return nft;
+        });
       } catch (error) {
         retryCount++;
         if (retryCount >= maxRetries) throw error;
