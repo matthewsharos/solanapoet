@@ -290,6 +290,8 @@ const parseNFTCreationDateLegacy = (nftData: any, collection: Collection): { cre
     // Special case for problematic NFTs
     'HxThsVQpxPtZfLkrjMnKuMYu1M2cQ91TcCtag9CTjegC': Date.parse('2023-01-01T00:00:00Z'), // Earlier
     '8bx4N1uUyexgNexsVSZiLVvh9YbVT6f62hkhCDNeVz4y': Date.parse('2023-06-01T00:00:00Z'),  // Later/newer
+    // Fix for Typestract #01
+    'HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V': Date.parse('2025-03-12T00:00:00Z'),  // Should be March 12, 2025
   };
 
   // Check if we have a fixed date for this NFT
@@ -473,18 +475,25 @@ const fetchCollectionNFTs = async (collection: Collection): Promise<NFT[]> => {
           // If we have blockTime, use it (most reliable)
           finalCreatedAt = blockTime * 1000;
         } else {
-          // Try to parse the date
-          const parsedDate = new Date(createdAt);
-          if (!isNaN(parsedDate.getTime())) {
-            finalCreatedAt = parsedDate.getTime();
+          // Use the validation helper to handle date parsing and correction
+          const { timestamp } = validateAndNormalizeDate(createdAt, nftData.mint);
+          
+          if (timestamp) {
+            finalCreatedAt = timestamp;
           } else {
-            // If we can't parse it, use current time
-            finalCreatedAt = Date.now();
+            // If validation fails, use a sensible fallback
+            // Use a date in 2022 instead of current time to avoid future dates
+            const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+            const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000); // Random offset up to 30 days
+            finalCreatedAt = pastDate + randomOffset;
           }
         }
       } catch (e) {
-        // In case of any error, use current time
-        finalCreatedAt = Date.now();
+        // In case of any error, use a historical date, not current time
+        console.error(`Error setting final date for ${nftData.mint}:`, e);
+        const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+        const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000); // Random offset up to 30 days
+        finalCreatedAt = pastDate + randomOffset;
       }
 
       // If HxThsVQpxPtZfLkrjMnKuMYu1M2cQ91TcCtag9CTjegC or 8bx4N1uUyexgNexsVSZiLVvh9YbVT6f62hkhCDNeVz4y, log for debugging
@@ -671,7 +680,13 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       // Store as timestamp string for consistent sorting
       createdAt: blockTime 
         ? (blockTime * 1000).toString() // Use blockTime (most reliable) 
-        : new Date(createdAt).getTime().toString() // Parse from string
+        : validateAndNormalizeDate(createdAt, nftAddress).timestamp?.toString() || 
+          // Use a historical date as fallback
+          (() => {
+            const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+            const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000);
+            return (pastDate + randomOffset).toString();
+          })()
     };
   } catch (error) {
     console.error(`Failed to fetch NFT ${nftAddress}:`, error);
@@ -862,85 +877,71 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
 
 // Force a specific sort order for special NFTs like the newest one, while maintaining proper sort for others
 const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
-  // Check for new NFT that should be at the top
+  // Prioritize newest NFT
   if (a.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
-    console.log("Special NFT A found in sort, prioritizing to top");
-    return -1; // Always put it first
+    return -1; // Always put it first 
   }
   if (b.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
-    console.log("Special NFT B found in sort, prioritizing to top");
     return 1; // Always put it first
   }
-
-  // Add extensive logging to debug the comparison
-  console.log(`SORTING INFO - Comparing NFTs:
-    A: ${a.name} (${a.mint}), Date: ${a.createdAt} 
-    B: ${b.name} (${b.mint}), Date: ${b.createdAt}`);
   
-  // Try to get dates as millisecond timestamps
-  let dateA: number | null = null;
-  let dateB: number | null = null;
-  
-  // First try parsing as timestamp string
-  if (a.createdAt && /^\d+$/.test(a.createdAt)) {
-    dateA = parseInt(a.createdAt);
-    console.log(`A parsed as numeric timestamp: ${dateA}, Date: ${new Date(dateA).toISOString()}`);
-  }
-  
-  if (b.createdAt && /^\d+$/.test(b.createdAt)) {
-    dateB = parseInt(b.createdAt);
-    console.log(`B parsed as numeric timestamp: ${dateB}, Date: ${new Date(dateB).toISOString()}`);
-  }
-  
-  // If still null, try parsing as ISO string
-  if (dateA === null && a.createdAt) {
-    try {
-      const dateObj = new Date(a.createdAt);
-      if (!isNaN(dateObj.getTime())) {
-        dateA = dateObj.getTime();
-        console.log(`A parsed as ISO string: ${dateA}, Date: ${dateObj.toISOString()}`);
+  // Fix Typestract #01 date (should be March 12, 2025)
+  if (a.mint === "HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V") {
+    // Use March 12, 2025 timestamp for comparison
+    const march2025 = new Date('2025-03-12T00:00:00Z').getTime();
+    if (b.createdAt) {
+      let bDate: number;
+      if (typeof b.createdAt === 'string' && /^\d+$/.test(b.createdAt)) {
+        bDate = parseInt(b.createdAt);
+        // Check if it's in seconds (blockTime) or milliseconds
+        if (bDate < 10000000000) { // If in seconds (before year 2286)
+          bDate = bDate * 1000;
+        }
       } else {
-        console.log(`A has invalid date format: ${a.createdAt}`);
+        try {
+          const dateObj = new Date(b.createdAt);
+          if (isNaN(dateObj.getTime())) {
+            return -1; // Invalid date B, prioritize A
+          }
+          bDate = dateObj.getTime();
+        } catch (err) {
+          return -1; // Error parsing B date, prioritize A
+        }
       }
-    } catch (e) {
-      console.error(`Error parsing date A: ${a.createdAt}`, e);
+      return bDate - march2025; // Descending order
     }
+    return -1; // No date for B, prioritize A
   }
   
-  if (dateB === null && b.createdAt) {
-    try {
-      const dateObj = new Date(b.createdAt);
-      if (!isNaN(dateObj.getTime())) {
-        dateB = dateObj.getTime();
-        console.log(`B parsed as ISO string: ${dateB}, Date: ${dateObj.toISOString()}`);
+  if (b.mint === "HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V") {
+    // Use March 12, 2025 timestamp for comparison
+    const march2025 = new Date('2025-03-12T00:00:00Z').getTime();
+    if (a.createdAt) {
+      let aDate: number;
+      if (typeof a.createdAt === 'string' && /^\d+$/.test(a.createdAt)) {
+        aDate = parseInt(a.createdAt);
+        // Check if it's in seconds (blockTime) or milliseconds
+        if (aDate < 10000000000) { // If in seconds (before year 2286)
+          aDate = aDate * 1000;
+        }
       } else {
-        console.log(`B has invalid date format: ${b.createdAt}`);
+        try {
+          const dateObj = new Date(a.createdAt);
+          if (isNaN(dateObj.getTime())) {
+            return 1; // Invalid date A, prioritize B
+          }
+          aDate = dateObj.getTime();
+        } catch (err) {
+          return 1; // Error parsing A date, prioritize B
+        }
       }
-    } catch (e) {
-      console.error(`Error parsing date B: ${b.createdAt}`, e);
+      return march2025 - aDate; // Descending order
     }
+    return 1; // No date for A, prioritize B
   }
 
-  // Compare the dates if we have them
-  if (dateA !== null && dateB !== null) {
-    console.log(`Comparing dates: A(${new Date(dateA).toISOString()}) vs B(${new Date(dateB).toISOString()})`);
-    console.log(`Result: ${dateB > dateA ? 'B is newer' : 'A is newer'}, returning ${dateB - dateA}`);
-    return dateB - dateA; // Descending order (newest first)
-  }
-  
-  // Handle cases where one or both dates are missing
-  if (dateA !== null) {
-    console.log('Only A has date, A comes first');
-    return -1; 
-  }
-  if (dateB !== null) {
-    console.log('Only B has date, B comes first');
-    return 1;
-  }
-  
-  // If neither has a date, sort by mint for consistency
-  console.log('No dates found, sorting by mint');
-  return a.mint.localeCompare(b.mint);
+  // Use the utility function for consistent date comparison
+  return compareNFTsByCreationDate(a, b, true);
 };
 
 // Extend the NFT interface to support loading state
@@ -1059,7 +1060,12 @@ const parseAndNormalizeDate = (dateInput: string | number | undefined | null): s
     
     // If it's a timestamp string (all digits), parse it directly
     if (typeof dateInput === 'string' && /^\d+$/.test(dateInput)) {
-      return new Date(parseInt(dateInput)).toISOString();
+      const parsedNum = parseInt(dateInput);
+      // Check if it's in seconds or milliseconds
+      if (parsedNum < 10000000000) { // If in seconds (before year 2286)
+        return new Date(parsedNum * 1000).toISOString();
+      }
+      return new Date(parsedNum).toISOString();
     }
     
     // Try to parse as a date string
@@ -1074,6 +1080,53 @@ const parseAndNormalizeDate = (dateInput: string | number | undefined | null): s
   } catch (error) {
     console.error(`Error normalizing date ${dateInput}:`, error);
     return new Date().toISOString();
+  }
+};
+
+// Function to validate and normalize dates for consistent sorting
+// Returns an object with the validated timestamp in milliseconds
+const validateAndNormalizeDate = (dateInput: string | number | undefined | null, nftId?: string): { timestamp: number | null } => {
+  if (!dateInput) {
+    console.log(`No date provided for NFT ${nftId || 'unknown'}`);
+    return { timestamp: null };
+  }
+  
+  try {
+    // If it's already a timestamp number, use it directly
+    if (typeof dateInput === 'number') {
+      console.log(`Using numeric timestamp for NFT ${nftId || 'unknown'}: ${dateInput}`);
+      // Check if it's in seconds (blockTime) or milliseconds
+      if (dateInput < 10000000000) { // If in seconds (before year 2286)
+        return { timestamp: dateInput * 1000 };
+      }
+      return { timestamp: dateInput };
+    }
+    
+    // If it's a numeric string, parse it
+    if (typeof dateInput === 'string' && /^\d+$/.test(dateInput)) {
+      const parsedTime = parseInt(dateInput);
+      console.log(`Parsed numeric string timestamp for NFT ${nftId || 'unknown'}: ${parsedTime}`);
+      
+      // Check if it's in seconds or milliseconds
+      if (parsedTime < 10000000000) { // If in seconds (before year 2286)
+        return { timestamp: parsedTime * 1000 };
+      }
+      return { timestamp: parsedTime };
+    }
+    
+    // Try to parse as a date string
+    const parsedDate = new Date(dateInput);
+    if (!isNaN(parsedDate.getTime())) {
+      console.log(`Parsed date string for NFT ${nftId || 'unknown'}: ${parsedDate.toISOString()}`);
+      return { timestamp: parsedDate.getTime() };
+    }
+    
+    // Fallback if date is invalid
+    console.warn(`Could not parse date for NFT ${nftId || 'unknown'}: ${dateInput}`);
+    return { timestamp: null };
+  } catch (error) {
+    console.error(`Error normalizing date for NFT ${nftId || 'unknown'} (${dateInput}):`, error);
+    return { timestamp: null };
   }
 };
 
@@ -1489,7 +1542,13 @@ const Market: React.FC = () => {
               // Store the timestamp for consistent sorting - ensure we use a valid date
               createdAt: blockTime 
                 ? (blockTime * 1000).toString() // Use blockTime (most reliable) 
-                : new Date(createdAt).getTime().toString() // Parse from string
+                : validateAndNormalizeDate(createdAt, nftData.mint).timestamp?.toString() || 
+                  // Use a historical date as fallback
+                  (() => {
+                    const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+                    const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000);
+                    return (pastDate + randomOffset).toString();
+                  })()
             };
             
             processedCollectionNFTs.push(nft);
