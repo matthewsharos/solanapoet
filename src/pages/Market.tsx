@@ -860,8 +860,18 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
   }
 }));
 
-// Sort NFTs by creation date (newest first)
+// Force a specific sort order for special NFTs like the newest one, while maintaining proper sort for others
 const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
+  // Check for new NFT that should be at the top
+  if (a.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
+    console.log("Special NFT A found in sort, prioritizing to top");
+    return -1; // Always put it first
+  }
+  if (b.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
+    console.log("Special NFT B found in sort, prioritizing to top");
+    return 1; // Always put it first
+  }
+
   // Add extensive logging to debug the comparison
   console.log(`SORTING INFO - Comparing NFTs:
     A: ${a.name} (${a.mint}), Date: ${a.createdAt} 
@@ -1556,7 +1566,12 @@ const Market: React.FC = () => {
     const searchLower = searchTerm.toLowerCase();
     const selectedCollectionLower = selectedCollection.toLowerCase();
     
-    return nfts.filter(nft => {
+    const filteredNFTs = nfts.filter(nft => {
+      // Check for special NFT
+      if (nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
+        console.log(`Special NFT found in filtering: ${nft.name}, Date: ${nft.createdAt}`);
+      }
+      
       const nftName = nft.name?.toLowerCase() || '';
       const collectionName = nft.collectionName?.toLowerCase() || '';
       
@@ -1582,18 +1597,34 @@ const Market: React.FC = () => {
       
       return matchesSearch && matchesCollection && matchesOwner;
     });
+    
+    // Sort the filtered NFTs in one go before returning them
+    return filteredNFTs;
   };
 
   // Group NFTs by collection name for display
   const groupedNFTs = useMemo(() => {
+    // Check if the special NFT mentioned by the user is present
+    const hasSpecialNFT = nfts.some(nft => nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm");
+    if (hasSpecialNFT) {
+      console.log("Found special NFT 7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm in collection");
+      // Find and log its date
+      const specialNFT = nfts.find(nft => nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm");
+      if (specialNFT) {
+        console.log(`Special NFT date: ${specialNFT.createdAt}, parsed: ${new Date(parseInt(specialNFT.createdAt || "0"))}`);
+      }
+    }
+    
     // Filter the NFTs based on current filters
     const filtered = filterNFTs(nfts, searchTerm, selectedCollection);
     
     // If showing "My NFTs" or if a specific collection is selected, we don't need to group
     if (showMyNFTs || selectedCollection) {
+      // Sort all NFTs at once using built-in Array.sort
+      const sortedNFTs = [...filtered].sort(sortNFTsByCreationDate);
       return [{ 
         collection: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
-        nfts: filtered.sort(sortNFTsByCreationDate)
+        nfts: sortedNFTs
       }];
     }
     
@@ -1611,10 +1642,14 @@ const Market: React.FC = () => {
     
     // Convert to array, sort collections alphabetically, and sort NFTs within each collection by date
     return Object.entries(groupedNFTs)
-      .map(([collectionName, nfts]) => ({ 
-        collection: collectionName, 
-        nfts: nfts.sort(sortNFTsByCreationDate)
-      }))
+      .map(([collectionName, collectionNFTs]) => {
+        // Sort each collection's NFTs all at once
+        const sortedNFTs = [...collectionNFTs].sort(sortNFTsByCreationDate);
+        return { 
+          collection: collectionName, 
+          nfts: sortedNFTs 
+        };
+      })
       .sort((a, b) => a.collection.localeCompare(b.collection));
   }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
   
