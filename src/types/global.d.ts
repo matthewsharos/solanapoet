@@ -8,6 +8,7 @@ declare global {
     crypto: Crypto;
     TextEncoder: typeof TextEncoder;
     TextDecoder: typeof TextDecoder;
+    nftImageCache: Map<string, boolean>;
   }
 }
 
