@@ -254,21 +254,15 @@ const TypewriterKeyButton = styled(IconButton)(({ theme }) => ({
   }
 }));
 
-// Update the NFTWithObjectOwner type to match the one in marketplace.ts
-type NFTWithObjectOwner = Omit<NFT, 'owner'> & {
-  owner: string | NFTOwner;
-};
-
-// Add utility function for getting the owner address as a string
-const getOwnerAddress = (owner: string | NFTOwner): string => {
-  if (!owner) return '';
-  return typeof owner === 'string' ? owner : owner.publicKey || '';
-};
-
-// Add improved utility function to shorten addresses
-const shortenAddress = (address: string) => {
-  if (!address) return '';
-  return `${address.slice(0, 4)}...${address.slice(-4)}`;
+// Helper function to extract the owner address from the NFT owner field
+const getOwnerAddress = (owner: string | NFTOwner | undefined): string | undefined => {
+  if (!owner) return undefined;
+  
+  if (typeof owner === 'string') {
+    return owner;
+  }
+  
+  return owner.publicKey || undefined;
 };
 
 // Update the interface to accept either type
@@ -286,6 +280,7 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [ownerDisplay, setOwnerDisplay] = useState<string | undefined>(displayName);
+  const [shouldLoad, setShouldLoad] = useState(false);
   const imageRef = useRef<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const imgElementRef = useRef<HTMLImageElement | null>(null);
@@ -357,8 +352,35 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     };
   }, [nft.owner, displayName]);
   
-  // Preload image once when component mounts
+  // Setup Intersection Observer to detect when card enters viewport
   useEffect(() => {
+    if (!cardRef.current || typeof IntersectionObserver === 'undefined') {
+      // If IntersectionObserver isn't supported, load immediately
+      setShouldLoad(true);
+      return;
+    }
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setShouldLoad(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 } // Start loading when 10% of card is visible
+    );
+    
+    observer.observe(cardRef.current);
+    
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  
+  // Handle image loading once card is visible
+  useEffect(() => {
+    if (!shouldLoad) return;
+    
     if (!nft.image) {
       setImageFailed(true);
       setImageLoaded(true);
@@ -411,14 +433,24 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
     } else {
       // Start loading
       img.src = nft.image;
+      
+      // Add low-quality image loading strategy to improve perceived performance
+      // For larger images, browsers sometimes load a lower resolution preview first
+      if (imgElementRef.current) {
+        imgElementRef.current.loading = 'eager';
+        imgElementRef.current.decoding = 'async';
+      }
     }
     
     // Clean up function
     return () => {
       // Clear the loading reference if component unmounts during loading
       imageRef.current = null;
+      
+      // Cancel the image load if possible
+      img.src = '';
     };
-  }, [nft.image]);
+  }, [nft.image, shouldLoad]);
 
   const handleCardClick = () => {
     setDetailOpen(true);
@@ -465,18 +497,19 @@ const VintageCard: React.FC<VintageCardProps> = ({ nft, wallet, connected, displ
       </CardTitleContainer>
       
       <CardImageContainer>
-        {!imageLoaded && (
+        {(!imageLoaded || !shouldLoad) && (
           <PlaceholderImage>
             <CircularProgress size={30} thickness={4} color="secondary" />
           </PlaceholderImage>
         )}
         
-        {nft.image && (
+        {shouldLoad && nft.image && (
           <CardImage 
             ref={(el) => { imgElementRef.current = el; }}
             src={nft.image} 
             alt={typeof nft.name === 'string' ? nft.name : 'NFT Image'}
             loading="eager"
+            decoding="async"
             style={{ 
               display: imageLoaded && !imageFailed ? 'block' : 'none',
               opacity: imageLoaded && !imageFailed ? 1 : 0
