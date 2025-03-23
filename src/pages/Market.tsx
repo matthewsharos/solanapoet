@@ -292,14 +292,19 @@ const parseNFTCreationDateLegacy = (nftData: any, collection: Collection): { cre
     '8bx4N1uUyexgNexsVSZiLVvh9YbVT6f62hkhCDNeVz4y': Date.parse('2023-06-01T00:00:00Z'),  // Later/newer
     // Fix for Typestract #01
     'HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V': Date.parse('2025-03-12T00:00:00Z'),  // Should be March 12, 2025
+    // Fix for Typestract #02 (using mint address)
+    '7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm': Date.parse('2025-03-17T00:00:00Z'),  // Should be March 17, 2025
   };
 
+  // Get the proper identifier for the NFT (either id or mint)
+  const nftIdentifier = nftData.id || nftData.mint;
+  
   // Check if we have a fixed date for this NFT
-  if (knownDates[nftData.id]) {
-    console.log(`Using fixed date for NFT ${nftData.id}: ${new Date(knownDates[nftData.id]).toISOString()}`);
+  if (knownDates[nftIdentifier]) {
+    console.log(`Using fixed date for NFT ${nftIdentifier}: ${new Date(knownDates[nftIdentifier]).toISOString()}`);
     return { 
-      createdAt: new Date(knownDates[nftData.id]).toISOString(),
-      blockTime: Math.floor(knownDates[nftData.id] / 1000) 
+      createdAt: new Date(knownDates[nftIdentifier]).toISOString(),
+      blockTime: Math.floor(knownDates[nftIdentifier] / 1000) 
     };
   }
 
@@ -875,73 +880,23 @@ const CollectionTitle = styled(Typography)(({ theme }) => ({
   }
 }));
 
-// Force a specific sort order for special NFTs like the newest one, while maintaining proper sort for others
+// Remove complicated sorting in sortNFTsByCreationDate and use a simpler version
 const sortNFTsByCreationDate = (a: NFT, b: NFT) => {
-  // Prioritize newest NFT
-  if (a.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
-    return -1; // Always put it first 
+  try {
+    // Parse timestamps from string format and convert to numbers for comparison
+    let aTime = typeof a.createdAt === 'string' ? parseInt(a.createdAt) : 0;
+    let bTime = typeof b.createdAt === 'string' ? parseInt(b.createdAt) : 0;
+    
+    // Handle timestamps in seconds (convert to ms)
+    if (aTime < 10000000000) aTime *= 1000;
+    if (bTime < 10000000000) bTime *= 1000;
+    
+    // Sort descending (newest first)
+    return bTime - aTime;
+  } catch (error) {
+    console.error('Error comparing dates:', error);
+    return 0;
   }
-  if (b.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
-    return 1; // Always put it first
-  }
-  
-  // Fix Typestract #01 date (should be March 12, 2025)
-  if (a.mint === "HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V") {
-    // Use March 12, 2025 timestamp for comparison
-    const march2025 = new Date('2025-03-12T00:00:00Z').getTime();
-    if (b.createdAt) {
-      let bDate: number;
-      if (typeof b.createdAt === 'string' && /^\d+$/.test(b.createdAt)) {
-        bDate = parseInt(b.createdAt);
-        // Check if it's in seconds (blockTime) or milliseconds
-        if (bDate < 10000000000) { // If in seconds (before year 2286)
-          bDate = bDate * 1000;
-        }
-      } else {
-        try {
-          const dateObj = new Date(b.createdAt);
-          if (isNaN(dateObj.getTime())) {
-            return -1; // Invalid date B, prioritize A
-          }
-          bDate = dateObj.getTime();
-        } catch (err) {
-          return -1; // Error parsing B date, prioritize A
-        }
-      }
-      return bDate - march2025; // Descending order
-    }
-    return -1; // No date for B, prioritize A
-  }
-  
-  if (b.mint === "HkGViu9yHrKGQr5nrCecyvZ6uT4wx76iBAQHYq4nVq4V") {
-    // Use March 12, 2025 timestamp for comparison
-    const march2025 = new Date('2025-03-12T00:00:00Z').getTime();
-    if (a.createdAt) {
-      let aDate: number;
-      if (typeof a.createdAt === 'string' && /^\d+$/.test(a.createdAt)) {
-        aDate = parseInt(a.createdAt);
-        // Check if it's in seconds (blockTime) or milliseconds
-        if (aDate < 10000000000) { // If in seconds (before year 2286)
-          aDate = aDate * 1000;
-        }
-      } else {
-        try {
-          const dateObj = new Date(a.createdAt);
-          if (isNaN(dateObj.getTime())) {
-            return 1; // Invalid date A, prioritize B
-          }
-          aDate = dateObj.getTime();
-        } catch (err) {
-          return 1; // Error parsing A date, prioritize B
-        }
-      }
-      return march2025 - aDate; // Descending order
-    }
-    return 1; // No date for A, prioritize B
-  }
-
-  // Use the utility function for consistent date comparison
-  return compareNFTsByCreationDate(a, b, true);
 };
 
 // Extend the NFT interface to support loading state
@@ -1151,6 +1106,8 @@ const Market: React.FC = () => {
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [displayNamesLoaded, setDisplayNamesLoaded] = useState(false);
   const [displayNames, setDisplayNames] = useState<Map<string, string>>(new Map());
+  // Add state for sort
+  const [sorted, setSorted] = useState(false);
 
   // Effect to uncheck "My NFTs" when wallet disconnects
   useEffect(() => {
@@ -1625,12 +1582,7 @@ const Market: React.FC = () => {
     const searchLower = searchTerm.toLowerCase();
     const selectedCollectionLower = selectedCollection.toLowerCase();
     
-    const filteredNFTs = nfts.filter(nft => {
-      // Check for special NFT
-      if (nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm") {
-        console.log(`Special NFT found in filtering: ${nft.name}, Date: ${nft.createdAt}`);
-      }
-      
+    return nfts.filter(nft => {
       const nftName = nft.name?.toLowerCase() || '';
       const collectionName = nft.collectionName?.toLowerCase() || '';
       
@@ -1656,34 +1608,20 @@ const Market: React.FC = () => {
       
       return matchesSearch && matchesCollection && matchesOwner;
     });
-    
-    // Sort the filtered NFTs in one go before returning them
-    return filteredNFTs;
   };
 
   // Group NFTs by collection name for display
   const groupedNFTs = useMemo(() => {
-    // Check if the special NFT mentioned by the user is present
-    const hasSpecialNFT = nfts.some(nft => nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm");
-    if (hasSpecialNFT) {
-      console.log("Found special NFT 7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm in collection");
-      // Find and log its date
-      const specialNFT = nfts.find(nft => nft.mint === "7WJRm8QivvZxep63FxR3Qp6euAcg7MxA2RrEeQ7Embxm");
-      if (specialNFT) {
-        console.log(`Special NFT date: ${specialNFT.createdAt}, parsed: ${new Date(parseInt(specialNFT.createdAt || "0"))}`);
-      }
-    }
-    
     // Filter the NFTs based on current filters
     const filtered = filterNFTs(nfts, searchTerm, selectedCollection);
     
     // If showing "My NFTs" or if a specific collection is selected, we don't need to group
     if (showMyNFTs || selectedCollection) {
-      // Sort all NFTs at once using built-in Array.sort
-      const sortedNFTs = [...filtered].sort(sortNFTsByCreationDate);
+      // Apply sorting only if the sort button was clicked
+      const finalNFTs = sorted ? [...filtered].sort(sortNFTsByCreationDate) : filtered;
       return [{ 
         collection: showMyNFTs ? 'My NFTs' : (selectedCollection || 'All NFTs'), 
-        nfts: sortedNFTs
+        nfts: finalNFTs
       }];
     }
     
@@ -1699,18 +1637,19 @@ const Market: React.FC = () => {
       return acc;
     }, {} as Record<string, NFT[]>);
     
-    // Convert to array, sort collections alphabetically, and sort NFTs within each collection by date
+    // Convert to array, sort collections alphabetically
+    // Apply date sorting only if sorted is true
     return Object.entries(groupedNFTs)
       .map(([collectionName, collectionNFTs]) => {
-        // Sort each collection's NFTs all at once
-        const sortedNFTs = [...collectionNFTs].sort(sortNFTsByCreationDate);
+        // Apply sorting only if the sort button was clicked
+        const finalNFTs = sorted ? [...collectionNFTs].sort(sortNFTsByCreationDate) : collectionNFTs;
         return { 
           collection: collectionName, 
-          nfts: sortedNFTs 
+          nfts: finalNFTs
         };
       })
       .sort((a, b) => a.collection.localeCompare(b.collection));
-  }, [nfts, searchTerm, selectedCollection, showMyNFTs, filterNFTs]);
+  }, [nfts, searchTerm, selectedCollection, showMyNFTs, sorted]);
   
   // Get the current page's NFTs, possibly from multiple collections
   const currentPageGroupedNFTs = useMemo(() => {
@@ -1787,9 +1726,15 @@ const Market: React.FC = () => {
     setSearchTerm('');
     setSelectedCollection('');
     setPage(1);
+    setSorted(false); // Reset sorting when refreshing
     
     // Refetch NFTs
     fetchAllNFTs();
+  };
+
+  // Add handler for sort button
+  const handleSortByDate = () => {
+    setSorted(true);
   };
 
   return (
@@ -1851,7 +1796,22 @@ const Market: React.FC = () => {
             </Grid>
           )}
           
-          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', justifyContent: { xs: 'center', md: 'flex-end' } }}>
+          <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', justifyContent: { xs: 'center', md: 'flex-end' }, gap: 1 }}>
+            <Button
+              onClick={handleSortByDate}
+              disabled={loading || sorted}
+              size="small"
+              variant="outlined"
+              startIcon={<RefreshIcon sx={{ transform: 'rotate(90deg)' }} />}
+              sx={{
+                borderColor: 'divider',
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                }
+              }}
+            >
+              Sort by Date
+            </Button>
             <IconButton 
               onClick={handleRefresh} 
               disabled={loading}
