@@ -569,49 +569,87 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
           delegated: nftData.owner?.delegated || false,
         };
 
-    // Process creation date properly
+    // Process creation date for consistent handling
     let createdAt = '';
+    let blockTime = null;
     
-    // Try to get the date from various possible sources
-    const possibleDates = [
-      nftData.content?.metadata?.created_at,
-      nftData.compression?.created_at,
-      nftData.content?.metadata?.attributes?.find((attr: any) => 
-        attr.trait_type === 'created' || 
-        attr.trait_type === 'Creation Date'
-      )?.value,
-      collectionInfo?.creationDate,
-      collectionInfo?.firstNftDate
-    ].filter(Boolean);
-    
-    if (possibleDates.length > 0) {
-      // Use the first valid date we find
-      for (const dateStr of possibleDates) {
-        if (!dateStr) continue;
-        
-        try {
-          const date = new Date(dateStr);
-          if (!isNaN(date.getTime())) {
-            // Reject future dates (likely errors)
-            const now = Date.now();
-            const oneDayInMs = 24 * 60 * 60 * 1000;
-            if (date.getTime() > now + oneDayInMs) {
-              console.warn(`Skipping future date ${date.toISOString()} for NFT ${nftAddress}`);
-              continue;
-            }
-            
-            createdAt = date.toISOString();
-            break;
+    try {
+      // Method 1: First try to get signatures (most reliable for mint date)
+      const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'my-id',
+          method: 'getSignaturesForAddress',
+          params: [nftAddress, { limit: 20 }] // Get more signatures to find earliest
+        })
+      });
+
+      if (signaturesResponse.ok) {
+        const signaturesData = await signaturesResponse.json();
+        if (signaturesData.result && signaturesData.result.length > 0) {
+          // Sort signatures to get the earliest one (mint transaction)
+          const sortedSignatures = signaturesData.result.sort((a: any, b: any) => a.blockTime - b.blockTime);
+          const earliestSignature = sortedSignatures[0];
+          
+          if (earliestSignature.blockTime) {
+            blockTime = earliestSignature.blockTime;
+            createdAt = new Date(blockTime * 1000).toISOString();
+            console.log(`Found signature creation date for ${nftAddress}: ${createdAt}`);
           }
-        } catch (e) {
-          console.warn(`Error parsing date ${dateStr} for NFT ${nftAddress}:`, e);
         }
       }
+      
+      // Method 2: Try other metadata sources if no signature date
+      if (!createdAt) {
+        // Check metadata fields in the NFT data
+        const possibleDates = [
+          nftData.content?.metadata?.created_at,
+          nftData.compression?.created_at,
+          nftData.content?.metadata?.attributes?.find((attr: any) => 
+            attr.trait_type === 'created' || 
+            attr.trait_type === 'Creation Date'
+          )?.value,
+          collectionInfo?.creationDate,
+          collectionInfo?.firstNftDate
+        ].filter(Boolean);
+        
+        for (const dateStr of possibleDates) {
+          if (!dateStr) continue;
+          
+          try {
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+              // Reject future dates (likely errors)
+              const now = Date.now();
+              const oneDayInMs = 24 * 60 * 60 * 1000;
+              if (date.getTime() > now + oneDayInMs) {
+                console.warn(`Skipping future date ${date.toISOString()} for NFT ${nftAddress}`);
+                continue;
+              }
+              
+              createdAt = date.toISOString();
+              console.log(`Found valid date ${createdAt} for NFT ${nftAddress}`);
+              break;
+            }
+          } catch (e) {
+            console.warn(`Error parsing date ${dateStr} for NFT ${nftAddress}:`, e);
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching creation date for ${nftAddress}:`, error);
     }
     
-    // If we couldn't find a valid date, use a default
+    // If we still couldn't find a valid date, use a past date fallback
     if (!createdAt) {
-      createdAt = new Date().toISOString();
+      // Use a historical date (beginning of 2022) with a random offset for proper sorting
+      const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+      const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000); // Random offset up to 30 days
+      const fallbackTimestamp = pastDate + randomOffset;
+      createdAt = new Date(fallbackTimestamp).toISOString();
+      console.log(`Using fallback date for ${nftAddress}: ${createdAt}`);
     }
 
     // Ensure we have all required data
@@ -630,7 +668,10 @@ const fetchNFTWithRetries = async (nftAddress: string, ultimate: UltimateNFT | n
       tokenStandard: nftData.tokenStandard || null,
       content: nftData.content,
       compression: nftData.compression,
-      createdAt: parseAndNormalizeDate(createdAt),
+      // Store as timestamp string for consistent sorting
+      createdAt: blockTime 
+        ? (blockTime * 1000).toString() // Use blockTime (most reliable) 
+        : new Date(createdAt).getTime().toString() // Parse from string
     };
   } catch (error) {
     console.error(`Failed to fetch NFT ${nftAddress}:`, error);
@@ -1332,35 +1373,87 @@ const Market: React.FC = () => {
           
           for (const nftData of collectionNFTs) {
             // Process creation date correctly
-            let createdDate = '';
+            let createdAt = '';
+            let blockTime = null;
             
-            // Try to get creation date from collection
-            if (collection.creationDate) {
-              createdDate = collection.creationDate;
-            } else if (collection.firstNftDate) {
-              createdDate = collection.firstNftDate;
-            } else {
-              // Use current time as last resort - slightly randomized so sorting works
-              const now = Date.now();
-              const randomOffset = Math.floor(Math.random() * 60000); // Random offset up to 1 minute
-              createdDate = new Date(now - randomOffset).toISOString();
-            }
-            
-            // Use our parseNFTCreationDate function for consistent handling
-            const parsedDate = parseNFTCreationDate(
-              {
-                id: nftData.mint,
-                ...nftData,
-                content: {
-                  metadata: {
-                    created_at: createdDate
+            try {
+              // Method 1: First try to get signatures (most reliable for mint date)
+              const signaturesResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 'my-id',
+                  method: 'getSignaturesForAddress',
+                  params: [nftData.mint, { limit: 20 }] // Get more signatures to find earliest
+                })
+              });
+
+              if (signaturesResponse.ok) {
+                const signaturesData = await signaturesResponse.json();
+                if (signaturesData.result && signaturesData.result.length > 0) {
+                  // Sort signatures to get the earliest one (mint transaction)
+                  const sortedSignatures = signaturesData.result.sort((a: any, b: any) => a.blockTime - b.blockTime);
+                  const earliestSignature = sortedSignatures[0];
+                  
+                  if (earliestSignature.blockTime) {
+                    blockTime = earliestSignature.blockTime;
+                    createdAt = new Date(blockTime * 1000).toISOString();
+                    console.log(`Found signature creation date for ${nftData.mint}: ${createdAt}`);
                   }
                 }
-              }, 
-              collection
-            );
+              }
+              
+              // Method 2: Try asset metadata as fallback
+              if (!createdAt) {
+                const assetResponse = await fetch(`https://mainnet.helius-rpc.com/?api-key=${import.meta.env.VITE_HELIUS_API_KEY}`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'my-id',
+                    method: 'getAsset',
+                    params: { id: nftData.mint }
+                  })
+                });
+
+                if (assetResponse.ok) {
+                  const assetData = await assetResponse.json();
+                  
+                  // For compressed NFTs
+                  if (assetData.result?.compression?.compressed && assetData.result?.compression?.created_at) {
+                    createdAt = assetData.result.compression.created_at;
+                    console.log(`Found compression creation date for ${nftData.mint}: ${createdAt}`);
+                  }
+                  
+                  // Try to get from metadata
+                  if (!createdAt && assetData.result?.content?.metadata?.created_at) {
+                    createdAt = assetData.result.content.metadata.created_at;
+                    console.log(`Found metadata creation date for ${nftData.mint}: ${createdAt}`);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error(`Error fetching creation date for ${nftData.mint}:`, error);
+            }
             
-            console.log(`NFT ${nftData.mint} parsed date: ${parsedDate.createdAt}, from collection ${collection.name}`);
+            // Fall back to NFT metadata or collection dates
+            if (!createdAt) {
+              if (collection.creationDate) {
+                createdAt = collection.creationDate;
+                console.log(`Using collection creation date for ${nftData.mint}: ${createdAt}`);
+              } else if (collection.firstNftDate) {
+                createdAt = collection.firstNftDate;
+                console.log(`Using collection firstNftDate for ${nftData.mint}: ${createdAt}`);
+              } else {
+                // Only use a real past date as fallback, not a future date
+                const pastDate = new Date('2022-01-01T00:00:00Z').getTime();
+                const randomOffset = Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000); // Random offset up to 30 days
+                const fallbackTimestamp = pastDate + randomOffset;
+                createdAt = new Date(fallbackTimestamp).toISOString();
+                console.log(`Using fallback date for ${nftData.mint}: ${createdAt}`);
+              }
+            }
             
             // Create NFT object from metadata
             const nft: NFT = {
@@ -1383,8 +1476,10 @@ const Market: React.FC = () => {
               creators: [],
               royalty: 0,
               tokenStandard: 'NonFungible',
-              // Store the timestamp for consistent sorting
-              createdAt: String(new Date(parsedDate.createdAt).getTime())
+              // Store the timestamp for consistent sorting - ensure we use a valid date
+              createdAt: blockTime 
+                ? (blockTime * 1000).toString() // Use blockTime (most reliable) 
+                : new Date(createdAt).getTime().toString() // Parse from string
             };
             
             processedCollectionNFTs.push(nft);
