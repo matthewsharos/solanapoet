@@ -1,70 +1,9 @@
 {
-  "version": 2,
-  "headers": [
+  "redirects": [
     {
-      "source": "/api/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Credentials", "value": "true" },
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version" }
-      ]
-    },
-    {
-      "source": "^/assets/images/(.*)",
-      "headers": [
-        { "key": "cache-control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "^/images/(.*)",
-      "headers": [
-        { "key": "cache-control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "\\.(jpg|jpeg|png|gif|ico|svg|webp)$",
-      "headers": [
-        { "key": "cache-control", "value": "public, max-age=31536000, immutable" }
-      ]
+      "source": "/(.*)",
+      "destination": "https://degenpoet.com/$1",
+      "permanent": true
     }
-  ],
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist",
-        "buildCommand": "npm run build"
-      }
-    },
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  },
-  "rewrites": [
-    { "source": "/api/nft/helius/collection", "destination": "/api/nft/helius/collection.js" },
-    { "source": "/api/nft/helius/:mintAddress", "destination": "/api/nft/helius/[mintAddress].js" },
-    { "source": "/api/nft-helius/:mintAddress", "destination": "/api/nft/helius/[mintAddress].js" },
-    { "source": "/api/collection", "destination": "/api/collection.js" },
-    { "source": "/api/collection/assets", "destination": "/api/collection/assets.js" },
-    { "source": "/api/collection/:address", "destination": "/api/collection.js" },
-    { "source": "/api/collection/:address/ultimates", "destination": "/api/collection.js" },
-    { "source": "/api/ultimates", "destination": "/api/ultimates.js" },
-    { "source": "/api/display-names", "destination": "/api/display-names.js" },
-    { "source": "/api/display-names/:address", "destination": "/api/display-names.js" },
-    { "source": "/api/display-names/update", "destination": "/api/display-names.js" },
-    { "source": "/api/drive/upload", "destination": "/api/drive/upload.js" },
-    { "source": "/api/price", "destination": "/api/price.js" },
-    { "source": "/api/sol/price", "destination": "/api/price.js" },
-    { "source": "/api/config", "destination": "/api/config.js" },
-    { "source": "/api/debug", "destination": "/api/debug.js" },
-    { "source": "/api/diagnosis", "destination": "/api/diagnosis.js" },
-    { "source": "/api/sheets/:sheet", "destination": "/api/sheets.js" },
-    { "source": "/(.*)", "destination": "/" }
   ]
-} 
+}
